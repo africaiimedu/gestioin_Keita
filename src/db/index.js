@@ -1,20 +1,51 @@
 import path from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
+import { Sequelize } from "sequelize";
+import { defineModels } from "./models.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-// Montants en BIGINT et sommes NUMERIC reviennent en nombres ; dates et horodatages restent du texte
-// (« 2026-10-05 », « 2026-10-05 09:04:52 »), comme le reste du code les compare.
-pg.types.setTypeParser(pg.types.builtins.INT8, Number);
-pg.types.setTypeParser(pg.types.builtins.NUMERIC, Number);
-pg.types.setTypeParser(pg.types.builtins.DATE, (value) => value);
-pg.types.setTypeParser(pg.types.builtins.TIMESTAMP, (value) => value);
-
-export const SCHEMA = "scolarite";
 const WRITE_LOCK = 4317;
-const activeClient = new AsyncLocalStorage();
+
+// Sequelize partage la transaction en cours avec les modèles et les requêtes SQL du même appel.
+const context = new AsyncLocalStorage();
+Sequelize.useCLS({
+  get: (key) => context.getStore()?.get(key),
+  set: (key, value) => context.getStore()?.set(key, value),
+  run: (fn) => {
+    const store = new Map(context.getStore());
+    return context.run(store, () => fn(store));
+  },
+  bind: (fn) => fn,
+});
+
+// Montants BIGINT et sommes NUMERIC en nombres ; dates et horodatages en texte
+// (« 2026-10-05 », « 2026-10-05 09:04:52 ») : le code financier les compare ainsi.
+const NATIVE_TYPES = new Map([
+  [20, Number],
+  [1700, Number],
+  [1082, (value) => value],
+  [1114, (value) => value],
+]);
+
+function keepNativeTypes(sequelize) {
+  const manager = sequelize.connectionManager;
+  const apply = () => {
+    for (const [oid, parser] of NATIVE_TYPES) manager.oidParserMap.set(oid, parser);
+  };
+  const refresh = manager._refreshTypeParser.bind(manager);
+  manager._refreshTypeParser = (dataType) => {
+    refresh(dataType);
+    apply();
+  };
+  apply();
+}
+
+export function schemaName() {
+  const schema = process.env.DB_SCHEMA || "scolarite";
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(schema)) throw new Error("DB_SCHEMA invalide");
+  return schema;
+}
 
 export function uploadDir() {
   return process.env.UPLOAD_DIR || path.join(root, "data", "uploads");
@@ -53,38 +84,57 @@ class Statement {
   }
 }
 
+/** Accès à la base : modèles Sequelize (db.models) et SQL paramétré (db.prepare) dans la même transaction. */
 export class Database {
-  constructor(pool) {
-    this.pool = pool;
+  constructor(sequelize) {
+    this.sequelize = sequelize;
+    this.models = sequelize.models;
   }
 
   prepare(sql) {
     return new Statement(this, positional(sql));
   }
 
-  query(text, params = []) {
-    return (activeClient.getStore() || this.pool).query(text, params);
+  async query(text, params = []) {
+    const [rows, result] = await this.sequelize.query(text, {
+      bind: params.length ? params : undefined,
+      raw: true,
+    });
+    return { rows: Array.isArray(rows) ? rows : [], rowCount: result?.rowCount ?? 0 };
   }
 
   async exec(sql) {
-    await this.query(sql);
+    await this.sequelize.query(sql, { raw: true });
   }
 
   close() {
-    return this.pool.end();
+    return this.sequelize.close();
   }
 }
 
 export function connect(url = process.env.DATABASE_URL) {
   if (!url) throw new Error("DATABASE_URL manquant : voir .env.example");
-  const pool = new pg.Pool({
-    connectionString: url,
-    max: Number(process.env.DB_POOL_SIZE || 10),
-    application_name: "scolarite",
-    options: `-c search_path=${SCHEMA} -c statement_timeout=30000`,
+  const schema = schemaName();
+  const sequelize = new Sequelize(url, {
+    dialect: "postgres",
+    logging: process.env.DB_LOG === "true" ? console.log : false,
+    pool: {
+      max: Number(process.env.DB_POOL_SIZE || 10),
+      min: 0,
+      idle: 10_000,
+      acquire: 30_000,
+    },
+    define: { freezeTableName: true, timestamps: false, underscored: true },
+    dialectOptions: {
+      application_name: "scolarite",
+      statement_timeout: 30_000,
+      options: `-c search_path=${schema}`,
+      ...(process.env.DATABASE_SSL === "true" ? { ssl: { rejectUnauthorized: false } } : {}),
+    },
   });
-  pool.on("error", (error) => console.error(`PostgreSQL : ${error.message}`));
-  return new Database(pool);
+  keepNativeTypes(sequelize);
+  defineModels(sequelize);
+  return new Database(sequelize);
 }
 
 let current = null;
@@ -100,23 +150,19 @@ export async function closeDb() {
 }
 
 /**
- * Exécute fn dans une transaction. Les écritures sont sérialisées par un verrou consultatif :
- * deux encaissements simultanés ne peuvent pas lire le même « reste » ni le même numéro de reçu.
- * Un appel imbriqué réutilise la transaction en cours.
+ * Exécute fn dans une transaction Sequelize. Les écritures sont sérialisées par un verrou consultatif :
+ * deux encaissements simultanés ne peuvent pas lire le même « reste » ni le même numéro de reçu,
+ * même avec plusieurs processus Node (Passenger). Un appel imbriqué réutilise la transaction en cours.
  */
 export async function transaction(db, fn) {
-  if (activeClient.getStore()) return fn();
-  const client = await db.pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock($1)", [WRITE_LOCK]);
-    const result = await activeClient.run(client, fn);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw error;
-  } finally {
-    client.release();
-  }
+  if (context.getStore()?.get("transaction")) return fn();
+  return db.sequelize.transaction(async () => {
+    await db.sequelize.query("SELECT pg_advisory_xact_lock(?)", { replacements: [WRITE_LOCK], raw: true });
+    return fn();
+  });
+}
+
+/** Code d'erreur PostgreSQL, que l'erreur vienne de Sequelize ou de pg. */
+export function pgCode(error) {
+  return error?.original?.code ?? error?.parent?.code ?? error?.code ?? null;
 }

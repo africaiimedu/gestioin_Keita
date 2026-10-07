@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { freshTestDb } from "./helpers/testDb.js";
 import { seedAll } from "../src/seed/run.js";
+import { transaction } from "../src/db/index.js";
 import * as domain from "../src/services/domain.js";
 
 let db;
@@ -328,5 +329,24 @@ test("costume : prix, versement lié au reçu et refus du trop-perçu", async ()
   const situation = await domain.costumeSituation(db, created.student.id);
   assert.equal(situation.paid, 300_000);
   assert.equal(situation.status, "partiel");
+});
+
+test("Sequelize : modèles et SQL annulés ensemble, montants en nombres, dates en texte", async () => {
+  const { Payment, Reminder } = db.models;
+  const student = await db.prepare("SELECT id FROM students WHERE legacy_number = 1").get();
+  const before = await Reminder.count();
+  await assert.rejects(() => transaction(db, async () => {
+    await Reminder.create({ student_id: student.id, channel: "copie", message: "essai", created_by: agent.id });
+    await db.prepare("INSERT INTO reminders(student_id, channel, message) VALUES(?, 'copie', 'essai') RETURNING id").run(student.id);
+    throw new Error("annulation");
+  }), /annulation/);
+  assert.equal(await Reminder.count(), before);
+  const payment = await Payment.findOne({ where: { student_id: student.id }, raw: true });
+  assert.equal(typeof payment.amount, "number");
+  assert.match(payment.paid_on, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(payment.created_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  const total = await db.prepare("SELECT SUM(amount) AS s, COUNT(*) AS n FROM payments").get();
+  assert.equal(typeof total.s, "number");
+  assert.equal(typeof total.n, "number");
 });
 });

@@ -9,19 +9,20 @@ docker compose
 ├── postgres     PostgreSQL 16 — base « africaiim », stockage permanent (volume africaiim_pg_data)
 │                 schéma « scolarite » : cette application (rôle dédié, sans droits d'administration)
 │                 schéma « cartes »    : réservé à l'application de cartes
-├── scolarite    Node.js 22 + Express — http://localhost:4317
+├── scolarite    Node.js 22 + Express + Sequelize — http://localhost:4317
 └── sauvegarde   pg_dump automatique toutes les 24 h dans data/backups (30 jours gardés)
 ```
 
 | Dossier | Contenu |
 |---|---|
-| `src/db/` | Connexion PostgreSQL, transactions, migrations versionnées (`migrations/NNN_nom.sql`) |
+| `src/db/` | Sequelize : connexion, modèles de toutes les tables (`models.js`), transactions, migrations versionnées (`migrations/NNN_nom.sql`) |
 | `src/finance/` | Toutes les formules (allocation, reste, retard, montants en lettres) |
 | `src/services/` | Règles métier : paiements, reçus, costume, comptes, import CSV, liaison cartes |
 | `src/seed/` | Données de départ d'une base neuve |
 | `public/` | Interface (sans framework, rapide sur connexion lente) |
 | `db/` | Initialisation de PostgreSQL et script de sauvegarde |
-| `scripts/` | Sauvegarde manuelle, transfert depuis l'ancienne base SQLite |
+| `scripts/` | Migrations, sauvegarde, export et import des données, transfert depuis l'ancienne base SQLite |
+| `app.cjs` | Point de démarrage pour l'hébergement o2switch (Passenger) |
 | `tests/` | Tests automatiques sur une base PostgreSQL séparée (`africaiim_test`) |
 
 ### Solidité des données
@@ -29,7 +30,8 @@ docker compose
 - Montants en entiers `BIGINT` (francs guinéens), dates en `DATE`, contraintes `CHECK` sur chaque valeur.
 - Un paiement validé, un reçu, une annulation et le journal d'audit ne peuvent être ni modifiés ni supprimés : des déclencheurs PostgreSQL le refusent, même en SQL direct.
 - Les encaissements passent dans une transaction verrouillée : deux caisses simultanées ne dépassent jamais le reste et les numéros de reçu restent sans trou.
-- Le schéma évolue par migrations numérotées, appliquées une seule fois au démarrage.
+- Le schéma évolue par migrations numérotées, appliquées une seule fois au démarrage. Il reste compatible PostgreSQL 10 et suivants.
+- Sequelize sert pour la connexion, les transactions et les tables simples (comptes, sessions, paramètres, audit, relances). Les calculs financiers restent en SQL paramétré, exécuté par Sequelize dans la même transaction.
 
 ## Démarrage
 
@@ -46,7 +48,10 @@ Prérequis : Docker Desktop.
 | `docker compose restart scolarite` | Redémarrer l'application |
 | `docker compose down` | Arrêter (les données restent sur le volume) |
 | `npm run backup` | Sauvegarde immédiate dans `data/backups` |
-| `npm test` | Tests (PostgreSQL démarré, Node 22 local) |
+| `npm run migrate` | Appliquer les migrations sans démarrer le serveur |
+| `npm run export` | Exporter toutes les données dans `data/exports` (pour une mise en ligne) |
+| `npm run import -- fichier` | Installer un export dans une base vide, avec contrôle des totaux |
+| `npm test` | Tests (PostgreSQL démarré, Node 20 ou 22 local) |
 
 Ne jamais lancer `docker compose down -v` : l'option `-v` efface le volume de la base.
 
@@ -82,7 +87,9 @@ Les données ont été transférées le 7 octobre 2026. Une copie de l'ancienne 
 - Le reçu `REC-2026-000001` ne peut pas être réutilisé ni renuméroté.
 - Un second clic sur « Valider » ne crée pas un deuxième paiement.
 
-En production, placez l'application derrière HTTPS et mettez `DEMO_MODE=false`.
+## Mise en ligne sur o2switch
+
+Voir `docs/deploiement-o2switch.md` : base PostgreSQL de cPanel, application Node.js (Passenger), HTTPS, transfert des données et sauvegardes automatiques. En production (`NODE_ENV=production`), le mode démonstration est toujours fermé.
 
 ## Guides
 

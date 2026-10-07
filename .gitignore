@@ -4,6 +4,8 @@ data/*.sqlite-*
 data/uploads/
 data/backups/
 data/archives/
+data/exports/
+tmp/
 .env
 **/.env
 .DS_Store

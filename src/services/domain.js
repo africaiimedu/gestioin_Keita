@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { Op } from "sequelize";
 import { can, hashPassword, normalizeRights, passwordIssue } from "../auth/passwords.js";
-import { uploadDir, transaction } from "../db/index.js";
+import { pgCode, uploadDir, transaction } from "../db/index.js";
 import {
   INSTALLMENT_LABELS,
   METHOD_LABELS,
@@ -63,21 +64,18 @@ export function todayInConakry(now = new Date()) {
 }
 
 export async function setting(db, key) {
-  return (await db.prepare("SELECT value FROM settings WHERE key = ?").get(key))?.value ?? null;
+  return (await db.models.Setting.findByPk(key, { raw: true }))?.value ?? null;
 }
 
 export async function audit(db, userId, action, entity, entityId, before, after) {
-  await db.prepare(`
-    INSERT INTO audit_logs(user_id, action, entity, entity_id, before_json, after_json)
-    VALUES(?, ?, ?, ?, ?, ?)
-  `).run(
-    userId ?? null,
+  await db.models.AuditLog.create({
+    user_id: userId ?? null,
     action,
     entity,
-    entityId == null ? null : String(entityId),
-    before ? JSON.stringify(before) : null,
-    after ? JSON.stringify(after) : null,
-  );
+    entity_id: entityId == null ? null : String(entityId),
+    before_json: before ? JSON.stringify(before) : null,
+    after_json: after ? JSON.stringify(after) : null,
+  }, { returning: ["id"] });
 }
 
 export async function costumePrice(db) {
@@ -915,11 +913,9 @@ export async function createReminder(db, user, studentId, channel, asOf = todayI
   if (!allowed.has(channel)) throw new HttpError(400, "Canal de relance inconnu");
   const message = reminderMessage(current.student, current.situation);
   return transaction(db, async () => {
-    const result = await db.prepare(`
-      INSERT INTO reminders(student_id, channel, message, created_by) VALUES(?, ?, ?, ?) RETURNING id
-    `).run(studentId, channel, message, user.id);
-    await audit(db, user.id, "relance", "reminders", result.lastInsertRowid, null, { channel, studentId });
-    return { id: result.lastInsertRowid, message, channel };
+    const reminder = await db.models.Reminder.create({ student_id: studentId, channel, message, created_by: user.id });
+    await audit(db, user.id, "relance", "reminders", reminder.id, null, { channel, studentId });
+    return { id: reminder.id, message, channel };
   });
 }
 
@@ -1131,6 +1127,7 @@ export async function saveFeeSchedule(db, user, input) {
 export async function updateSettings(db, user, input) {
   if (!can(user, "settings.write")) throw new HttpError(403, "Seul l'admin ou le super admin modifie les paramètres");
   const allowed = ["school_name", "school_city", "school_address", "school_phone", "school_email", "school_web", "card_threshold", "costume_price"];
+  const { Setting } = db.models;
   await transaction(db, async () => {
     for (const key of allowed) {
       if (input[key] == null) continue;
@@ -1138,9 +1135,9 @@ export async function updateSettings(db, user, input) {
         const value = Number(String(input[key]).replace(/[\s.]/g, ""));
         assertGnf(value, key === "costume_price" ? "Prix du costume" : "Seuil");
         if (value < 0) throw new HttpError(400, "Le montant ne peut pas être négatif");
-        await db.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, String(value));
+        await Setting.upsert({ key, value: String(value) });
       } else {
-        await db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(String(input[key]).trim(), key);
+        await Setting.update({ value: String(input[key]).trim() }, { where: { key } });
       }
     }
     await audit(db, user.id, "parametres", "settings", null, null, input);
@@ -1163,17 +1160,21 @@ function roleCodeForRights(codes) {
   return codes.some((code) => elevated.includes(code)) ? "admin" : "gestionnaire";
 }
 
-function loadAccount(db, userId) {
-  return db.prepare(`
-    SELECT u.*, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?
-  `).get(userId);
+/** Compte avec le code de son rôle à plat (user.role = "admin", …), comme le reste de l'application l'attend. */
+export function accountOf(instance) {
+  if (!instance) return undefined;
+  const { role, ...user } = instance.get({ plain: true });
+  return { ...user, role: role?.code ?? null };
+}
+
+async function loadAccount(db, userId) {
+  const { Role, User } = db.models;
+  return accountOf(await User.findByPk(userId, { include: { model: Role, as: "role", attributes: ["code"] } }));
 }
 
 async function activeSuperAdmins(db) {
-  return (await db.prepare(`
-    SELECT COUNT(*) AS n FROM users u JOIN roles r ON r.id = u.role_id
-    WHERE r.code = 'super_admin' AND u.active = 1
-  `).get()).n;
+  const { Role, User } = db.models;
+  return User.count({ where: { active: 1 }, include: { model: Role, as: "role", where: { code: "super_admin" } } });
 }
 
 export async function createUser(db, actor, input) {
@@ -1187,19 +1188,25 @@ export async function createUser(db, actor, input) {
   const rights = normalizeRights(input.rights);
   if (!rights.length) throw new HttpError(400, "Cochez au moins une partie de l'application");
   const roleCode = input.superAdmin ? "super_admin" : roleCodeForRights(rights);
-  const role = await db.prepare("SELECT * FROM roles WHERE code = ?").get(roleCode);
+  const { Role, User } = db.models;
+  const role = await Role.findOne({ where: { code: roleCode }, raw: true });
   if (!role) throw new HttpError(400, "Rôle inconnu");
   try {
     return await transaction(db, async () => {
-      const result = await db.prepare(`
-        INSERT INTO users(role_id, full_name, email, password_hash, totp_secret, totp_required, permissions_json, must_change_password, active)
-        VALUES(?, ?, ?, ?, NULL, 0, ?, 1, 1) RETURNING id
-      `).run(role.id, name, email, hashPassword(password), input.superAdmin ? null : JSON.stringify(rights));
-      await audit(db, actor.id, "utilisateur.creer", "users", result.lastInsertRowid, null, { email, role: roleCode, rights });
-      return { id: result.lastInsertRowid };
+      const user = await User.create({
+        role_id: role.id,
+        full_name: name,
+        email,
+        password_hash: hashPassword(password),
+        permissions_json: input.superAdmin ? null : JSON.stringify(rights),
+        must_change_password: 1,
+        active: 1,
+      });
+      await audit(db, actor.id, "utilisateur.creer", "users", user.id, null, { email, role: roleCode, rights });
+      return { id: user.id };
     });
   } catch (error) {
-    if (error.code === UNIQUE_VIOLATION) throw new HttpError(400, "Cet e-mail est déjà utilisé");
+    if (pgCode(error) === UNIQUE_VIOLATION) throw new HttpError(400, "Cet e-mail est déjà utilisé");
     throw error;
   }
 }
@@ -1226,19 +1233,21 @@ export async function updateUserAccess(db, actor, userId, input) {
     if (target.role === "super_admin" && !input.superAdmin && (await activeSuperAdmins(db)) <= 1) {
       throw new HttpError(400, "Le dernier super admin doit garder tous les droits");
     }
+    const { Role, Session, User } = db.models;
     const roleCode = input.superAdmin ? "super_admin" : roleCodeForRights(rights);
-    const role = await db.prepare("SELECT id FROM roles WHERE code = ?").get(roleCode);
+    const role = await Role.findOne({ where: { code: roleCode }, raw: true });
     const name = String(input.fullName ?? target.full_name).trim();
     if (name.length < 3) throw new HttpError(400, "Le nom est obligatoire");
     const email = input.email == null ? target.email : staffEmail(input.email);
-    const taken = await db.prepare("SELECT id FROM users WHERE email = ? AND id <> ?").get(email, target.id);
+    const taken = await User.findOne({ where: { email, id: { [Op.ne]: target.id } }, attributes: ["id"], raw: true });
     if (taken) throw new HttpError(400, "Cet e-mail est déjà utilisé");
-    await db.prepare(`
-      UPDATE users SET full_name = ?, email = ?, role_id = ?, permissions_json = ? WHERE id = ?
-    `).run(name, email, role.id, input.superAdmin ? null : JSON.stringify(rights), target.id);
+    await User.update(
+      { full_name: name, email, role_id: role.id, permissions_json: input.superAdmin ? null : JSON.stringify(rights) },
+      { where: { id: target.id } },
+    );
     if (password) {
-      await db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?").run(hashPassword(password), target.id);
-      await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+      await User.update({ password_hash: hashPassword(password), must_change_password: 1 }, { where: { id: target.id } });
+      await Session.destroy({ where: { user_id: target.id } });
     }
     await audit(db, actor.id, "utilisateur.modifier", "users", target.id,
       { name: target.full_name, email: target.email, role: target.role },
@@ -1260,18 +1269,19 @@ export async function deactivateUser(db, actor, userId) {
     if (target.role === "super_admin" && (await activeSuperAdmins(db)) <= 1) {
       throw new HttpError(400, "Le dernier super admin ne peut pas être supprimé");
     }
-    await db.prepare("UPDATE users SET active = 0 WHERE id = ?").run(target.id);
-    await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+    await db.models.User.update({ active: 0 }, { where: { id: target.id } });
+    await db.models.Session.destroy({ where: { user_id: target.id } });
     await audit(db, actor.id, "utilisateur.retirer", "users", target.id, { email: target.email, active: 1 }, { active: 0 });
     return { id: target.id, active: 0 };
   });
 }
 
 export async function catalog(db) {
+  const { AcademicYear, Program, Setting } = db.models;
   const [programs, years, settings, fees, agents] = await Promise.all([
-    db.prepare("SELECT id, code, name FROM programs ORDER BY name").all(),
-    db.prepare("SELECT id, label, active FROM academic_years ORDER BY label DESC").all(),
-    db.prepare("SELECT key, value FROM settings").all(),
+    Program.findAll({ attributes: ["id", "code", "name"], order: [["name", "ASC"]], raw: true }),
+    AcademicYear.findAll({ attributes: ["id", "label", "active"], order: [["label", "DESC"]], raw: true }),
+    Setting.findAll({ raw: true }),
     db.prepare(`
       SELECT f.*, p.name AS program_name, y.label AS year_label
       FROM fee_schedules f

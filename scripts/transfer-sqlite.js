@@ -9,18 +9,10 @@ import { fileURLToPath } from "node:url";
 import { connect, transaction } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { reconcile } from "../src/services/domain.js";
+import { TABLES, fail, isEmpty, resetIdentity } from "./lib/tables.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: path.join(root, ".env"), quiet: true });
-
-// Ordre imposé par les clés étrangères.
-const TABLES = [
-  "roles", "users", "sessions", "login_logs", "academic_years", "programs", "fee_schedules",
-  "fee_schedule_history", "installment_due_dates", "students", "discounts", "adjustments",
-  "student_installments", "payments", "payment_controls", "costume_payments", "payment_attachments",
-  "document_sequences", "receipts", "enrollment_receipts", "cancellations", "reminders",
-  "audit_logs", "import_batches", "settings",
-];
 
 const source = path.resolve(process.argv[2] || path.join(root, "data", "scolarite.sqlite"));
 if (!fs.existsSync(source)) fail(`Fichier SQLite introuvable : ${source}`);
@@ -29,13 +21,12 @@ const pg = connect(process.env.DATABASE_URL);
 
 try {
   await runMigrations(pg);
-  const used = await pg.prepare("SELECT (SELECT COUNT(*) FROM users) + (SELECT COUNT(*) FROM students) + (SELECT COUNT(*) FROM payments) AS n").get();
-  if (used.n > 0) fail("La base PostgreSQL contient déjà des données : transfert annulé, rien n'a été modifié.");
+  if (!(await isEmpty(pg))) fail("La base PostgreSQL contient déjà des données : transfert annulé, rien n'a été modifié.");
 
   const copied = {};
   await transaction(pg, async () => {
     for (const table of TABLES) copied[table] = await copyTable(table);
-    for (const table of TABLES) await resetIdentity(table);
+    for (const table of TABLES) await resetIdentity(pg, table);
   });
 
   const checks = await verify(copied);
@@ -78,15 +69,6 @@ function convert(table, column, value) {
   return typeof value === "bigint" ? Number(value) : value;
 }
 
-async function resetIdentity(table) {
-  const identity = await pg.prepare(`
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema() AND table_name = ? AND column_name = 'id' AND is_identity = 'YES'
-  `).get(table);
-  if (!identity) return;
-  await pg.exec(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 0) + 1, false)`);
-}
-
 async function verify(copied) {
   const checks = [];
   for (const table of TABLES) {
@@ -118,8 +100,3 @@ async function verify(copied) {
   return checks;
 }
 
-
-function fail(message) {
-  console.error(message);
-  process.exit(1);
-}

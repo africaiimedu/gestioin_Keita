@@ -1,7 +1,9 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import compression from "compression";
 import express from "express";
+import { Op } from "sequelize";
 import { verifyPassword, sessionToken, can, hashPassword, passwordIssue, RIGHTS, rightsOf } from "./auth/passwords.js";
 import { verifyTotp, totp } from "./auth/totp.js";
 import { closeDb, getDb } from "./db/index.js";
@@ -12,6 +14,7 @@ import { ANOMALY_LABELS } from "./seed/interpret.js";
 import { HttpError } from "./httpError.js";
 import { formatGnf } from "./finance/index.js";
 import {
+  accountOf,
   activeYear,
   audit,
   cancelCostume,
@@ -53,17 +56,31 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: path.join(root, ".env"), quiet: true });
 
 const db = getDb();
+const { LoginLog, Role, Session, User } = db.models;
 await runMigrations(db);
-if (Number((await db.prepare("SELECT COUNT(*) AS n FROM users").get()).n) === 0) await seedAll(db);
+if ((await User.count()) === 0) await seedAll(db);
 await applyIdentity(db);
+
+// Le mode démonstration (comptes et codes à 6 chiffres affichés) ne s'ouvre jamais en production.
+const DEMO = process.env.DEMO_MODE === "true" && process.env.NODE_ENV !== "production";
+const SESSION_HOURS = 12;
+const IDLE_MS = 2 * 3600 * 1000;
+const MAX_FAILURES = 8;
+const FAILURE_WINDOW_MINUTES = 15;
+const withRole = { model: Role, as: "role", attributes: ["code", "label"] };
 
 const app = express();
 app.disable("x-powered-by");
+// Derrière le proxy HTTPS de l'hébergeur (o2switch : Apache + Passenger), req.secure et req.ip
+// ne sont fiables que si TRUST_PROXY est défini.
+if (process.env.TRUST_PROXY) app.set("trust proxy", trustProxy(process.env.TRUST_PROXY));
+app.use(compression({ filter: (req, res) => !isCardPortal(req) && compression.filter(req, res) }));
 app.use((req, res, next) => {
   if (isCardPortal(req)) {
     next();
     return;
   }
+  if (req.secure) res.setHeader("Strict-Transport-Security", "max-age=31536000");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
@@ -81,8 +98,6 @@ app.get("/api/sante", async (_req, res) => {
 attachCardPortal(app, loadUser);
 app.use(express.json({ limit: "8mb" }));
 
-const failures = new Map();
-
 app.use(async (req, res, next) => {
   if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && req.path.startsWith("/api/") && req.path !== "/api/connexion") {
     if (req.get("x-africaiim") !== "1") {
@@ -98,47 +113,35 @@ app.post("/api/connexion", async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const ip = req.ip || "";
-  const bucket = failures.get(email) || [];
-  const recent = bucket.filter((time) => Date.now() - time < 15 * 60 * 1000);
-  if (recent.length >= 8) {
-    res.status(429).json({ error: "Trop de tentatives. Réessayez dans 15 minutes." });
+  if ((await recentFailures(email)) >= MAX_FAILURES) {
+    res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${FAILURE_WINDOW_MINUTES} minutes.` });
     return;
   }
-  const user = await db.prepare(`
-    SELECT u.*, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE email = ? AND active = 1
-  `).get(email);
+  const user = accountOf(await User.findOne({ where: { email, active: 1 }, include: withRole }));
   if (!user || !verifyPassword(password, user.password_hash)) {
-    recent.push(Date.now());
-    failures.set(email, recent);
-    await db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 0, ?)").run(user?.id ?? null, email, ip);
+    await LoginLog.create({ user_id: user?.id ?? null, email, success: 0, ip });
     res.status(401).json({ error: "Identifiants incorrects" });
     return;
   }
   if (user.totp_required) {
     if (!verifyTotp(user.totp_secret, req.body?.totp || "")) {
-      recent.push(Date.now());
-      failures.set(email, recent);
-      await db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 0, ?)").run(user.id, email, ip);
+      await LoginLog.create({ user_id: user.id, email, success: 0, ip });
       res.status(401).json({ error: "Code de vérification incorrect ou manquant", totpRequired: true });
       return;
     }
   }
-  failures.delete(email);
   const id = sessionToken();
   const now = Date.now();
-  await db.prepare("INSERT INTO sessions(id, user_id, created_at, last_seen, expires_at) VALUES(?, ?, ?, ?, ?)").run(id, user.id, now, now, now + 12 * 3600 * 1000);
-  await db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 1, ?)").run(user.id, email, ip);
-  res.setHeader("Set-Cookie", `aim_session=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${12 * 3600}`);
+  await Session.create({ id, user_id: user.id, created_at: now, last_seen: now, expires_at: now + SESSION_HOURS * 3600 * 1000 });
+  await LoginLog.create({ user_id: user.id, email, success: 1, ip });
+  res.setHeader("Set-Cookie", cookie(req, "aim_session", id, SESSION_HOURS * 3600));
   res.json({ user: publicUser(user) });
 });
 
 app.post("/api/deconnexion", async (req, res) => {
   const id = readCookie(req, "aim_session");
-  if (id) await db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
-  res.setHeader("Set-Cookie", [
-    "aim_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
-    "africard=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
-  ]);
+  if (id) await Session.destroy({ where: { id } });
+  res.setHeader("Set-Cookie", [cookie(req, "aim_session", "", 0), cookie(req, "africard", "", 0)]);
   res.json({ ok: true });
 });
 
@@ -151,7 +154,7 @@ app.get("/api/moi", (req, res) => {
 });
 
 app.get("/api/demo", (req, res) => {
-  if (process.env.DEMO_MODE !== "true") {
+  if (!DEMO) {
     res.json({ demo: false });
     return;
   }
@@ -159,12 +162,12 @@ app.get("/api/demo", (req, res) => {
 });
 
 app.get("/api/demo/code", async (req, res) => {
-  if (process.env.DEMO_MODE !== "true") {
+  if (!DEMO) {
     res.status(404).json({ error: "Indisponible" });
     return;
   }
   const email = String(req.query.email || "").toLowerCase();
-  const user = await db.prepare("SELECT totp_secret, totp_required FROM users WHERE email = ?").get(email);
+  const user = await User.findOne({ where: { email }, attributes: ["totp_secret", "totp_required"], raw: true });
   if (!user?.totp_required) {
     res.json({ code: null });
     return;
@@ -396,18 +399,24 @@ app.put("/api/parametres", requireUser, async (req, res) => {
 });
 app.get("/api/utilisateurs", requireUser, async (req, res) => {
   if (!can(req.user, "user.write")) throw new HttpError(403, "Accès refusé");
-  const users = (await db.prepare(`
-    SELECT u.id, u.full_name, u.email, u.active, u.permissions_json, r.code AS role, r.label AS role_label
-    FROM users u JOIN roles r ON r.id = u.role_id WHERE u.active = 1 ORDER BY u.full_name
-  `).all()).map((row) => ({
-    id: row.id,
-    name: row.full_name,
-    email: row.email,
-    active: Boolean(row.active),
-    role: row.role,
-    roleLabel: row.role_label,
-    rights: rightsOf(row),
-  }));
+  const rows = await User.findAll({
+    where: { active: 1 },
+    attributes: ["id", "full_name", "email", "active", "permissions_json"],
+    include: withRole,
+    order: [["full_name", "ASC"]],
+  });
+  const users = rows.map((row) => {
+    const account = accountOf(row);
+    return {
+      id: account.id,
+      name: account.full_name,
+      email: account.email,
+      active: Boolean(account.active),
+      role: account.role,
+      roleLabel: row.role?.label ?? null,
+      rights: rightsOf(account),
+    };
+  });
   res.json({ users, rights: RIGHTS.map(([code, label]) => ({ code, label })) });
 });
 app.post("/api/utilisateurs", requireUser, async (req, res) => {
@@ -429,11 +438,9 @@ app.post("/api/compte/mot-de-passe", requireUser, async (req, res) => {
   if (must && verifyPassword(next, req.user.password_hash)) {
     throw new HttpError(400, "Choisissez un mot de passe différent du mot de passe provisoire");
   }
-  await db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(next), req.user.id);
+  await User.update({ password_hash: hashPassword(next), must_change_password: 0 }, { where: { id: req.user.id } });
   await audit(db, req.user.id, "motdepasse", "users", req.user.id, null, { changed: true, first: must });
-  const fresh = await db.prepare(`
-    SELECT u.*, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?
-  `).get(req.user.id);
+  const fresh = accountOf(await User.findByPk(req.user.id, { include: withRole }));
   res.json({ ok: true, user: publicUser(fresh) });
 });
 app.get("/api/integrations/cartes", async (req, res) => {
@@ -493,8 +500,16 @@ app.get("/v/:token", async (req, res) => {
     <p class="muted">Aucune autre donnée personnelle n'est affichée sur cette page.</p></main></html>`);
 });
 
-app.use(express.static(path.join(root, "public")));
+// Les fichiers de l'interface ne sont pas versionnés dans leur nom : cache court, revalidé par ETag,
+// et la page d'accueil toujours redemandée pour qu'une mise en ligne soit visible tout de suite.
+app.use(express.static(path.join(root, "public"), {
+  maxAge: "1h",
+  setHeaders: (res, file) => {
+    if (file.endsWith(".html")) res.setHeader("Cache-Control", "no-cache");
+  },
+}));
 app.get("/{*path}", (_req, res) => {
+  res.setHeader("Cache-Control", "no-cache");
   res.sendFile(path.join(root, "public", "index.html"));
 });
 
@@ -532,16 +547,41 @@ function requireAction(action) {
 async function loadUser(req) {
   const id = readCookie(req, "aim_session");
   if (!id) return null;
-  const session = await db.prepare("SELECT * FROM sessions WHERE id = ?").get(id);
+  const session = await Session.findByPk(id, { raw: true });
   const now = Date.now();
-  if (!session || now > Number(session.expires_at) || now - Number(session.last_seen) > 2 * 3600 * 1000) {
-    if (session) await db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+  if (!session || now > session.expires_at || now - session.last_seen > IDLE_MS) {
+    if (session) await Session.destroy({ where: { id } });
     return null;
   }
-  if (now - Number(session.last_seen) > 60_000) await db.prepare("UPDATE sessions SET last_seen = ? WHERE id = ?").run(now, id);
-  return (await db.prepare(`
-    SELECT u.*, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.active = 1
-  `).get(session.user_id)) || null;
+  if (now - session.last_seen > 60_000) await Session.update({ last_seen: now }, { where: { id } });
+  return accountOf(await User.findOne({ where: { id: session.user_id, active: 1 }, include: withRole })) || null;
+}
+
+/** Échecs depuis la dernière connexion réussie, sur la fenêtre de blocage. Partagé entre les processus. */
+async function recentFailures(email) {
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS n FROM login_logs
+    WHERE email = ? AND success = 0
+      AND created_at > (now() AT TIME ZONE 'UTC') - make_interval(mins => ?)
+      AND created_at > COALESCE(
+        (SELECT MAX(created_at) FROM login_logs WHERE email = ? AND success = 1), '-infinity'::timestamp)
+  `).get(email, FAILURE_WINDOW_MINUTES, email);
+  return row.n;
+}
+
+function cookie(req, name, value, maxAge) {
+  return `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${req.secure ? "; Secure" : ""}`;
+}
+
+function trustProxy(value) {
+  if (value === "true") return true;
+  if (/^\d+$/.test(value)) return Number(value);
+  return value;
+}
+
+async function purgeExpiredSessions() {
+  const now = Date.now();
+  await Session.destroy({ where: { [Op.or]: [{ expires_at: { [Op.lt]: now } }, { last_seen: { [Op.lt]: now - IDLE_MS } }] } });
 }
 
 function readCookie(req, name) {
@@ -599,6 +639,8 @@ const year = await activeYear(db);
 const control = await reconcile(db);
 console.log(`AfricaIIM Scolarité — http://localhost:${port}`);
 console.log(`Année ${year.label} · ${control.students} étudiants · encaissé ${control.paid} GNF · cohérence ${control.ok ? "OK" : "ÉCART"}`);
+await purgeExpiredSessions();
+setInterval(() => purgeExpiredSessions().catch((error) => console.error(`Sessions : ${error.message}`)), 3600 * 1000).unref();
 const server = app.listen(port, () => {
   syncStudentsToCard(db).then((report) => {
     const detail = report.ignored ? ` · ${report.ignored} fiche non envoyée` : "";
