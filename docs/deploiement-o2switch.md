@@ -65,9 +65,11 @@ Un mot de passe contenant `@`, `:` ou `/` doit être encodé dans `DATABASE_URL`
 
 Installer les dépendances : bouton **Run NPM Install**, ou en SSH avec la commande `source …/activate` affichée en haut de la page de l'application :
 
+Sur o2switch, `node_modules` doit rester un raccourci vers l'environnement Node : ne jamais créer ce dossier à la main ni lancer `npm ci`, qui le remplacerait.
+
 ```sh
 source ~/nodevenv/scolarite/22/bin/activate && cd ~/scolarite
-npm ci --omit=dev
+npm install --omit=dev
 npm run migrate
 ```
 
@@ -120,7 +122,7 @@ pg_restore --clean --if-exists --no-owner \
 source ~/nodevenv/scolarite/22/bin/activate && cd ~/scolarite
 npm run backup
 git pull
-npm ci --omit=dev
+npm install --omit=dev
 npm run migrate
 touch tmp/restart.txt
 ```
