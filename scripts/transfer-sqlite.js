@@ -2,6 +2,7 @@
 // Usage : npm run transfert -- [chemin/vers/scolarite.sqlite]
 // Le fichier SQLite n'est jamais modifié. La base PostgreSQL cible doit être vide.
 import fs from "node:fs";
+import dotenv from "dotenv";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -10,7 +11,7 @@ import { runMigrations } from "../src/db/migrate.js";
 import { reconcile } from "../src/services/domain.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-loadEnv(path.join(root, ".env"));
+dotenv.config({ path: path.join(root, ".env"), quiet: true });
 
 // Ordre imposé par les clés étrangères.
 const TABLES = [
@@ -117,15 +118,6 @@ async function verify(copied) {
   return checks;
 }
 
-function loadEnv(file) {
-  if (!fs.existsSync(file)) return;
-  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-    const index = line.indexOf("=");
-    if (index < 1 || line.trim().startsWith("#")) continue;
-    const key = line.slice(0, index).trim();
-    if (!process.env[key]) process.env[key] = line.slice(index + 1).trim();
-  }
-}
 
 function fail(message) {
   console.error(message);

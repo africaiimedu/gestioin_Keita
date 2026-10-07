@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -50,7 +50,7 @@ import { syncStudentsToCard } from "./services/cardSync.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-loadEnv(path.join(root, ".env"));
+dotenv.config({ path: path.join(root, ".env"), quiet: true });
 
 const db = getDb();
 await runMigrations(db);
@@ -593,16 +593,6 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }
 
-function loadEnv(file) {
-  if (!fs.existsSync(file)) return;
-  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const index = trimmed.indexOf("=");
-    const key = trimmed.slice(0, index).trim();
-    if (!process.env[key]) process.env[key] = trimmed.slice(index + 1).trim();
-  }
-}
 
 const port = Number(process.env.PORT || 4317);
 const year = await activeYear(db);
