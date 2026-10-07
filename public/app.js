@@ -1,5 +1,14 @@
 const app = document.querySelector("#app");
-const state = { user: null, screen: "tableau", suite: "finances", carte: "etudiants", demo: null, catalog: null, idempotencyKey: crypto.randomUUID(), studentPage: 1 };
+function newKey() {
+  if (globalThis.crypto?.randomUUID) return newKey();
+  const bytes = new Uint8Array(16);
+  (globalThis.crypto?.getRandomValues || ((b) => { for (let i = 0; i < b.length; i++) b[i] = Math.floor(Math.random() * 256); }))(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+const state = { user: null, screen: "tableau", suite: "finances", carte: "etudiants", demo: null, catalog: null, idempotencyKey: newKey(), studentPage: 1 };
 
 const labels = {
   licence: "Licence", master: "Master", tech: "Tech Ingénieur",
@@ -1299,7 +1308,7 @@ async function showStudent(screen, id) {
   document.querySelector("#pay-this").addEventListener("click", () => {
     state.prefillStudent = { ...student, situation };
     state.screen = "paiement";
-    state.idempotencyKey = crypto.randomUUID();
+    state.idempotencyKey = newKey();
     render();
   });
 }
@@ -1356,7 +1365,7 @@ function openPaymentUpdate(payment, onDone) {
   document.querySelector("#close-update").addEventListener("click", () => dialog.close());
   dialog.addEventListener("cancel", (event) => event.preventDefault());
   const form = document.querySelector("#update-form");
-  const key = crypto.randomUUID();
+  const key = newKey();
   const paintPreview = (data) => {
     const box = document.querySelector("#update-preview");
     if (!box) return;
@@ -1631,7 +1640,7 @@ async function submitPayment(event) {
     }
     const costumeInput = document.querySelector("#pay-form [name=costumeAmount]");
     if (costumeInput) costumeInput.value = "";
-    state.idempotencyKey = crypto.randomUUID();
+    state.idempotencyKey = newKey();
     await loadCashPayments();
   } catch (caught) {
     if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
