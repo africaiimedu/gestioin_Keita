@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block titre %}Contrôle{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Contrôle des cartes</h1>
+  <p class="intro">Flashez le QR code de la carte avec l'appareil photo. Si votre compte est autorisé, le bouton « Valider cette carte » confirme l'entrée. Vous pouvez aussi chercher par nom ou matricule.</p>
+  <form method="get" class="filtres">
+    <input name="q" value="{{ q }}" placeholder="Nom ou matricule" maxlength="80" autofocus>
+    <button type="submit">Chercher</button>
+  </form>
+
+  {% if cherche %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Photo</th>
+            <th>Nom</th>
+            <th>Matricule</th>
+            <th>École</th>
+            <th>Validité</th>
+            <th>Carte</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ligne in lignes %}
+            <tr>
+              <td>
+                {% if ligne.carte %}
+                  <img src="/photo/{{ ligne.carte.jeton }}" alt="" width="48" height="64" style="object-fit:cover;border-radius:4px">
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ ligne.etudiant.nom }} {{ ligne.etudiant.prenom }}</td>
+              <td>{{ ligne.etudiant.matricule }}</td>
+              <td>{{ ligne.etudiant.filiere }}</td>
+              <td>{{ ligne.etudiant.date_validite | datefr }}</td>
+              <td>
+                {% if ligne.statut %}
+                  <span class="pastille pastille-{{ ligne.statut }}">{{ ligne.statut | statutfr }}</span>
+                {% else %}
+                  <span class="pastille">Sans carte</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">Aucun étudiant ne correspond à cette recherche.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

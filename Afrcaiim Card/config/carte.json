@@ -1,0 +1,19 @@
+{
+  "universite": "Université",
+  "etablissement": "AFRICAIIM",
+  "institut": "Université AFRICAIIM",
+  "mention_recto": "Carte d'étudiant",
+  "mention_perte": "Carte personnelle et non cessible. En cas de perte, contactez le +224 620 11 13 13.",
+  "couleurs": {
+    "vert": "#004C22",
+    "or": "#FEAB00",
+    "gris": "#3E4742",
+    "gris_clair": "#E7E2D8",
+    "creme": "#F4F1EA",
+    "blanc": "#FFFFFF"
+  },
+  "logo": "",
+  "nfc": false,
+  "code_barres": false,
+  "prix_repas": 10000
+}

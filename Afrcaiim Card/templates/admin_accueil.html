@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block titre %}Tableau de bord{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Tableau de bord</h1>
+  <p class="intro">Une étudiante exemple, Amina Diop, est déjà créée pour essayer un PDF.</p>
+  <div class="compteurs">
+    <article><strong>{{ compteurs.etudiants }}</strong><span>Étudiants</span></article>
+    <article><strong>{{ compteurs.actives }}</strong><span>Cartes valides</span></article>
+    <article><strong>{{ compteurs.expirees }}</strong><span>Expirées</span></article>
+    <article><strong>{{ compteurs.suspendues }}</strong><span>Suspendues</span></article>
+    <article><strong>{{ compteurs.perdues }}</strong><span>Perdues</span></article>
+    <article><strong>{{ compteurs.sans_photo }}</strong><span>Sans photo</span></article>
+  </div>
+  <p class="actions">
+    <a class="bouton" href="/admin/etudiants">Voir les étudiants</a>
+    <a class="bouton bouton-secondaire" href="/admin/import">Importer un fichier</a>
+  </p>
+  <h2>Dernières actions</h2>
+  <ul class="journal-court">
+    {% for entree in journaux %}
+      <li>
+        <time>{{ entree[0].cree_le|datefr }}</time>
+        {{ entree[0].action|actionfr }}
+        {% if entree[1] %}· {{ entree[1] }}{% endif %}
+        {% if entree[0].details %}· {{ entree[0].details }}{% endif %}
+      </li>
+    {% else %}
+      <li>Aucune action pour le moment.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

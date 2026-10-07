@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf" content="{{ csrf }}">
+  <title>Impression — {{ etudiant.prenom }} {{ etudiant.nom }}</title>
+  <link rel="stylesheet" href="/static/polices.css">
+  <style>
+    @page { size: 85.6mm 54mm; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { background: #e7e1d6; color: #1a1a1a; font-family: "DejaVu Sans", sans-serif; }
+    .barre {
+      display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+      padding: 0.7rem 1rem; background: #f4f1ea; border-bottom: 3px solid #feab00;
+    }
+    .barre strong { color: #004c22; }
+    .barre button, .barre a {
+      background: #004c22; color: white; border: 0; border-radius: 6px;
+      padding: 0.55rem 0.9rem; font: 700 0.95rem/1 "DejaVu Sans", sans-serif;
+      text-decoration: none; cursor: pointer;
+    }
+    .barre p { margin: 0; font-size: 0.82rem; max-width: 42rem; }
+    .feuille {
+      position: relative; overflow: hidden;
+      width: 85.6mm; height: 54mm;
+      margin: 10mm auto; background: white;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+      page-break-after: always;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .feuille:last-child { page-break-after: auto; }
+    .objet { position: absolute; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @media print {
+      body { background: white; }
+      .barre { display: none !important; }
+      .feuille { margin: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="barre">
+    <button type="button" id="lancer">Imprimer sur Primacy 2</button>
+    <strong>{{ etudiant.nom }} · {{ etudiant.prenom }} · Université AFRICAIIM</strong>
+    <p>Dans le dialogue : imprimante Primacy 2, couleur, recto-verso bord long, échelle 100&nbsp;%, sans adapter à la page. Le recto (photo) sort en premier.</p>
+  </div>
+  <div id="recto" class="feuille"></div>
+  <div id="verso" class="feuille"></div>
+  <script id="donnees" type="application/json">{{ donnees | tojson }}</script>
+  <script src="/static/rendu-carte.js?v=30"></script>
+  <script>
+    const csrf = document.querySelector('meta[name="csrf"]').content;
+    const data = JSON.parse(document.getElementById("donnees").textContent);
+    const recto = document.getElementById("recto");
+    const verso = document.getElementById("verso");
+
+    function dessiner() {
+      const portrait = data.modele.orientation === "portrait";
+      const largeur = portrait ? 54 : 85.6;
+      const hauteur = portrait ? 85.6 : 54;
+      document.querySelectorAll(".feuille").forEach((feuille) => {
+        feuille.style.width = `${largeur}mm`;
+        feuille.style.height = `${hauteur}mm`;
+      });
+      let page = document.getElementById("format-page");
+      if (!page) {
+        page = document.createElement("style");
+        page.id = "format-page";
+        document.head.appendChild(page);
+      }
+      page.textContent = `@page { size: ${largeur}mm ${hauteur}mm; margin: 0; }`;
+      const px = recto.clientWidth / largeur;
+      const ctx = { px, etu: data.etu, urls: data.urls };
+      rendreFace(recto, data.modele.recto, { ...ctx, face: "recto" });
+      rendreFace(verso, data.modele.verso, { ...ctx, face: "verso" });
+    }
+
+    function imagesPretes() {
+      return Promise.all([...document.images].map((img) => img.complete
+        ? Promise.resolve()
+        : new Promise((resoudre) => { img.onload = img.onerror = resoudre; })));
+    }
+
+    async function lancer() {
+      const bouton = document.getElementById("lancer");
+      bouton.disabled = true;
+      try {
+        const reponse = await fetch("/admin/etudiants/{{ etudiant.id }}/lancer", {
+          method: "POST",
+          headers: { "X-CSRF": csrf },
+        });
+        const resultat = await reponse.json();
+        if (resultat.envoye) {
+          bouton.textContent = "Envoyée à " + resultat.imprimante;
+          return;
+        }
+      } catch (e) { /* le dialogue s'ouvre quand même */ }
+      bouton.disabled = false;
+      window.print();
+    }
+
+    dessiner();
+    window.addEventListener("beforeprint", dessiner);
+    document.getElementById("lancer").onclick = lancer;
+    window.addEventListener("load", () => {
+      dessiner();
+      imagesPretes().then(() => setTimeout(lancer, 350));
+    });
+  </script>
+</body>
+</html>

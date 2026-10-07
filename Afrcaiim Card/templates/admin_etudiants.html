@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titre %}Étudiants{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Étudiants</h1>
+  <form method="get" class="filtres">
+    <input name="q" value="{{ q }}" placeholder="Nom ou matricule" maxlength="80">
+    <select name="filiere">
+      <option value="">Toutes les écoles</option>
+      {% for item in filieres %}
+        <option value="{{ item }}" {% if item == filiere %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+    <select name="annee">
+      <option value="">Toutes les années</option>
+      {% for item in annees %}
+        <option value="{{ item }}" {% if item == annee %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filtrer</button>
+  </form>
+
+  <details class="panneau">
+    <summary>Ajouter un étudiant</summary>
+    <form method="post" action="/admin/etudiants" enctype="multipart/form-data" class="grille-form grille-fiche">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="prenom">Prénom <input name="prenom" required maxlength="80"></label>
+      <label class="nom">Nom <input name="nom" required maxlength="80"></label>
+      <label class="sexe">Sexe
+        <select name="sexe" required>
+          <option value="" selected disabled>Choisir</option>
+          <option value="M">Masculin</option>
+          <option value="F">Féminin</option>
+        </select>
+      </label>
+      <label class="matricule">Matricule <input name="matricule" required placeholder="AIIM-2026-0142" maxlength="40"></label>
+      <label class="ecole">École
+        <select name="filiere" required>
+          {% for ecole in ecoles %}
+            <option value="{{ ecole }}">{{ ecole }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <p class="aide">Année académique automatique : {{ annee_courante() }}. Validité : trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <label class="photo">Photo (optionnel) <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+      <button type="submit">Créer la fiche et la carte</button>
+    </form>
+  </details>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Matricule</th>
+          <th>École</th>
+          <th>Année</th>
+          <th>Statut</th>
+          <th>Photo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ligne in lignes %}
+          <tr>
+            <td><a href="/admin/etudiants/{{ ligne.etudiant.id }}">{{ ligne.etudiant.nom }} {{ ligne.etudiant.prenom }}</a></td>
+            <td>{{ ligne.etudiant.matricule }}</td>
+            <td>{{ ligne.etudiant.filiere }}</td>
+            <td>{{ ligne.etudiant.annee_academique }}</td>
+            <td>
+              {% if ligne.statut %}
+                <span class="pastille pastille-{{ ligne.statut }}">{{ ligne.statut|statutfr }}</span>
+              {% else %}
+                <span class="pastille">Sans carte</span>
+              {% endif %}
+            </td>
+            <td>{{ "Oui" if ligne.etudiant.photo_chemin else "Non" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">Aucun étudiant pour ce filtre.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

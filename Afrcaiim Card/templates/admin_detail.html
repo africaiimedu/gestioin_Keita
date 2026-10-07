@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block titre %}{{ etudiant.prenom }} {{ etudiant.nom }}{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <p class="retour"><a href="/admin/etudiants">← Liste</a></p>
+  <h1>{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
+  <p class="matricule">{{ etudiant.matricule }}</p>
+
+  <div class="fiche">
+    <div>
+      {% if etudiant.photo_chemin %}
+        <img class="portrait" src="/admin/etudiants/{{ etudiant.id }}/photo" alt="Photo de {{ etudiant.prenom }} {{ etudiant.nom }}">
+      {% else %}
+        <p class="portrait vide">Photo manquante</p>
+      {% endif %}
+      <form method="post" action="/admin/etudiants/{{ etudiant.id }}/photo" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Nouvelle photo
+          <input name="fichier" type="file" accept="image/jpeg,image/png,image/webp" required>
+        </label>
+        <button type="submit">Recadrer et enregistrer</button>
+      </form>
+      <p class="aide">Le portrait est recadré au centre, au format carte. Placez le visage au milieu de la photo.</p>
+    </div>
+
+    <form method="post" action="/admin/etudiants/{{ etudiant.id }}" class="panneau">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Prénom <input name="prenom" value="{{ etudiant.prenom }}" required maxlength="80"></label>
+      <label>Nom <input name="nom" value="{{ etudiant.nom }}" required maxlength="80"></label>
+      <label>Sexe
+        <select name="sexe" required>
+          <option value="M" {% if etudiant.sexe != "F" %}selected{% endif %}>Masculin</option>
+          <option value="F" {% if etudiant.sexe == "F" %}selected{% endif %}>Féminin</option>
+        </select>
+      </label>
+      <label>École
+        <select name="filiere" required>
+          {% for ecole in ecoles %}
+            <option value="{{ ecole }}" {% if ecole == etudiant.filiere %}selected{% endif %}>{{ ecole }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <p class="aide">Année académique : {{ annee_courante() }}. Valide trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <label>E-mail professionnel
+        <input name="email" type="email" value="{{ etudiant.email or '' }}" maxlength="120" placeholder="prenom.nom@univ-africaiim.com">
+      </label>
+      <button type="submit">Enregistrer la fiche</button>
+    </form>
+  </div>
+
+  <h2>Cantine</h2>
+  <p>Solde actuel : <strong>{{ solde }}</strong> · prix d'un repas : {{ prix_repas }}</p>
+  <p class="aide">Le QR de la carte ouvre ce solde. La validation débite un repas et envoie le montant à l'e-mail professionnel.</p>
+  <form method="post" action="/admin/etudiants/{{ etudiant.id }}/cantine" class="panneau etroit">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Créditer le compte (GNF)
+      <input name="montant" inputmode="numeric" required placeholder="50000">
+    </label>
+    <button type="submit">Ajouter au compte</button>
+  </form>
+  <form method="post" action="/admin/cantine/prix" class="panneau etroit">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="retour" value="/admin/etudiants/{{ etudiant.id }}">
+    <label>Prix d'un repas pour toute l'université
+      <input name="montant" inputmode="numeric" required value="{{ cfg.prix_repas }}">
+    </label>
+    <button type="submit" class="bouton-secondaire">Enregistrer le prix</button>
+  </form>
+  <ul class="journal-court">
+    {% for mouvement in mouvements %}
+      <li><time>{{ mouvement.cree_le|datefr }}</time>
+        {% if mouvement.montant < 0 %}Débit de {{ (-mouvement.montant)|gnf }}{% else %}Crédit de {{ mouvement.montant|gnf }}{% endif %}
+        · reste {{ mouvement.solde_apres|gnf }}
+      </li>
+    {% else %}
+      <li>Aucun mouvement de cantine.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>Carte</h2>
+  {% if carte %}
+    <p>Édition {{ carte.numero_edition }} ·
+      {% if statut %}<span class="pastille pastille-{{ statut }}">{{ statut|statutfr }}</span>{% endif %}
+      · émise le {{ carte.date_emission|datefr }}
+    </p>
+    <div class="actions">
+      <a class="bouton" href="/admin/etudiants/{{ etudiant.id }}/pdf">Télécharger le PDF</a>
+      <form method="post" action="/admin/etudiants/{{ etudiant.id }}/imprimee">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="bouton-secondaire">Marquer comme imprimée</button>
+      </form>
+      {% if statut == "active" or statut == "expiree" %}
+        <form method="post" action="/admin/etudiants/{{ etudiant.id }}/statut">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="statut" value="suspendue">
+          <button type="submit" class="bouton-secondaire">Suspendre</button>
+        </form>
+        <form method="post" action="/admin/etudiants/{{ etudiant.id }}/statut">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="statut" value="perdue">
+          <button type="submit" class="bouton-danger">Déclarer perdue</button>
+        </form>
+      {% elif statut == "suspendue" or statut == "perdue" %}
+        <form method="post" action="/admin/etudiants/{{ etudiant.id }}/statut">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="statut" value="active">
+          <button type="submit">Réactiver</button>
+        </form>
+      {% endif %}
+      <form method="post" action="/admin/etudiants/{{ etudiant.id }}/reediter">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="bouton-secondaire">Rééditer (l'ancien QR ne marchera plus)</button>
+      </form>
+      <form method="post" action="/admin/etudiants/{{ etudiant.id }}/reinitialiser">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="bouton-secondaire">Nouveau mot de passe étudiant</button>
+      </form>
+    </div>
+    <p class="aide">Le PDF fait exactement la taille d'une carte bancaire (85,6 × 54 mm). À l'impression, choisissez 100 %, sans « ajuster à la page ».</p>
+    {% if cfg.nfc %}
+      <form method="post" action="/admin/etudiants/{{ etudiant.id }}/nfc" class="panneau etroit">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Identifiant de puce NFC (plus tard)
+          <input name="uid_nfc" value="{{ carte.uid_nfc or '' }}" maxlength="40" placeholder="Laisser vide pour l'instant">
+        </label>
+        <button type="submit">Enregistrer la puce</button>
+      </form>
+    {% endif %}
+  {% else %}
+    <p>Aucune carte en cours.</p>
+  {% endif %}
+
+  <h2>Historique</h2>
+  <ul class="journal-court">
+    {% for entree in journaux %}
+      <li><time>{{ entree.cree_le|datefr }}</time> {{ entree.action|actionfr }} {% if entree.details %}· {{ entree.details }}{% endif %}</li>
+    {% else %}
+      <li>Rien pour le moment.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,114 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #8f9498;
+  color: #1c2421;
+  font-family: "Segoe UI", "Avenir Next", sans-serif;
+  font-size: 14px;
+}
+button, a { font: inherit; }
+.barre {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 52px;
+  padding: 0 0.85rem;
+  background: #2c333a;
+  color: #f4f7f5;
+}
+.retour {
+  color: #d5ddd8;
+  text-decoration: none;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+}
+.retour:hover { background: #3a424a; }
+.barre strong { font-size: 0.95rem; }
+#compte { color: #c5d0c9; font-size: 0.84rem; }
+.zoom { display: flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+.zoom button, .bouton {
+  border: 0;
+  border-radius: 8px;
+  background: white;
+  color: #128a45;
+  font-weight: 700;
+  text-decoration: none;
+}
+.zoom button { width: 28px; height: 28px; }
+#zoom-valeur { min-width: 3.2rem; text-align: center; font-size: 0.82rem; }
+.bouton { padding: 0.42rem 0.85rem; border-radius: 999px; }
+.bouton[hidden] { display: none; }
+.message {
+  margin: 0;
+  padding: 0.45rem 0.9rem;
+  background: #fff6e8;
+  color: #6a3b12;
+}
+.espace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  grid-template-rows: 32px 1fr;
+}
+.coin, #regle-x, #regle-y {
+  background: #f3f3f3;
+  position: relative;
+  overflow: hidden;
+  z-index: 2;
+}
+.coin { border-right: 1px solid #b7b7b7; border-bottom: 1px solid #b7b7b7; }
+#regle-x { border-bottom: 1px solid #b7b7b7; }
+#regle-y { border-right: 1px solid #b7b7b7; }
+#regle-x span, #regle-y span {
+  position: absolute;
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#regle-x span { top: 3px; transform: translateX(-50%); height: calc(100% - 3px); }
+#regle-y span { left: 2px; width: 28px; text-align: left; transform: translateY(-50%); }
+#regle-x span::after, #regle-y span::after {
+  content: "";
+  position: absolute;
+  background: #6a6a6a;
+}
+#regle-x span::after { left: 50%; bottom: 0; width: 1px; height: 4px; }
+#regle-x span.moyen::after { height: 7px; }
+#regle-x span.grand::after { height: 12px; }
+#regle-y span::after { right: -4px; top: 50%; width: 4px; height: 1px; }
+#regle-y span.moyen::after { width: 7px; }
+#regle-y span.grand::after { width: 12px; }
+#regle-x .suivi, #regle-y .suivi {
+  position: absolute;
+  background: #111;
+  pointer-events: none;
+  z-index: 3;
+}
+#regle-x .suivi { top: 0; width: 1px; height: 100%; }
+#regle-y .suivi { left: 0; height: 1px; width: 100%; }
+#vue { overflow: auto; background: #8f9498; }
+#document { position: relative; }
+.paire { position: absolute; }
+.etiquette {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: white;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.carte {
+  position: absolute;
+  background: white;
+  overflow: hidden;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+}
+.objet { position: absolute; box-sizing: border-box; overflow: hidden; }

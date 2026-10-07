@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titre %}Commande {{ commande.numero }}{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=4">{% endblock %}
+{% block contenu %}
+<section class="recu">
+  <p class="coche" aria-hidden="true">✓</p>
+  <p class="enseigne">AfricaIIM Cantine</p>
+  <h1>{{ commande.numero }}</h1>
+  <p class="ouvert">{{ libelle }}</p>
+  <ul>
+    {% for ligne in lignes %}
+      <li><span>{{ ligne.quantite }} × {{ ligne.nom }}</span><span>{{ (ligne.prix * ligne.quantite)|gnf }}</span></li>
+    {% endfor %}
+  </ul>
+  <p class="somme">Payé {{ commande.montant|gnf }}</p>
+  <p>Il reste <strong>{{ etudiant.solde_cantine|gnf }}</strong> sur votre compte.</p>
+  <p class="aide">Présentez ce numéro au comptoir.</p>
+  {% if commande.statut == "recue" %}
+    <form method="post" action="/menu/commande/{{ commande.id }}/annuler">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="bouton bouton-secondaire" type="submit">Annuler et être remboursé</button>
+    </form>
+    <p class="aide">Possible pendant 10 minutes, tant que la cuisine n'a pas commencé.</p>
+  {% endif %}
+  <p><a class="bouton" href="/menu">Retour au menu</a></p>
+</section>
+<script>sessionStorage.removeItem("cantine-panier"); sessionStorage.removeItem("cantine-cle");</script>
+{% endblock %}

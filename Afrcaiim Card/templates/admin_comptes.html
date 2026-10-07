@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block titre %}Comptes{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Comptes du personnel</h1>
+  <p class="intro">La scolarité gère les étudiants et les cartes. La cuisinière et la sécurité valident les QR codes seulement si vous les y autorisez. Vous pouvez retirer cette autorisation à tout moment.</p>
+
+  <form method="post" action="/admin/comptes" class="panneau grille-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Identifiant
+      <input name="identifiant" required maxlength="40" autocomplete="off" placeholder="ex. securite.portail">
+    </label>
+    <label>Rôle
+      <select name="role" required>
+        {% for code, libelle in roles %}
+          <option value="{{ code }}">{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Mot de passe
+      <input name="mot_de_passe" type="password" required minlength="10" maxlength="200" autocomplete="new-password">
+    </label>
+    <label>Confirmer le mot de passe
+      <input name="confirmation" type="password" required minlength="10" maxlength="200" autocomplete="new-password">
+    </label>
+    <label class="case">
+      <input type="checkbox" name="peut_valider_qr" value="1" id="qr" checked>
+      Peut valider les QR codes
+    </label>
+    <p class="aide">Au moins 10 caractères. La personne devra le changer à sa première connexion. Cochez la validation pour la cuisinière et la sécurité.</p>
+    <button type="submit">Créer le compte</button>
+  </form>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Identifiant</th>
+          <th>Rôle</th>
+          <th>État</th>
+          <th>QR codes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for compte in comptes %}
+          <tr>
+            <td>{{ compte.identifiant }}</td>
+            <td>{{ compte.role | rolefr }}</td>
+            <td>{{ "Actif" if compte.actif else "Désactivé" }}</td>
+            <td>
+              <form method="post" action="/admin/comptes/{{ compte.id }}/qr">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <button type="submit">{{ "Retirer" if compte.peut_valider_qr else "Autoriser" }}</button>
+              </form>
+            </td>
+            <td>
+              <form method="post" action="/admin/comptes/{{ compte.id }}/actif">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <button type="submit">{{ "Désactiver" if compte.actif else "Réactiver" }}</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">Aucun compte de personnel pour le moment. Le compte cuisinière créé au démarrage apparaît ici.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<script>
+  const choixRole = document.querySelector('select[name="role"]');
+  const caseQr = document.getElementById("qr");
+  function suivreRole() {
+    caseQr.checked = choixRole.value === "cuisiniere" || choixRole.value === "securite";
+  }
+  choixRole.addEventListener("change", suivreRole);
+  suivreRole();
+</script>
+{% endblock %}

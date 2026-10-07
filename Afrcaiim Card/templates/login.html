@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titre %}Connexion{% endblock %}
+{% block contenu %}
+<section class="login">
+  <figure class="login-visuel">
+    <img src="/static/connexion.jpg" alt="Étudiants et enseignants de l'Université AFRICAIIM en séance de travail">
+  </figure>
+  <form method="post" action="/login" class="panneau">
+    <img class="logo-page" src="/static/marque.png" alt="Université AFRICAIIM">
+    <h1>Cartes étudiantes</h1>
+    <p class="intro">Espace du personnel et des étudiants. La vérification par QR code reste publique.</p>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="suivant" value="{{ suivant or '' }}">
+    <label>Identifiant
+      <input name="identifiant" autocomplete="username" required maxlength="80">
+    </label>
+    <label>Mot de passe
+      <input name="mot_de_passe" type="password" autocomplete="current-password" required maxlength="200">
+    </label>
+    <button type="submit">Entrer</button>
+  </form>
+</section>
+{% endblock %}

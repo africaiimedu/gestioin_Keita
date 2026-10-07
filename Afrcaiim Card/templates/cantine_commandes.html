@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titre %}Cuisine{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=4">{% endblock %}
+{% block contenu %}
+<section class="bloc cuisine">
+  <h1>Commandes</h1>
+  <p class="actions"><a class="bouton bouton-secondaire" href="/cantine/affiche">Affiche QR à imprimer</a></p>
+  <p class="intro">La liste se met à jour toute seule. Un son bref signale une nouvelle commande.</p>
+  <div id="file">
+    {% for commande in commandes %}
+      <article class="ticket" data-id="{{ commande.id }}">
+        <header><strong>{{ commande.numero }}</strong><span>{{ commande.libelle }}</span></header>
+        <p>{{ commande.nom }} · {{ commande.matricule }}</p>
+        <ul>{% for article in commande.articles %}<li>{{ article }}</li>{% endfor %}</ul>
+        <form method="post" action="/cantine/commandes/{{ commande.id }}">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="bouton" type="submit">
+            {% if commande.statut == "recue" %}Préparer{% elif commande.statut == "preparation" %}Prête{% else %}Remise{% endif %}
+          </button>
+        </form>
+      </article>
+    {% else %}
+      <p id="vide">Aucune commande en cours.</p>
+    {% endfor %}
+  </div>
+  <h2>Plats</h2>
+  <ul class="epuisement">
+    {% for plat in plats %}
+      <li>
+        {{ plat.nom }} — {% if plat.disponible %}servi{% else %}épuisé{% endif %}
+        <form method="post" action="/cantine/plats/{{ plat.id }}/epuise">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="bouton bouton-secondaire" type="submit">{% if plat.disponible %}Marquer épuisé{% else %}Remettre{% endif %}</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+<script>
+(function () {
+  var connus = new Set(Array.from(document.querySelectorAll(".ticket")).map(function (el) { return el.dataset.id; }));
+  setInterval(function () {
+    fetch("/cantine/commandes.json", { credentials: "same-origin" }).then(function (reponse) {
+      return reponse.json();
+    }).then(function (donnees) {
+      var neuf = (donnees.commandes || []).some(function (commande) { return !connus.has(String(commande.id)); });
+      if (neuf) {
+        try {
+          var contexte = new AudioContext();
+          var osc = contexte.createOscillator();
+          osc.frequency.value = 880;
+          osc.connect(contexte.destination);
+          osc.start();
+          osc.stop(contexte.currentTime + 0.12);
+        } catch (e) {}
+        location.reload();
+      }
+    }).catch(function () {});
+  }, 5000);
+})();
+</script>
+{% endblock %}

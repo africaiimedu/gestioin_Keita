@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block titre %}Mon compte{% endblock %}
+{% block tete %}
+<link rel="stylesheet" href="/static/menu.css?v=4">
+{% endblock %}
+{% block contenu %}
+<section class="dossier">
+  {% if not etudiant %}
+    <h1>Mon compte</h1>
+    <p>Votre dossier n'est pas encore relié. Contactez la scolarité.</p>
+  {% else %}
+    <p class="enseigne">Université AFRICAIIM</p>
+    <h1>{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
+    <p class="matricule">{{ etudiant.matricule }}</p>
+    <dl>
+      <div>
+        <dt>École</dt>
+        <dd>Université AFRICAIIM</dd>
+      </div>
+      <div>
+        <dt>Programme</dt>
+        <dd>{{ etudiant.filiere }}</dd>
+      </div>
+      <div>
+        <dt>Année</dt>
+        <dd>{{ etudiant.annee_academique }}</dd>
+      </div>
+      <div>
+        <dt>E-mail</dt>
+        <dd>{{ etudiant.email or "Non renseigné" }}</dd>
+      </div>
+      <div>
+        <dt>Compte cantine</dt>
+        <dd class="montant">{{ etudiant.solde_cantine|gnf }}</dd>
+      </div>
+      <div>
+        <dt>Valable jusqu'au</dt>
+        <dd>{{ etudiant.date_validite|datefr }}</dd>
+      </div>
+      {% if statut %}
+        <div>
+          <dt>Situation</dt>
+          <dd>{{ statut|statutfr }}</dd>
+        </div>
+      {% endif %}
+    </dl>
+    <p><a class="bouton" href="/menu">Commander à la cantine</a></p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Imprimer l'école — Université AFRICAIIM</title>
+  <link rel="stylesheet" href="/static/polices.css">
+  <link rel="stylesheet" href="/static/lot-apercu.css?v=2">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="barre">
+    <a class="retour" href="/admin">Atelier</a>
+    <strong id="titre">Imprimer l'école</strong>
+    <span id="compte"></span>
+    <div class="zoom">
+      <button type="button" id="zoom-moins" aria-label="Réduire">−</button>
+      <span id="zoom-valeur">100 %</span>
+      <button type="button" id="zoom-plus" aria-label="Agrandir">+</button>
+    </div>
+    <a class="bouton" id="pdf" href="#">Télécharger le PDF</a>
+  </header>
+  <p id="message" class="message" hidden></p>
+  <div class="espace">
+    <div class="coin" title="Origine des mesures"></div>
+    <div id="regle-x" aria-hidden="true"></div>
+    <div id="regle-y" aria-hidden="true"></div>
+    <div id="vue">
+      <div id="document"></div>
+    </div>
+  </div>
+  <script id="donnees" type="application/json">{{ donnees | tojson }}</script>
+  <script src="/static/rendu-carte.js?v=30"></script>
+  <script src="/static/lot-apercu.js?v=4"></script>
+</body>
+</html>

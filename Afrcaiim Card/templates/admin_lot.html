@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titre %}Lot d'impression{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Lot d'impression</h1>
+  <p class="intro">Chaque carte sort déjà imprimée des deux côtés. Le fichier envoie le recto (la photo), puis le verso, à la taille exacte 85,6 × 54 mm. Dans le pilote Evolis : couleur, recto-verso, 100 %, sans ajuster à la page.</p>
+  <form method="get" class="filtres">
+    <select name="filiere" required>
+      <option value="">École</option>
+      {% for item in filieres %}
+        <option value="{{ item }}" {% if item == filiere %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+    <select name="annee" required>
+      <option value="">Année</option>
+      {% for item in annees %}
+        <option value="{{ item }}" {% if item == annee %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Préparer</button>
+  </form>
+
+  {% if filiere and annee %}
+    <h2>{{ inclus|length }} carte(s) prête(s)</h2>
+    <ul>
+      {% for ligne in inclus %}
+        <li>{{ ligne.etudiant.nom }} {{ ligne.etudiant.prenom }} — {{ ligne.etudiant.matricule }}</li>
+      {% else %}
+        <li>Personne à imprimer pour ce choix.</li>
+      {% endfor %}
+    </ul>
+    {% if exclus %}
+      <h2>Laissées de côté</h2>
+      <ul>
+        {% for ligne in exclus %}
+          <li>{{ ligne.etudiant.nom }} {{ ligne.etudiant.prenom }} — {{ ligne.raison }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% if inclus %}
+      <div class="actions">
+        <a class="bouton" href="/admin/lot/apercu?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">Voir le lot avec la règle</a>
+        <a class="bouton" href="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">Télécharger le PDF du lot</a>
+        <form method="post" action="/admin/lot/imprime">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="filiere" value="{{ filiere }}">
+          <input type="hidden" name="annee" value="{{ annee }}">
+          <button type="submit" class="bouton-secondaire">Marquer ce lot comme imprimé</button>
+        </form>
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

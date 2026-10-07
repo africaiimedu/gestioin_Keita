@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block titre %}Vérification{% endblock %}
+{% block contenu %}
+<section class="verif">
+  <img class="logo-page" src="/static/marque.png" alt="Université AFRICAIIM">
+  <h1>Vérification de carte</h1>
+
+  {% if mode == "scan" %}
+    <p class="resultat">Scannez le QR code imprimé sur la carte. L'adresse seule ne suffit pas.</p>
+  {% elif mode == "invalide" %}
+    <p class="resultat resultat-mauvais">Ce lien de vérification n'est pas valide.</p>
+  {% elif mode == "limite" %}
+    <p class="resultat">Trop de vérifications. Réessayez dans une minute.</p>
+  {% elif mode == "ok" %}
+    <img class="portrait" src="/photo/{{ jeton }}" alt="Photo de la carte">
+    <p class="nom-verif">{{ nom }}</p>
+    <p class="pastille pastille-{{ statut }} grand">{{ statut|statutfr }}</p>
+    <p class="controle">Code de contrôle imprimé : <strong>{{ controle }}</strong></p>
+    {% if statut == "active" %}
+      <div class="cantine">
+        <h2>Cantine</h2>
+        <p>Compte de {{ nom }}</p>
+        <p class="solde">{{ solde }}</p>
+        <p>Prix du repas : {{ prix }}</p>
+        {% if email %}<p>E-mail professionnel : {{ email }}</p>{% endif %}
+        {% if autorise and role in ["cuisiniere", "admin"] and peut %}
+          <form method="post" action="/verif/{{ matricule }}/repas">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="t" value="{{ jeton }}">
+            <button type="submit">Valider le repas et débiter</button>
+          </form>
+        {% elif autorise and role in ["cuisiniere", "admin"] %}
+          <p class="resultat resultat-mauvais">{{ raison }}</p>
+        {% elif not agent %}
+          <p><a href="/login?suivant={{ suivant | urlencode }}">Connexion pour valider ce QR code</a></p>
+        {% elif not autorise %}
+          <p class="resultat resultat-mauvais">Ce compte n'est pas autorisé à valider les QR codes.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if statut == "active" and autorise and role not in ["cuisiniere", "admin"] %}
+      <form method="post" action="/verif/{{ matricule }}/repas">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="t" value="{{ jeton }}">
+        <button type="submit">Valider cette carte</button>
+      </form>
+    {% endif %}
+    {% if statut == "active" %}
+      <p class="resultat resultat-bon">Cette carte est valide.</p>
+    {% elif statut == "expiree" %}
+      <p class="resultat resultat-mauvais">Cette carte est expirée.</p>
+    {% elif statut == "suspendue" %}
+      <p class="resultat resultat-mauvais">Cette carte est suspendue.</p>
+    {% elif statut == "perdue" %}
+      <p class="resultat resultat-mauvais">Cette carte a été déclarée perdue.</p>
+    {% elif statut == "remplacee" %}
+      <p class="resultat resultat-mauvais">Cette carte a été remplacée. L'ancienne n'est plus valable.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

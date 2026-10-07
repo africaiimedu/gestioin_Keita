@@ -1,0 +1,17 @@
+node_modules/
+data/*.sqlite
+data/*.sqlite-*
+data/uploads/
+data/backups/
+.env
+**/.env
+.DS_Store
+*.log
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+Afrcaiim Card/data/photos/*
+Afrcaiim Card/data/courriers/*
+!Afrcaiim Card/data/photos/.gitkeep
+!Afrcaiim Card/data/courriers/.gitkeep
+Afrcaiim Card/Capture d*

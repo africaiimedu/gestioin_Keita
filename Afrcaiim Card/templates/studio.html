@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf" content="{{ csrf }}">
+  <title>Atelier cartes — Université AFRICAIIM</title>
+  <link rel="stylesheet" href="/static/polices.css">
+  <link rel="stylesheet" href="/static/studio.css?v=21">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="barre">
+    <span class="puce-logo"><img class="logo-officiel" src="/static/marque.png" alt="Université AFRICAIIM"></span>
+    <strong class="titre-barre">Atelier cartes</strong>
+    {% include "nav.html" %}
+  </header>
+
+  <div class="commande">
+    <div class="faces" role="group" aria-label="Affichage de la carte">
+      <button type="button" id="vue-recto" class="actif">Recto</button>
+      <button type="button" id="vue-verso">Verso</button>
+      <button type="button" id="vue-double">Double face</button>
+    </div>
+    <div class="faces" role="group" aria-label="Orientation">
+      <button type="button" id="orient-paysage" class="actif">Paysage</button>
+      <button type="button" id="orient-portrait">Portrait</button>
+    </div>
+    <div class="zoom">
+      <button type="button" id="zoom-moins" title="Réduire" aria-label="Réduire">−</button>
+      <input id="zoom" type="range" min="0.35" max="1.6" step="0.05" value="1" aria-label="Zoom">
+      <button type="button" id="zoom-plus" title="Agrandir" aria-label="Agrandir">+</button>
+    </div>
+    <span id="message" class="message"></span>
+    <button type="button" id="origine">Modèle d'origine</button>
+    <button type="button" id="imprimer">Imprimer</button>
+    <button type="button" id="enregistrer">Enregistrer</button>
+  </div>
+
+  <div class="atelier base-ferme">
+    <aside class="outils" aria-label="Outils">
+      <button type="button" class="actif" data-outil="selection" title="Sélection" aria-label="Sélection"><svg viewBox="0 0 24 24"><path d="M5 3l6 18 2.2-6.6L20 12z"/></svg></button>
+      <button type="button" data-outil="texte" title="Texte" aria-label="Texte"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M8 19h8"/></svg></button>
+      <button type="button" data-outil="champ" title="Champ de la fiche" aria-label="Champ"><svg viewBox="0 0 24 24"><path d="M6 7h8M6 12h12M6 17h9"/></svg></button>
+      <button type="button" data-outil="photo" title="Photo" aria-label="Photo"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.4"/><path d="M4 16l4.2-3.2 3 2.4 2.2-1.6L20 17"/></svg></button>
+      <button type="button" data-outil="qr" title="QR sécurisé" aria-label="QR"><svg viewBox="0 0 24 24"><path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h2v2h-2zM18 14h1v5h-5v-2h2"/></svg></button>
+      <button type="button" data-outil="codebarres" title="Code-barres" aria-label="Code-barres"><svg viewBox="0 0 24 24"><path d="M5 6v12M8 6v12M10 6v12M13 6v12M15 6v12M18 6v12M20 6v12"/></svg></button>
+      <button type="button" data-outil="rect" title="Rectangle" aria-label="Rectangle"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
+      <button type="button" data-outil="cercle" title="Cercle" aria-label="Cercle"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/></svg></button>
+      <button type="button" data-outil="ligne" title="Ligne" aria-label="Ligne"><svg viewBox="0 0 24 24"><path d="M5 17L19 7"/></svg></button>
+      <button type="button" data-outil="piste" title="Piste magnétique" aria-label="Piste magnétique"><svg viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16"/></svg></button>
+      <button type="button" data-outil="marque" title="Logo" aria-label="Logo"><svg viewBox="0 0 24 24"><path d="M5 18V8l7-4 7 4v10M9 18v-5h6v5"/></svg></button>
+      <button type="button" data-outil="rosette" title="Rosace" aria-label="Rosace"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5 19 19M19 5l-2.5 2.5M7.5 16.5 5 19"/></svg></button>
+      <button type="button" data-outil="micro" title="Microtexte" aria-label="Microtexte"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h10"/></svg></button>
+    </aside>
+
+    <main class="planche">
+      <div class="coin"></div>
+      <div id="regle-x" aria-hidden="true"></div>
+      <div id="regle-y" aria-hidden="true"></div>
+      <div class="toile" id="toile">
+      <div class="scene" id="scene">
+        <div id="echelle">
+          <div class="carte" id="carte-recto" data-face="recto"></div>
+          <div class="carte masquee" id="carte-verso" data-face="verso"></div>
+        </div>
+      </div>
+      </div>
+      <button type="button" id="basculer-base" class="pilule">Base de données</button>
+    </main>
+
+    <aside class="proprietes">
+      <h2 class="titre-doc">Informations</h2>
+      <dl class="infos">
+        <div><dt>Format</dt><dd id="info-format">CR80 · 85,6 × 54 mm</dd></div>
+        <div><dt>Face</dt><dd id="info-face">Recto</dd></div>
+        <div><dt>Étudiant</dt><dd id="info-etu">—</dd></div>
+        <div><dt>Matricule</dt><dd id="info-matricule">—</dd></div>
+        <div><dt>Validité</dt><dd id="info-validite">—</dd></div>
+        <div><dt>Ce qui protège</dt><dd>QR à jeton, trame dorée, microtexte, code de contrôle</dd></div>
+      </dl>
+      <h2>Propriétés</h2>
+      <div id="props"><p class="vide">Cliquez un objet sur la carte.</p></div>
+      <h2>Couches</h2>
+      <ul id="calques"></ul>
+    </aside>
+
+    <section class="base">
+      <div class="base-barre">
+        <h2>Base de données</h2>
+        <button type="button" id="premier" title="Premier">|&lt;</button>
+        <button type="button" id="precedent" title="Précédent">&lt;</button>
+        <span id="compteur">0 / 0</span>
+        <button type="button" id="suivant" title="Suivant">&gt;</button>
+        <button type="button" id="dernier" title="Dernier">&gt;|</button>
+        <input id="recherche" type="search" placeholder="Rechercher nom ou matricule">
+        <button type="button" id="recharger">Recharger la cantine</button>
+        <button type="button" id="ajouter">Nouvelle fiche</button>
+      </div>
+      <div class="grille-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Photo</th>
+              <th>Nom</th>
+              <th>Prénom</th>
+              <th>Matricule</th>
+              <th>École</th>
+              <th>Année</th>
+              <th>Validité</th>
+              <th>Compte cantine</th>
+              <th>Statut</th>
+            </tr>
+          </thead>
+          <tbody id="lignes"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="recharge">
+    <form id="form-recharge">
+      <h2>Recharger la cantine</h2>
+      <p id="recharge-qui"></p>
+      <p id="recharge-solde"></p>
+      <label>Montant à ajouter (GNF)
+        <input name="montant" inputmode="numeric" required placeholder="50000">
+      </label>
+      <p class="aide-photo">L'argent est enregistré sur le compte de cette carte. Quand la cuisinière valide le QR, c'est ce compte qui est débité.</p>
+      <div class="actions-dialogue">
+        <button type="submit" value="ok">Ajouter au compte</button>
+        <button type="button" id="fermer-recharge">Annuler</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dialogue">
+    <form id="form-ajout" method="dialog">
+      <h2>Nouvelle fiche</h2>
+      <label>Prénom <input name="prenom" required maxlength="80"></label>
+      <label>Nom <input name="nom" required maxlength="80"></label>
+      <label>Sexe
+        <select name="sexe" required>
+          <option value="" selected disabled>Choisir</option>
+          <option value="M">Masculin</option>
+          <option value="F">Féminin</option>
+        </select>
+      </label>
+      <label>Matricule <input name="matricule" required placeholder="AIIM-2026-0142" maxlength="40"></label>
+      <label>École
+        <select name="filiere" required>
+          {% for ecole in ecoles %}
+            <option value="{{ ecole }}">{{ ecole }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <p class="aide-photo">Année académique : {{ annee_courante() }}. Validité : trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <label>Photo d'identité
+        <input id="photo-fiche" name="photo" type="file" accept="image/jpeg,image/png,image/webp">
+      </label>
+      <img id="apercu-photo" alt="Aperçu de la photo d'identité" hidden>
+      <p class="aide-photo">Placez le visage au centre. La photo est recadrée pour la carte.</p>
+      <div class="actions-dialogue">
+        <button type="submit" value="ok">Créer</button>
+        <button type="button" id="fermer-dialogue">Annuler</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
+  <script src="/static/rendu-carte.js?v=30"></script>
+  <script src="/static/studio.js?v=25"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block titre %}Import{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Importer des étudiants</h1>
+  <p class="intro">La première ligne du fichier doit contenir : prenom, nom, matricule, ecole. L'école doit être l'une des six écoles AFRICAIIM. L'année académique est celle en cours, {{ annee_courante() }}.</p>
+  <p class="aide">Fichiers d'essai :
+    <a href="/admin/import/valides.csv">etudiants-valides.csv</a>
+    ·
+    <a href="/admin/import/exemple.csv">import-demonstration.csv</a> (celui-ci contient des erreurs volontaires).
+  </p>
+  <p class="aide">Pour les photos, ajoutez un ZIP. Chaque image doit s'appeler comme le matricule, par exemple <strong>AIIM-2026-0143.jpg</strong>.</p>
+
+  <form method="post" action="/admin/import" enctype="multipart/form-data" class="panneau">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Fichier CSV ou Excel
+      <input name="tableau" type="file" accept=".csv,.txt,.xlsx" required>
+    </label>
+    <label>ZIP de photos (optionnel)
+      <input name="photos" type="file" accept=".zip">
+    </label>
+    <button type="submit">Importer</button>
+  </form>
+
+  {% if rapport %}
+    <h2>{{ rapport.crees|length }} fiche(s) créée(s)</h2>
+    {% if rapport.crees %}
+      <p class="flash flash-avertissement">Copiez ces mots de passe maintenant. Ils ne seront plus affichés.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Nom</th><th>Matricule</th><th>Mot de passe temporaire</th></tr></thead>
+          <tbody>
+            {% for ligne in rapport.crees %}
+              <tr>
+                <td>{{ ligne.nom }}</td>
+                <td>{{ ligne.matricule }}</td>
+                <td><code>{{ ligne.mot_de_passe }}</code></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    {% if rapport.erreurs %}
+      <h2>Erreurs (ces lignes n'ont pas été enregistrées)</h2>
+      <ul class="liste-erreur">
+        {% for message in rapport.erreurs %}<li>{{ message }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    {% if rapport.avertissements %}
+      <h2>Avertissements</h2>
+      <ul>
+        {% for message in rapport.avertissements %}<li>{{ message }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

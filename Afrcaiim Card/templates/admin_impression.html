@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block titre %}Impression{% endblock %}
+{% block contenu %}
+<section class="page-impression">
+  <header class="impression-entete">
+    <p class="surtitre">Cartes étudiantes</p>
+    <h1>Impression</h1>
+    <p class="intro">La carte part à taille réelle, en couleur, vers l'imprimante de ce Mac.</p>
+  </header>
+
+  <form method="get" class="impression-choix">
+    <label>Étudiant
+      <select name="etudiant" onchange="this.form.submit()">
+        <option value="">Choisir un étudiant</option>
+        {% for ligne in etudiants %}
+          <option value="{{ ligne.id }}" {% if choisi and ligne.id == choisi.id %}selected{% endif %}>
+            {{ ligne.nom }} {{ ligne.prenom }} — {{ ligne.matricule }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {% if not etudiants %}
+    <p class="impression-vide">Aucun étudiant à imprimer.</p>
+  {% elif not choisi %}
+    <p class="impression-vide">Choisissez l'étudiant dont la carte doit sortir.</p>
+  {% else %}
+    <div class="impression-scene">
+      <article class="impression-fiche">
+        <p class="surtitre">Carte à sortir</p>
+        <h2>{{ choisi.nom }} {{ choisi.prenom }}</h2>
+        <p>{{ choisi.filiere }}</p>
+        <p class="matricule">{{ choisi.matricule }}</p>
+        <ul class="impression-faits">
+          <li>{{ format_carte }}</li>
+          <li>Échelle 100 %</li>
+          <li>Couleurs RVB</li>
+        </ul>
+      </article>
+
+      <form method="post" action="/admin/impression" class="panneau impression-reglages">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="etudiant_id" value="{{ choisi.id }}">
+
+        {% if raison %}
+          <p class="flash flash-erreur">{{ raison }}</p>
+        {% endif %}
+
+        <label>Imprimante
+          <select name="imprimante" id="imprimante" {% if not imprimantes %}disabled{% endif %}>
+            {% for imp in imprimantes %}
+              <option value="{{ imp.nom }}" data-primacy="{{ '1' if imp.primacy else '0' }}" {% if imp.nom == preferee %}selected{% endif %}>
+                {{ imp.nom }} — {{ imp.etat }}{% if imp.primacy %} · Primacy 2{% endif %}
+              </option>
+            {% else %}
+              <option value="">Aucune imprimante</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        {% if not imprimantes %}
+          <p class="flash flash-avertissement">Aucune imprimante n'est installée. Dans Réglages Système, ouvrez Imprimantes et ajoutez la Primacy 2 avec le pilote Evolis. Rechargez ensuite cette page : son nom apparaîtra dans la liste, avec le recto-verso.</p>
+        {% else %}
+          <p id="note-primacy" class="impression-note" {% if not preferee %}hidden{% endif %}>Pilote Evolis reconnu. Le travail part en recto-verso, bord long.</p>
+        {% endif %}
+
+        <fieldset class="sens">
+          <legend>Sens d'impression</legend>
+          <div class="sens-choix">
+            <label>
+              <input type="radio" name="orientation" value="paysage" {% if orientation != "portrait" %}checked{% endif %}>
+              <span class="sens-forme paysage" aria-hidden="true"></span>
+              <span>Paysage</span>
+              <small>85,6 × 54 mm</small>
+            </label>
+            <label>
+              <input type="radio" name="orientation" value="portrait" {% if orientation == "portrait" %}checked{% endif %}>
+              <span class="sens-forme portrait" aria-hidden="true"></span>
+              <span>Portrait</span>
+              <small>54 × 85,6 mm</small>
+            </label>
+          </div>
+        </fieldset>
+        <p id="detail-sens" class="impression-note"></p>
+
+        <div class="impression-ligne">
+          <label>Copies
+            <input type="number" name="copies" value="1" min="1" max="20" required>
+          </label>
+          <label class="case impression-duplex">
+            <input type="checkbox" name="duplex" id="duplex" value="1" {% if duplex %}checked{% endif %}>
+            <span>Recto-verso, bord long</span>
+          </label>
+        </div>
+        <p id="detail-duplex" class="impression-note"></p>
+
+        <button type="submit" class="impression-lancer" {% if raison or not imprimantes %}disabled{% endif %}>Imprimer la carte</button>
+      </form>
+    </div>
+  {% endif %}
+</section>
+<script>
+  const liste = document.getElementById("imprimante");
+  const duplex = document.getElementById("duplex");
+  const note = document.getElementById("note-primacy");
+  const detail = document.getElementById("detail-duplex");
+  const detailSens = document.getElementById("detail-sens");
+  function decrireSens() {
+    if (!detailSens) return;
+    const choisi = document.querySelector("input[name=orientation]:checked");
+    detailSens.textContent = choisi && choisi.value === "portrait"
+      ? "Portrait : la carte sort à la verticale, 54 × 85,6 mm."
+      : "Paysage : la carte sort à l'horizontale, 85,6 × 54 mm.";
+  }
+  function decrireDuplex() {
+    if (!detail || !duplex) return;
+    detail.textContent = duplex.checked
+      ? "La photo sort en premier. La carte se retourne sur le bord long et le verso s'imprime dans le même sens."
+      : "Seul le recto sort. Le verso n'est pas imprimé.";
+  }
+  if (liste && duplex) {
+    liste.addEventListener("change", () => {
+      const option = liste.selectedOptions[0];
+      const primacy = option && option.dataset.primacy === "1";
+      if (primacy) duplex.checked = true;
+      if (note) note.hidden = !primacy;
+      decrireDuplex();
+    });
+    duplex.addEventListener("change", decrireDuplex);
+  }
+  document.querySelectorAll("input[name=orientation]").forEach((bouton) => {
+    bouton.addEventListener("change", decrireSens);
+  });
+  decrireDuplex();
+  decrireSens();
+</script>
+{% endblock %}

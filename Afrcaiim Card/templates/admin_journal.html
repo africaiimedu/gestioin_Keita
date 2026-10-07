@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titre %}Journal{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Journal</h1>
+  <p class="intro">Créations, imports, PDF, impressions, suspensions et rééditions.</p>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Quand</th><th>Matricule</th><th>Action</th><th>Détail</th><th>Par</th></tr>
+      </thead>
+      <tbody>
+        {% for entree in lignes %}
+          <tr>
+            <td>{{ entree[0].cree_le|datefr }}</td>
+            <td>{{ entree[2] or "—" }}</td>
+            <td>{{ entree[0].action|actionfr }}</td>
+            <td>{{ entree[0].details }}</td>
+            <td>{{ entree[1] or "—" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">Le journal est vide.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

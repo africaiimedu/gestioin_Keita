@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block titre %}Menu de la cantine{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=6">{% endblock %}
+{% block contenu %}
+<section class="bloc menu-edition">
+  <h1>Menu du jour</h1>
+  <p class="intro">Toute la carte est ci-dessous, repas et boissons. Touchez un nom pour le modifier. La suppression ne demande que le nom. Le QR code ne change pas.</p>
+  <p class="actions">
+    <a class="bouton" href="/cantine/menu?ajout=1">Ajouter un repas</a>
+    <a class="bouton bouton-secondaire" href="/cantine/affiche">Voir l'affiche QR</a>
+  </p>
+
+  {% if ajout %}
+    <h2>Nouveau repas</h2>
+    <form method="post" action="/cantine/menu" class="panneau fiche-plat" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Nom
+        <input name="nom" required maxlength="80" placeholder="ex. Soupe kandja">
+      </label>
+      <label>Catégorie
+        <select name="categorie_id" required>
+          {% for categorie in categories %}
+            <option value="{{ categorie.id }}">{{ categorie.nom }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Prix en GNF
+        <input name="prix" required inputmode="numeric" placeholder="15000">
+      </label>
+      <label>Description
+        <input name="description" maxlength="180" placeholder="Quelques mots pour l'étudiant">
+      </label>
+      <label>Image du repas ou de la boisson
+        <input name="image" type="file" accept="image/jpeg,image/png,image/webp">
+      </label>
+      <button type="submit">Ajouter au menu</button>
+    </form>
+  {% endif %}
+
+  {% if choisi %}
+    <h2>Modifier {{ choisi.nom }}</h2>
+    <form method="post" action="/cantine/plats/{{ choisi.id }}" class="panneau fiche-plat" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <img class="apercu-plat" src="{{ image_plat(choisi) }}" alt="{{ choisi.nom }}">
+      <label>Nom
+        <input name="nom" required maxlength="80" value="{{ choisi.nom }}">
+      </label>
+      <label>Catégorie
+        <select name="categorie_id">
+          {% for categorie in categories %}
+            <option value="{{ categorie.id }}" {% if categorie.id == choisi.categorie_id %}selected{% endif %}>{{ categorie.nom }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Prix en GNF
+        <input name="prix" required inputmode="numeric" value="{{ choisi.prix }}">
+      </label>
+      <label>Description
+        <input name="description" maxlength="180" value="{{ choisi.description }}">
+      </label>
+      <label>Nouvelle image
+        <input name="image" type="file" accept="image/jpeg,image/png,image/webp">
+      </label>
+      <label class="case">
+        <input type="checkbox" name="disponible" value="1" {% if choisi.disponible %}checked{% endif %}>
+        Servi aujourd'hui
+      </label>
+      <button type="submit">Enregistrer</button>
+    </form>
+  {% endif %}
+
+  {% for groupe in groupes %}
+    <h2>{{ groupe.categorie.nom }}</h2>
+    <ul class="liste-jour">
+      {% for plat in groupe.plats %}
+        <li class="ligne-jour {% if choisi and choisi.id == plat.id %}choisi{% endif %}">
+          <a href="/cantine/menu?plat={{ plat.id }}">
+            <img src="{{ image_plat(plat) }}" alt="">
+            <strong>{{ plat.nom }}</strong>
+          </a>
+          <form method="post" action="/cantine/plats/{{ plat.id }}/retirer" onsubmit="return confirm('Retirer ce plat du menu ?');">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="bouton-danger" type="submit">Supprimer</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endfor %}
+</section>
+{% endblock %}
