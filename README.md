@@ -30,7 +30,7 @@ docker compose
 - Montants en entiers `BIGINT` (francs guinéens), dates en `DATE`, contraintes `CHECK` sur chaque valeur.
 - Un paiement validé, un reçu, une annulation et le journal d'audit ne peuvent être ni modifiés ni supprimés : des déclencheurs PostgreSQL le refusent, même en SQL direct.
 - Les encaissements passent dans une transaction verrouillée : deux caisses simultanées ne dépassent jamais le reste et les numéros de reçu restent sans trou.
-- Le schéma évolue par migrations numérotées, appliquées une seule fois au démarrage. Il reste compatible PostgreSQL 10 et suivants.
+- Le schéma évolue par migrations numérotées, appliquées une seule fois au démarrage. Il reste compatible PostgreSQL 9.6 et suivants (version d'o2switch).
 - Sequelize sert pour la connexion, les transactions et les tables simples (comptes, sessions, paramètres, audit, relances). Les calculs financiers restent en SQL paramétré, exécuté par Sequelize dans la même transaction.
 
 ## Démarrage

@@ -51,13 +51,15 @@ export async function insertRows(db, table, columns, rows, batch = 200) {
   }
 }
 
-/** Replace le compteur d'identité après une copie avec identifiants conservés. */
+/** Replace le compteur de la colonne id (SERIAL ou IDENTITY) après une copie avec identifiants conservés. */
 export async function resetIdentity(db, table) {
-  const identity = await db.prepare(`
+  const hasId = await db.prepare(`
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema() AND table_name = ? AND column_name = 'id' AND is_identity = 'YES'
+    WHERE table_schema = current_schema() AND table_name = ? AND column_name = 'id'
   `).get(table);
-  if (!identity) return;
+  if (!hasId) return;
+  const counter = await db.prepare("SELECT pg_get_serial_sequence(?, 'id') AS name").get(table);
+  if (!counter.name) return;
   await db.exec(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 0) + 1, false)`);
 }
 

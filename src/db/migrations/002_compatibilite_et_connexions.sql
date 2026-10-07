@@ -1,4 +1,4 @@
--- Compatibilité PostgreSQL 10+ (hébergement o2switch) : les contrôles JSON passent par jsonb
+-- Compatibilité PostgreSQL 9.6+ (hébergement o2switch) : les contrôles JSON passent par jsonb
 -- au lieu de « IS JSON » (PostgreSQL 16). Les bases créées avec l'ancienne écriture sont mises à niveau ici.
 
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_permissions_json_check;

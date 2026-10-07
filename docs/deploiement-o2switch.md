@@ -11,7 +11,7 @@ Dans ce guide, `USER` est votre identifiant cPanel et `scolarite.univ-africaiim.
 3. Créer l'utilisateur `USER_scolarite` avec un mot de passe long (générateur de cPanel).
 4. Ajouter l'utilisateur à la base avec **tous les privilèges**.
 
-L'application crée elle-même son schéma `scolarite`, ses tables, ses contraintes et ses déclencheurs au premier démarrage. Il faut PostgreSQL 10 ou plus récent : vérifiez la version affichée dans phpPgAdmin. Si la création du schéma est refusée, mettez `DB_SCHEMA=public` dans `.env`.
+L'application crée elle-même son schéma `scolarite`, ses tables, ses contraintes et ses déclencheurs au premier démarrage. Il fonctionne avec PostgreSQL 9.6 (version d'o2switch) et toutes les versions suivantes. Si la création du schéma est refusée, mettez `DB_SCHEMA=public` dans `.env`.
 
 ## 2. Accès SSH
 

@@ -9,6 +9,7 @@ const WRITE_LOCK = 4317;
 
 // Sequelize partage la transaction en cours avec les modèles et les requêtes SQL du même appel.
 const context = new AsyncLocalStorage();
+const pending = new WeakMap();
 Sequelize.useCLS({
   get: (key) => context.getStore()?.get(key),
   set: (key, value) => context.getStore()?.set(key, value),
@@ -96,11 +97,21 @@ export class Database {
   }
 
   async query(text, params = []) {
-    const [rows, result] = await this.sequelize.query(text, {
-      bind: params.length ? params : undefined,
-      raw: true,
-    });
-    return { rows: Array.isArray(rows) ? rows : [], rowCount: result?.rowCount ?? 0 };
+    const run = async () => {
+      const [rows, result] = await this.sequelize.query(text, {
+        bind: params.length ? params : undefined,
+        raw: true,
+      });
+      return { rows: Array.isArray(rows) ? rows : [], rowCount: result?.rowCount ?? 0 };
+    };
+    // Une transaction n'a qu'une connexion : ses requêtes passent l'une après l'autre,
+    // même lancées ensemble (Promise.all).
+    const current = context.getStore()?.get("transaction");
+    if (!current) return run();
+    const previous = pending.get(current) || Promise.resolve();
+    const next = previous.catch(() => {}).then(run);
+    pending.set(current, next);
+    return next;
   }
 
   async exec(sql) {
