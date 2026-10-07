@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { can, hashPassword, normalizeRights, passwordIssue } from "../auth/passwords.js";
-import { uploadDir, transaction } from "../db.js";
+import { uploadDir, transaction } from "../db/index.js";
 import {
   INSTALLMENT_LABELS,
   METHOD_LABELS,
@@ -27,6 +27,7 @@ const LEVELS = new Set(["licence", "master", "tech", "bachelor", "bachelor_1", "
 const OFFER_LEVELS = new Set(["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"]);
 const CASH_LABEL = "Paiement comptant";
 const SCHOLAR_LABEL = "Bourse";
+const UNIQUE_VIOLATION = "23505";
 
 function isScholar(discounts) {
   return discounts.some((item) => item.label === SCHOLAR_LABEL || (item.mode === "pourcentage" && Number(item.value) === 100));
@@ -61,12 +62,12 @@ export function todayInConakry(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Conakry" }).format(now);
 }
 
-export function setting(db, key) {
-  return db.prepare("SELECT value FROM settings WHERE key = ?").get(key)?.value ?? null;
+export async function setting(db, key) {
+  return (await db.prepare("SELECT value FROM settings WHERE key = ?").get(key))?.value ?? null;
 }
 
-export function audit(db, userId, action, entity, entityId, before, after) {
-  db.prepare(`
+export async function audit(db, userId, action, entity, entityId, before, after) {
+  await db.prepare(`
     INSERT INTO audit_logs(user_id, action, entity, entity_id, before_json, after_json)
     VALUES(?, ?, ?, ?, ?, ?)
   `).run(
@@ -79,14 +80,14 @@ export function audit(db, userId, action, entity, entityId, before, after) {
   );
 }
 
-export function costumePrice(db) {
-  return Math.max(0, Number(setting(db, "costume_price") || 0));
+export async function costumePrice(db) {
+  return Math.max(0, Number((await setting(db, "costume_price")) || 0));
 }
 
 /** Prix, versé et reste du costume. Un versement lié à un paiement annulé ne compte plus. */
-export function costumeSituation(db, studentId) {
-  const price = costumePrice(db);
-  const entries = db.prepare(`
+export async function costumeSituation(db, studentId) {
+  const price = await costumePrice(db);
+  const entries = (await db.prepare(`
     SELECT c.id, c.amount, c.paid_on, c.method, c.note, c.status, c.cancel_reason, c.payment_id,
            r.number AS receipt_number, r.id AS receipt_id, p.status AS payment_status
     FROM costume_payments c
@@ -94,7 +95,7 @@ export function costumeSituation(db, studentId) {
     LEFT JOIN receipts r ON r.payment_id = c.payment_id
     WHERE c.student_id = ?
     ORDER BY c.paid_on, c.id
-  `).all(studentId).map((row) => ({
+  `).all(studentId)).map((row) => ({
     ...row,
     counted: row.status === "valide" && (row.payment_id == null || row.payment_status === "valide"),
   }));
@@ -126,64 +127,93 @@ function assertCostumeRoom(costume, amount) {
   }
 }
 
-export function recordCostume(db, user, studentId, input, asOf = todayInConakry(), transactional = true) {
+export async function recordCostume(db, user, studentId, input, asOf = todayInConakry()) {
   if (!can(user, "payment.create")) throw new HttpError(403, "Vous n'avez pas le droit d'enregistrer un paiement");
   const amount = costumeAmountOf(input.amount);
   if (amount <= 0) throw new HttpError(400, "Indiquez le montant versé pour le costume");
   const paidOn = /^\d{4}-\d{2}-\d{2}$/.test(input.paidOn || "") ? input.paidOn : asOf;
   if (paidOn > asOf) throw new HttpError(400, "La date de paiement ne peut pas être dans le futur");
   if (input.method && !METHODS.has(input.method)) throw new HttpError(400, "Moyen de paiement inconnu");
-  const run = () => {
-    const student = db.prepare("SELECT id, matricule FROM students WHERE id = ?").get(Number(studentId));
+  return transaction(db, async () => {
+    const student = await db.prepare("SELECT id, matricule FROM students WHERE id = ?").get(Number(studentId));
     if (!student) throw new HttpError(404, "Étudiant introuvable");
-    assertCostumeRoom(costumeSituation(db, student.id), amount);
-    const inserted = db.prepare(`
+    assertCostumeRoom(await costumeSituation(db, student.id), amount);
+    const inserted = await db.prepare(`
       INSERT INTO costume_payments(student_id, payment_id, amount, paid_on, method, note, received_by)
-      VALUES(?, ?, ?, ?, ?, ?, ?)
+      VALUES(?, ?, ?, ?, ?, ?, ?) RETURNING id
     `).run(student.id, input.paymentId || null, amount, paidOn, input.method || null, clean(input.note), user.id);
-    audit(db, user.id, "costume.verser", "costume_payments", Number(inserted.lastInsertRowid), null, { matricule: student.matricule, amount, paidOn, paymentId: input.paymentId || null });
+    await audit(db, user.id, "costume.verser", "costume_payments", inserted.lastInsertRowid, null, { matricule: student.matricule, amount, paidOn, paymentId: input.paymentId || null });
     return costumeSituation(db, student.id);
-  };
-  return transactional ? transaction(db, run) : run();
+  });
 }
 
-export function cancelCostume(db, user, entryId, reason) {
+export async function cancelCostume(db, user, entryId, reason) {
   if (!can(user, "payment.cancel")) throw new HttpError(403, "Seul l'admin ou le super admin peut annuler un versement");
   const text = String(reason || "").trim();
   if (text.length < 5) throw new HttpError(400, "Le motif d'annulation est obligatoire (au moins 5 caractères)");
-  return transaction(db, () => {
-    const entry = db.prepare("SELECT * FROM costume_payments WHERE id = ?").get(Number(entryId));
+  return transaction(db, async () => {
+    const entry = await db.prepare("SELECT * FROM costume_payments WHERE id = ?").get(Number(entryId));
     if (!entry) throw new HttpError(404, "Versement de costume introuvable");
     if (entry.payment_id) throw new HttpError(400, "Ce versement figure sur un reçu : annulez le paiement dans Encaissement");
     if (entry.status === "annule") throw new HttpError(400, "Ce versement est déjà annulé");
-    db.prepare("UPDATE costume_payments SET status = 'annule', cancel_reason = ? WHERE id = ?").run(text, entry.id);
-    audit(db, user.id, "costume.annuler", "costume_payments", entry.id, { status: "valide", amount: entry.amount }, { status: "annule", reason: text });
+    await db.prepare("UPDATE costume_payments SET status = 'annule', cancel_reason = ? WHERE id = ?").run(text, entry.id);
+    await audit(db, user.id, "costume.annuler", "costume_payments", entry.id, { status: "valide", amount: entry.amount }, { status: "annule", reason: text });
     return costumeSituation(db, entry.student_id);
   });
 }
 
-function yearById(db, yearId) {
+async function yearById(db, yearId) {
   if (yearId) return db.prepare("SELECT * FROM academic_years WHERE id = ?").get(yearId);
   return db.prepare("SELECT * FROM academic_years WHERE active = 1").get();
 }
 
-export function activeYear(db) {
-  const year = yearById(db);
+export async function activeYear(db) {
+  const year = await yearById(db);
   if (!year) throw new HttpError(500, "Aucune année académique active");
   return year;
 }
 
-function planFor(db, student) {
-  const fee = db.prepare(`
-    SELECT * FROM fee_schedules
-    WHERE program_id = ? AND academic_year_id = ? AND level = ?
-  `).get(student.program_id, student.academic_year_id, student.level);
+function groupBy(rows, key) {
+  const map = new Map();
+  for (const row of rows) {
+    if (!map.has(row[key])) map.set(row[key], []);
+    map.get(row[key]).push(row);
+  }
+  return map;
+}
+
+/** Charge en six requêtes tout ce qu'il faut pour calculer la situation de plusieurs étudiants. */
+async function loadLedger(db, students) {
+  const ids = students.map((student) => student.id);
+  const [fees, dues, overrides, discounts, adjustments, payments] = await Promise.all([
+    db.prepare("SELECT * FROM fee_schedules").all(),
+    db.prepare("SELECT academic_year_id, code, due_on FROM installment_due_dates").all(),
+    db.prepare("SELECT student_id, code, amount, due_on FROM student_installments WHERE student_id = ANY(?)").all(ids),
+    db.prepare("SELECT id, student_id, label, mode, value, reason FROM discounts WHERE student_id = ANY(?) ORDER BY id").all(ids),
+    db.prepare("SELECT id, student_id, amount, reason FROM adjustments WHERE student_id = ANY(?) ORDER BY id").all(ids),
+    db.prepare(`
+      SELECT id, student_id, amount, paid_on AS "paidOn", status, installment_code AS "installmentCode",
+             method, reference, note, date_unconfirmed AS "dateUnconfirmed", received_by AS "receivedBy", created_at AS "createdAt"
+      FROM payments WHERE student_id = ANY(?) ORDER BY student_id, paid_on, id
+    `).all(ids),
+  ]);
+  const strip = (rows) => rows.map(({ student_id: _ignored, ...rest }) => rest);
+  return {
+    fees: new Map(fees.map((fee) => [`${fee.program_id}:${fee.academic_year_id}:${fee.level}`, fee])),
+    dues: groupBy(dues, "academic_year_id"),
+    overrides: groupBy(overrides, "student_id"),
+    discounts: groupBy(discounts, "student_id"),
+    adjustments: groupBy(adjustments, "student_id"),
+    payments: groupBy(payments, "student_id"),
+    strip,
+  };
+}
+
+function planFrom(student, ledger) {
+  const fee = ledger.fees.get(`${student.program_id}:${student.academic_year_id}:${student.level}`);
   if (!fee) throw new HttpError(400, "Aucun barème pour cette filière et cette année. L'administrateur doit le créer.");
-  const dues = new Map(
-    db.prepare("SELECT code, due_on FROM installment_due_dates WHERE academic_year_id = ?").all(student.academic_year_id)
-      .map((row) => [row.code, row.due_on]),
-  );
-  const overrides = db.prepare("SELECT code, amount, due_on FROM student_installments WHERE student_id = ?").all(student.id);
+  const dues = new Map((ledger.dues.get(student.academic_year_id) || []).map((row) => [row.code, row.due_on]));
+  const overrides = ledger.overrides.get(student.id) || [];
   const overrideMap = new Map(overrides.map((row) => [row.code, row]));
   const base = {
     inscription: fee.registration_amount,
@@ -201,61 +231,54 @@ function planFor(db, student) {
   return { tuition: fee.tuition_amount + registration, registration, installments, custom: overrides.length > 0 };
 }
 
-function bundle(db, student, asOf) {
-  const { tuition, installments } = planFor(db, student);
-  const discounts = db.prepare("SELECT id, label, mode, value, reason FROM discounts WHERE student_id = ?").all(student.id);
-  const adjustments = db.prepare("SELECT id, amount, reason FROM adjustments WHERE student_id = ?").all(student.id);
-  const payments = db.prepare(`
-    SELECT id, amount, paid_on AS paidOn, status, installment_code AS installmentCode,
-           method, reference, note, date_unconfirmed AS dateUnconfirmed, received_by AS receivedBy, created_at AS createdAt
-    FROM payments WHERE student_id = ? ORDER BY paid_on, id
-  `).all(student.id);
+function bundleFrom(student, ledger, asOf) {
+  const { tuition, installments } = planFrom(student, ledger);
+  const discounts = ledger.strip(ledger.discounts.get(student.id) || []);
+  const adjustments = ledger.strip(ledger.adjustments.get(student.id) || []);
+  const payments = ledger.strip(ledger.payments.get(student.id) || []);
   const situation = computeSituation({ tuition, discounts, adjustments, installments, payments, asOf });
   return { tuition, discounts, adjustments, payments, installments, situation };
 }
 
-export function studentSituation(db, studentId, asOf = todayInConakry()) {
-  const student = db.prepare(`
-    SELECT s.*, p.code AS program_code, p.name AS program_name, y.label AS year_label
-    FROM students s
-    JOIN programs p ON p.id = s.program_id
-    JOIN academic_years y ON y.id = s.academic_year_id
-    WHERE s.id = ?
-  `).get(studentId);
+const STUDENT_SELECT = `
+  SELECT s.*, p.code AS program_code, p.name AS program_name, y.label AS year_label
+  FROM students s
+  JOIN programs p ON p.id = s.program_id
+  JOIN academic_years y ON y.id = s.academic_year_id
+`;
+
+export async function studentSituation(db, studentId, asOf = todayInConakry()) {
+  const student = await db.prepare(`${STUDENT_SELECT} WHERE s.id = ?`).get(studentId);
   if (!student) throw new HttpError(404, "Étudiant introuvable");
-  return { student, ...bundle(db, student, asOf), asOf };
+  return { student, ...bundleFrom(student, await loadLedger(db, [student]), asOf), asOf };
 }
 
-function refreshCard(db, student, situation) {
-  const threshold = Number(setting(db, "card_threshold") || "5000000");
+async function refreshCard(db, student, situation) {
+  const threshold = Number((await setting(db, "card_threshold")) || "5000000");
   let card = "active";
   if (student.status === "suspendu" || student.status === "archive") card = "suspended";
   else if (situation.status === "en_retard" && situation.reste >= threshold) card = "limited";
-  db.prepare("UPDATE students SET card_status = ? WHERE id = ?").run(card, student.id);
+  await db.prepare("UPDATE students SET card_status = ? WHERE id = ?").run(card, student.id);
   return card;
 }
 
-export function listStudents(db, filters, asOf = todayInConakry()) {
-  const year = yearById(db, filters.yearId);
-  const rows = db.prepare(`
-    SELECT s.*, p.code AS program_code, p.name AS program_name, y.label AS year_label
-    FROM students s
-    JOIN programs p ON p.id = s.program_id
-    JOIN academic_years y ON y.id = s.academic_year_id
+export async function listStudents(db, filters, asOf = todayInConakry()) {
+  const year = await yearById(db, filters.yearId);
+  if (!year) return [];
+  const students = await db.prepare(`
+    ${STUDENT_SELECT}
     WHERE s.academic_year_id = ?
-      AND (? IS NULL OR s.program_id = ?)
-      AND (? IS NULL OR s.status = ?)
+      AND (?::int IS NULL OR s.program_id = ?)
+      AND (?::text IS NULL OR s.status = ?)
   `).all(year.id, filters.programId ?? null, filters.programId ?? null, filters.studentStatus ?? null, filters.studentStatus ?? null);
+  const ledger = await loadLedger(db, students);
   const query = (filters.q || "").trim().toLowerCase();
   const family = {
     bachelor: ["bachelor", "bachelor_1", "bachelor_2", "bachelor_3"],
     master: ["master", "master_1", "master_2"],
   }[filters.level];
-  return rows
-    .map((student) => {
-      const packed = bundle(db, student, asOf);
-      return { student, situation: packed.situation };
-    })
+  return students
+    .map((student) => ({ student, situation: bundleFrom(student, ledger, asOf).situation }))
     .filter((row) => {
       if (family && !family.includes(row.student.level)) return false;
       if (!family && filters.level && row.student.level !== filters.level) return false;
@@ -267,8 +290,8 @@ export function listStudents(db, filters, asOf = todayInConakry()) {
     .sort((a, b) => a.student.last_name.localeCompare(b.student.last_name, "fr") || a.student.first_name.localeCompare(b.student.first_name, "fr"));
 }
 
-export function dashboard(db, filters, asOf = todayInConakry()) {
-  const rows = listStudents(db, {
+export async function dashboard(db, filters, asOf = todayInConakry()) {
+  const rows = await listStudents(db, {
     yearId: filters.yearId,
     programId: filters.programId,
     level: filters.level,
@@ -276,14 +299,14 @@ export function dashboard(db, filters, asOf = todayInConakry()) {
   const from = filters.from || "0000-01-01";
   const to = filters.to || "9999-12-31";
   const populationIds = new Set(rows.map((row) => row.student.id));
-  const payments = db.prepare(`
+  const payments = (await db.prepare(`
     SELECT p.*, u.full_name AS agent_name, s.program_id, pr.name AS program_name
     FROM payments p
     JOIN users u ON u.id = p.received_by
     JOIN students s ON s.id = p.student_id
     JOIN programs pr ON pr.id = s.program_id
     WHERE p.status = 'valide'
-  `).all().filter((payment) => {
+  `).all()).filter((payment) => {
     if (!populationIds.has(payment.student_id)) return false;
     if (payment.paid_on < from || payment.paid_on > to) return false;
     if (filters.method && payment.method !== filters.method) return false;
@@ -367,8 +390,11 @@ export function dashboard(db, filters, asOf = todayInConakry()) {
   };
 }
 
-export function reconcile(db, asOf = todayInConakry()) {
-  const rows = listStudents(db, {}, asOf);
+export async function reconcile(db, asOf = todayInConakry()) {
+  const rows = await listStudents(db, {}, asOf);
+  const sqlPaidByStudent = new Map((await db.prepare(`
+    SELECT student_id, SUM(amount) AS total FROM payments WHERE status = 'valide' GROUP BY student_id
+  `).all()).map((row) => [row.student_id, row.total]));
   const gaps = [];
   let due = 0;
   let paid = 0;
@@ -379,14 +405,15 @@ export function reconcile(db, asOf = todayInConakry()) {
     paid += row.situation.paid;
     reste += row.situation.reste;
     credit += row.situation.credit;
-    const sqlPaid = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE student_id = ? AND status = 'valide'
-    `).get(row.student.id).total;
-    if (sqlPaid !== row.situation.paid) {
+    if ((sqlPaidByStudent.get(row.student.id) || 0) !== row.situation.paid) {
       gaps.push({ matricule: row.student.matricule, message: "La somme SQL des paiements diffère du total calculé" });
     }
   }
-  const sqlAll = db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'valide'").get().total;
+  const sqlAll = (await db.prepare(`
+    SELECT COALESCE(SUM(p.amount), 0) AS total
+    FROM payments p JOIN students s ON s.id = p.student_id
+    WHERE p.status = 'valide' AND s.academic_year_id = (SELECT id FROM academic_years WHERE active = 1)
+  `).get()).total;
   if (sqlAll !== paid) gaps.push({ matricule: "*", message: "Le total général SQL diffère de la somme des étudiants" });
   if (paid + reste - credit !== due) gaps.push({ matricule: "*", message: "Payé + reste − crédit n'est pas égal aux frais dus" });
   return { ok: gaps.length === 0, gaps, due, paid, reste, credit, students: rows.length };
@@ -397,13 +424,13 @@ function assertCanPay(student) {
   if (student.status === "suspendu") throw new HttpError(400, "Cet étudiant est suspendu. Seule la direction ou l'administrateur peut lever la suspension.");
 }
 
-export function previewPayment(db, input, asOf = todayInConakry()) {
+export async function previewPayment(db, input, asOf = todayInConakry()) {
   assertGnf(input.amount, "Montant");
   if (input.amount <= 0) throw new HttpError(400, "Le montant doit être supérieur à zéro");
-  const current = studentSituation(db, input.studentId, asOf);
+  const current = await studentSituation(db, input.studentId, asOf);
   const warnings = [];
   if (isScholar(current.discounts)) throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
-  const costume = costumeSituation(db, current.student.id);
+  const costume = await costumeSituation(db, current.student.id);
   const costumeAmount = costumeAmountOf(input.costumeAmount);
   try {
     assertCostumeRoom(costume, costumeAmount);
@@ -414,7 +441,7 @@ export function previewPayment(db, input, asOf = todayInConakry()) {
   costume.resteAfter = Math.max(0, costume.reste - costumeAmount);
   if (input.paidOn && input.paidOn > asOf) warnings.push("La date est dans le futur");
   if (input.reference) {
-    const duplicate = db.prepare(`
+    const duplicate = await db.prepare(`
       SELECT id FROM payments WHERE reference = ? AND status = 'valide' AND length(trim(reference)) > 0 LIMIT 1
     `).get(input.reference.trim());
     if (duplicate) warnings.push("Cette référence a déjà été utilisée");
@@ -454,16 +481,16 @@ export function previewPayment(db, input, asOf = todayInConakry()) {
 }
 
 /** Aperçu d'une mise à jour : mêmes montants que le nouveau reçu, sans rien enregistrer. */
-export function previewPaymentUpdate(db, paymentId, input = {}, asOf = todayInConakry()) {
-  const payment = db.prepare("SELECT * FROM payments WHERE id = ?").get(Number(paymentId));
+export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = todayInConakry()) {
+  const payment = await db.prepare("SELECT * FROM payments WHERE id = ?").get(Number(paymentId));
   if (!payment) throw new HttpError(404, "Paiement introuvable");
   if (payment.status !== "valide") throw new HttpError(400, "Seul un paiement encore valide peut être mis à jour");
-  const receipt = db.prepare("SELECT number, snapshot_json FROM receipts WHERE payment_id = ?").get(payment.id);
+  const receipt = await db.prepare("SELECT number, snapshot_json FROM receipts WHERE payment_id = ?").get(payment.id);
   let snapshot = null;
   if (receipt?.snapshot_json) {
     try { snapshot = JSON.parse(receipt.snapshot_json); } catch { snapshot = null; }
   }
-  const current = studentSituation(db, payment.student_id, asOf);
+  const current = await studentSituation(db, payment.student_id, asOf);
   const valid = current.payments.filter((item) => item.status === "valide");
   const typed = Number(input.amount);
   const asked = Number.isFinite(typed) && typed > 0 ? Math.trunc(typed) : 0;
@@ -477,7 +504,7 @@ export function previewPaymentUpdate(db, paymentId, input = {}, asOf = todayInCo
     due: current.situation.due,
     paidBefore: current.situation.paid,
     cashDiscount: false,
-    costume: costumeSituation(db, payment.student_id),
+    costume: await costumeSituation(db, payment.student_id),
   };
   if (asked <= 0) {
     return {
@@ -565,19 +592,16 @@ export function presentSituation(situation) {
   };
 }
 
-function nextDocumentNumber(db, kind, year) {
-  db.prepare(`
-    INSERT INTO document_sequences(kind, year, last_number) VALUES(?, ?, 0)
-    ON CONFLICT(kind, year) DO NOTHING
-  `).run(kind, year);
-  const row = db.prepare(`
-    UPDATE document_sequences SET last_number = last_number + 1
-    WHERE kind = ? AND year = ? RETURNING last_number
+async function nextDocumentNumber(db, kind, year) {
+  const row = await db.prepare(`
+    INSERT INTO document_sequences(kind, year, last_number) VALUES(?, ?, 1)
+    ON CONFLICT(kind, year) DO UPDATE SET last_number = document_sequences.last_number + 1
+    RETURNING last_number
   `).get(kind, year);
   return Number(row.last_number);
 }
 
-export function createPayment(db, user, input, asOf = todayInConakry(), transactional = true) {
+export async function createPayment(db, user, input, asOf = todayInConakry()) {
   if (!can(user, "payment.create")) throw new HttpError(403, "Vous n'avez pas le droit d'enregistrer un paiement");
   assertGnf(input.amount, "Montant");
   if (input.amount <= 0) throw new HttpError(400, "Le montant doit être supérieur à zéro");
@@ -588,18 +612,18 @@ export function createPayment(db, user, input, asOf = todayInConakry(), transact
   const key = String(input.idempotencyKey || "").trim();
   if (key.length < 8) throw new HttpError(400, "Validation incomplète. Rechargez la page et recommencez.");
 
-  const run = () => {
-    const existing = db.prepare("SELECT * FROM payments WHERE idempotency_key = ?").get(key);
+  return transaction(db, async () => {
+    const existing = await db.prepare("SELECT * FROM payments WHERE idempotency_key = ?").get(key);
     if (existing) {
       const sameStudent = existing.student_id === Number(input.studentId);
       const sameAmount = existing.amount === input.amount || existing.amount < input.amount;
       if (!sameStudent || !sameAmount) {
         throw new HttpError(409, "Cette validation a déjà servi pour un autre paiement. Rechargez la page.");
       }
-      const receipt = db.prepare("SELECT * FROM receipts WHERE payment_id = ?").get(existing.id);
+      const receipt = await db.prepare("SELECT * FROM receipts WHERE payment_id = ?").get(existing.id);
       return { replay: true, paymentId: existing.id, receiptId: receipt?.id, receiptNumber: receipt?.number };
     }
-    let current = studentSituation(db, Number(input.studentId), asOf);
+    let current = await studentSituation(db, Number(input.studentId), asOf);
     assertCanPay(current.student);
     if (isScholar(current.discounts)) {
       throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
@@ -609,30 +633,30 @@ export function createPayment(db, user, input, asOf = todayInConakry(), transact
     if (offer.amount > room && !input.acceptCredit) {
       throw new HttpError(400, overpayMessage(input.amount, room), { code: "AMOUNT_TOO_HIGH", reste: room });
     }
-    const costumeBefore = costumeSituation(db, current.student.id);
+    const costumeBefore = await costumeSituation(db, current.student.id);
     const costumeAmount = costumeAmountOf(input.costumeAmount);
     assertCostumeRoom(costumeBefore, costumeAmount);
     if (offer.apply) {
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
         VALUES(?, ?, 'pourcentage', 5, ?, ?)
       `).run(current.student.id, CASH_LABEL, "Toute la scolarité payée en une fois", user.id);
-      current = studentSituation(db, current.student.id, asOf);
+      current = await studentSituation(db, current.student.id, asOf);
     }
     const amount = offer.amount;
     const reference = (input.reference || "").trim();
     if (reference) {
-      const duplicate = db.prepare(`
+      const duplicate = await db.prepare(`
         SELECT id FROM payments WHERE reference = ? AND status = 'valide' LIMIT 1
       `).get(reference);
       if (duplicate && !input.acceptDuplicateReference) {
         throw new HttpError(409, "Cette référence existe déjà. Confirmez s'il ne s'agit pas d'un doublon.", { code: "DUPLICATE_REFERENCE" });
       }
     }
-    const inserted = db.prepare(`
+    const inserted = await db.prepare(`
       INSERT INTO payments(
         student_id, amount, paid_on, date_unconfirmed, method, reference, installment_code, note, idempotency_key, received_by
-      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
     `).run(
       current.student.id,
       amount,
@@ -645,12 +669,12 @@ export function createPayment(db, user, input, asOf = todayInConakry(), transact
       key,
       user.id,
     );
-    const paymentId = Number(inserted.lastInsertRowid);
-    db.prepare("INSERT INTO payment_controls(payment_id) VALUES (?)").run(paymentId);
+    const paymentId = inserted.lastInsertRowid;
+    await db.prepare("INSERT INTO payment_controls(payment_id) VALUES (?)").run(paymentId);
     if (costumeAmount > 0) {
-      recordCostume(db, user, current.student.id, { amount: costumeAmount, paidOn: input.paidOn, method: input.method, paymentId, note: "Versé avec la scolarité" }, asOf, false);
+      await recordCostume(db, user, current.student.id, { amount: costumeAmount, paidOn: input.paidOn, method: input.method, paymentId, note: "Versé avec la scolarité" }, asOf);
     }
-    const after = studentSituation(db, current.student.id, asOf);
+    const after = await studentSituation(db, current.student.id, asOf);
     const atThisPayment = computeSituation({
       tuition: after.tuition,
       discounts: after.discounts,
@@ -660,7 +684,7 @@ export function createPayment(db, user, input, asOf = todayInConakry(), transact
       asOf,
     });
     const year = Number(input.paidOn.slice(0, 4));
-    const seq = nextDocumentNumber(db, "REC", year);
+    const seq = await nextDocumentNumber(db, "REC", year);
     const number = `REC-${year}-${String(seq).padStart(6, "0")}`;
     const token = crypto.randomBytes(24).toString("base64url");
     const snapshot = {
@@ -694,28 +718,27 @@ export function createPayment(db, user, input, asOf = todayInConakry(), transact
       status: atThisPayment.status,
       statusLabel: STATUS_LABELS[atThisPayment.status],
     };
-    const receipt = db.prepare(`
+    const receipt = await db.prepare(`
       INSERT INTO receipts(payment_id, number, year, seq, verify_token, snapshot_json)
-      VALUES(?, ?, ?, ?, ?, ?)
+      VALUES(?, ?, ?, ?, ?, ?) RETURNING id
     `).run(paymentId, number, year, seq, token, JSON.stringify(snapshot));
-    if (input.attachment?.dataBase64) saveAttachment(db, paymentId, input.attachment);
-    const card = refreshCard(db, current.student, after.situation);
-    audit(db, user.id, "paiement.creer", "payments", paymentId, null, { ...snapshot, card });
+    if (input.attachment?.dataBase64) await saveAttachment(db, paymentId, input.attachment);
+    const card = await refreshCard(db, current.student, after.situation);
+    await audit(db, user.id, "paiement.creer", "payments", paymentId, null, { ...snapshot, card });
     return {
       replay: false,
       paymentId,
-      receiptId: Number(receipt.lastInsertRowid),
+      receiptId: receipt.lastInsertRowid,
       receiptNumber: number,
       before: current.situation,
       after: after.situation,
       costume: snapshot.costume,
       card,
     };
-  };
-  return transactional ? transaction(db, run) : run();
+  });
 }
 
-function saveAttachment(db, paymentId, attachment) {
+async function saveAttachment(db, paymentId, attachment) {
   const raw = String(attachment.dataBase64);
   const match = raw.match(/^data:([^;]+);base64,(.+)$/);
   const mime = match ? match[1] : (attachment.mime || "application/octet-stream");
@@ -729,70 +752,71 @@ function saveAttachment(db, paymentId, attachment) {
   const safeName = `justificatif-${paymentId}.${ext}`;
   const dir = path.join(uploadDir(), String(paymentId));
   fs.mkdirSync(dir, { recursive: true });
-  const stored = path.join(dir, safeName);
-  fs.writeFileSync(stored, buffer);
-  db.prepare(`
+  fs.writeFileSync(path.join(dir, safeName), buffer);
+  await db.prepare(`
     INSERT INTO payment_attachments(payment_id, filename, stored_path, mime) VALUES(?, ?, ?, ?)
-  `).run(paymentId, safeName, stored, mime);
+  `).run(paymentId, safeName, path.join(String(paymentId), safeName), mime);
 }
 
-export function updatePayment(db, user, paymentId, input, asOf = todayInConakry()) {
+export async function updatePayment(db, user, paymentId, input, asOf = todayInConakry()) {
   if (!can(user, "payment.create")) throw new HttpError(403, "Vous n'avez pas le droit de mettre un paiement à jour");
   const key = String(input.idempotencyKey || "").trim();
   if (key.length < 8) throw new HttpError(400, "Validation incomplète. Rechargez la page et recommencez.");
-  const already = db.prepare("SELECT id FROM payments WHERE idempotency_key = ?").get(key);
+  const already = await db.prepare("SELECT id, student_id FROM payments WHERE idempotency_key = ?").get(key);
   if (already) {
-    const receipt = db.prepare("SELECT id, number FROM receipts WHERE payment_id = ?").get(already.id);
-    const after = studentSituation(db, db.prepare("SELECT student_id FROM payments WHERE id = ?").get(already.id).student_id, asOf);
+    const receipt = await db.prepare("SELECT id, number FROM receipts WHERE payment_id = ?").get(already.id);
+    const after = await studentSituation(db, already.student_id, asOf);
     return { replay: true, paymentId: already.id, receiptId: receipt?.id, receiptNumber: receipt?.number, after: after.situation };
   }
-  const payment = db.prepare("SELECT * FROM payments WHERE id = ?").get(paymentId);
+  const payment = await db.prepare("SELECT * FROM payments WHERE id = ?").get(paymentId);
   if (!payment) throw new HttpError(404, "Paiement introuvable");
   if (payment.status !== "valide") throw new HttpError(400, "Seul un paiement encore valide peut recevoir un versement supplémentaire");
   const note = [input.note, input.reason].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
-  const created = createPayment(db, user, {
-    studentId: payment.student_id,
-    amount: input.amount,
-    paidOn: input.paidOn,
-    method: input.method,
-    reference: input.reference,
-    costumeAmount: input.costumeAmount,
-    note,
-    idempotencyKey: key,
-    acceptCredit: input.acceptCredit,
-    acceptDuplicateReference: input.acceptDuplicateReference,
-  }, asOf, true);
-  audit(db, user.id, "paiement.ajouter", "payments", created.paymentId, { keptPaymentId: paymentId, keptAmount: payment.amount }, { amount: input.amount, receiptNumber: created.receiptNumber });
-  return { ...created, keptPaymentId: paymentId, keptAmount: payment.amount };
+  return transaction(db, async () => {
+    const created = await createPayment(db, user, {
+      studentId: payment.student_id,
+      amount: input.amount,
+      paidOn: input.paidOn,
+      method: input.method,
+      reference: input.reference,
+      costumeAmount: input.costumeAmount,
+      note,
+      idempotencyKey: key,
+      acceptCredit: input.acceptCredit,
+      acceptDuplicateReference: input.acceptDuplicateReference,
+    }, asOf);
+    await audit(db, user.id, "paiement.ajouter", "payments", created.paymentId, { keptPaymentId: paymentId, keptAmount: payment.amount }, { amount: input.amount, receiptNumber: created.receiptNumber });
+    return { ...created, keptPaymentId: paymentId, keptAmount: payment.amount };
+  });
 }
 
-export function cancelPayment(db, user, paymentId, reason, asOf = todayInConakry()) {
+export async function cancelPayment(db, user, paymentId, reason, asOf = todayInConakry()) {
   if (!can(user, "payment.cancel")) throw new HttpError(403, "Seul l'admin ou le super admin peut annuler un paiement");
   const clean = String(reason || "").trim();
   if (clean.length < 5) throw new HttpError(400, "Le motif d'annulation est obligatoire (au moins 5 caractères)");
-  return transaction(db, () => {
-    const payment = db.prepare("SELECT * FROM payments WHERE id = ?").get(paymentId);
+  return transaction(db, async () => {
+    const payment = await db.prepare("SELECT * FROM payments WHERE id = ?").get(paymentId);
     if (!payment) throw new HttpError(404, "Paiement introuvable");
     if (payment.status === "annule") throw new HttpError(400, "Ce paiement est déjà annulé");
-    const control = ensurePaymentControl(db, paymentId);
+    const control = await ensurePaymentControl(db, paymentId);
     if (control.cancel_used >= 1) throw new HttpError(400, "Ce paiement a déjà été annulé une fois");
-    db.prepare("UPDATE payment_controls SET cancel_used = 1 WHERE payment_id = ?").run(paymentId);
-    db.prepare("UPDATE payments SET status = 'annule' WHERE id = ?").run(paymentId);
+    await db.prepare("UPDATE payment_controls SET cancel_used = 1 WHERE payment_id = ?").run(paymentId);
+    await db.prepare("UPDATE payments SET status = 'annule' WHERE id = ?").run(paymentId);
     const year = Number(todayInConakry().slice(0, 4));
-    const seq = nextDocumentNumber(db, "AVO", year);
+    const seq = await nextDocumentNumber(db, "AVO", year);
     const creditNote = `AVO-${year}-${String(seq).padStart(6, "0")}`;
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO cancellations(payment_id, reason, cancelled_by, credit_note_number) VALUES(?, ?, ?, ?)
     `).run(paymentId, clean, user.id, creditNote);
-    const after = studentSituation(db, payment.student_id, asOf);
-    refreshCard(db, after.student, after.situation);
-    audit(db, user.id, "paiement.annuler", "payments", paymentId, { status: "valide", amount: payment.amount }, { status: "annule", reason: clean, creditNote });
+    const after = await studentSituation(db, payment.student_id, asOf);
+    await refreshCard(db, after.student, after.situation);
+    await audit(db, user.id, "paiement.annuler", "payments", paymentId, { status: "valide", amount: payment.amount }, { status: "annule", reason: clean, creditNote });
     return { creditNote, situation: after.situation };
   });
 }
 
-function ensurePaymentControl(db, paymentId) {
-  db.prepare("INSERT INTO payment_controls(payment_id) VALUES (?) ON CONFLICT(payment_id) DO NOTHING").run(paymentId);
+async function ensurePaymentControl(db, paymentId) {
+  await db.prepare("INSERT INTO payment_controls(payment_id) VALUES (?) ON CONFLICT(payment_id) DO NOTHING").run(paymentId);
   return db.prepare("SELECT * FROM payment_controls WHERE payment_id = ?").get(paymentId);
 }
 
@@ -804,35 +828,37 @@ function isOfficeAdmin(user) {
   return user?.role === "admin" || user?.role === "super_admin";
 }
 
-export function unlockPayment(db, user, paymentId) {
+export async function unlockPayment(db, user, paymentId) {
   if (!isOfficeAdmin(user)) throw new HttpError(403, "Seul un administrateur peut débloquer une modification");
-  const payment = db.prepare("SELECT * FROM payments WHERE id = ?").get(paymentId);
-  if (!payment) throw new HttpError(404, "Paiement introuvable");
-  if (payment.status !== "valide") throw new HttpError(400, "Un paiement annulé ne peut pas être débloqué");
-  const control = ensurePaymentControl(db, paymentId);
-  if (editAllowed(control)) throw new HttpError(400, "Ce paiement peut encore être modifié");
-  db.prepare("UPDATE payment_controls SET unlocked = 1 WHERE payment_id = ?").run(paymentId);
-  audit(db, user.id, "paiement.debloquer", "payments", paymentId, { unlocked: 0 }, { unlocked: 1 });
-  return { unlocked: true };
+  return transaction(db, async () => {
+    const payment = await db.prepare("SELECT * FROM payments WHERE id = ?").get(paymentId);
+    if (!payment) throw new HttpError(404, "Paiement introuvable");
+    if (payment.status !== "valide") throw new HttpError(400, "Un paiement annulé ne peut pas être débloqué");
+    const control = await ensurePaymentControl(db, paymentId);
+    if (editAllowed(control)) throw new HttpError(400, "Ce paiement peut encore être modifié");
+    await db.prepare("UPDATE payment_controls SET unlocked = 1 WHERE payment_id = ?").run(paymentId);
+    await audit(db, user.id, "paiement.debloquer", "payments", paymentId, { unlocked: 0 }, { unlocked: 1 });
+    return { unlocked: true };
+  });
 }
 
-export function listCashPayments(db, date = null) {
+export async function listCashPayments(db, date = null) {
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError(400, "Date invalide");
-  return db.prepare(`
+  return (await db.prepare(`
     SELECT p.id, p.amount, p.paid_on, p.method, p.reference, p.note, p.status,
            s.matricule, s.last_name, s.first_name,
            r.id AS receipt_id, r.number AS receipt_number,
-           IFNULL((SELECT SUM(k.amount) FROM costume_payments k WHERE k.payment_id = p.id AND k.status = 'valide'), 0) AS costume_amount,
-           IFNULL(c.updates_used, 0) AS updates_used,
-           IFNULL(c.cancel_used, 0) AS cancel_used,
-           IFNULL(c.unlocked, 0) AS unlocked
+           COALESCE((SELECT SUM(k.amount) FROM costume_payments k WHERE k.payment_id = p.id AND k.status = 'valide'), 0) AS costume_amount,
+           COALESCE(c.updates_used, 0) AS updates_used,
+           COALESCE(c.cancel_used, 0) AS cancel_used,
+           COALESCE(c.unlocked, 0) AS unlocked
     FROM payments p
     JOIN students s ON s.id = p.student_id
     LEFT JOIN receipts r ON r.payment_id = p.id
     LEFT JOIN payment_controls c ON c.payment_id = p.id
-    WHERE ? IS NULL OR p.paid_on = ?
+    WHERE ?::date IS NULL OR p.paid_on = ?::date
     ORDER BY p.paid_on DESC, p.id DESC
-  `).all(date, date).map((row) => ({
+  `).all(date, date)).map((row) => ({
     ...row,
     name: `${row.last_name} ${row.first_name}`.trim(),
     canUpdate: row.status === "valide" && (row.updates_used < 1 || row.unlocked === 1),
@@ -841,9 +867,9 @@ export function listCashPayments(db, date = null) {
   }));
 }
 
-export function cashJournal(db, date) {
+export async function cashJournal(db, date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) throw new HttpError(400, "Date invalide");
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT p.id, p.amount, p.method, p.reference, p.paid_on, p.date_unconfirmed, p.note,
            s.matricule, s.last_name, s.first_name, u.full_name AS agent, r.number AS receipt
     FROM payments p
@@ -854,9 +880,9 @@ export function cashJournal(db, date) {
     ORDER BY p.id
   `).all(date);
   const total = rows.reduce((sum, row) => sum + row.amount, 0);
-  const sqlTotal = db.prepare(`
+  const sqlTotal = (await db.prepare(`
     SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE paid_on = ? AND status = 'valide'
-  `).get(date).total;
+  `).get(date)).total;
   if (sqlTotal !== total) throw new HttpError(500, "Écart de caisse : le total affiché ne correspond pas à la somme des paiements");
   const byMethod = new Map();
   const byAgent = new Map();
@@ -881,22 +907,24 @@ export function reminderMessage(student, situation) {
   return `Bonjour, AfricaIIM vous informe que la scolarité de ${name} (${student.matricule}) présente un reste de ${formatGnf(situation.reste)}. Merci de régulariser auprès de la scolarité.`;
 }
 
-export function createReminder(db, user, studentId, channel, asOf = todayInConakry()) {
+export async function createReminder(db, user, studentId, channel, asOf = todayInConakry()) {
   if (!can(user, "reminder.create")) throw new HttpError(403, "Vous n'avez pas le droit d'enregistrer une relance");
-  const current = studentSituation(db, studentId, asOf);
+  const current = await studentSituation(db, studentId, asOf);
   if (current.situation.reste <= 0) throw new HttpError(400, "Cet étudiant n'a pas de reste à payer");
   const allowed = new Set(["copie", "email", "whatsapp", "sms"]);
   if (!allowed.has(channel)) throw new HttpError(400, "Canal de relance inconnu");
   const message = reminderMessage(current.student, current.situation);
-  const result = db.prepare(`
-    INSERT INTO reminders(student_id, channel, message, created_by) VALUES(?, ?, ?, ?)
-  `).run(studentId, channel, message, user.id);
-  audit(db, user.id, "relance", "reminders", result.lastInsertRowid, null, { channel, studentId });
-  return { id: Number(result.lastInsertRowid), message, channel };
+  return transaction(db, async () => {
+    const result = await db.prepare(`
+      INSERT INTO reminders(student_id, channel, message, created_by) VALUES(?, ?, ?, ?) RETURNING id
+    `).run(studentId, channel, message, user.id);
+    await audit(db, user.id, "relance", "reminders", result.lastInsertRowid, null, { channel, studentId });
+    return { id: result.lastInsertRowid, message, channel };
+  });
 }
 
-export function lateStudents(db, asOf = todayInConakry()) {
-  return listStudents(db, {}, asOf)
+export async function lateStudents(db, asOf = todayInConakry()) {
+  return (await listStudents(db, {}, asOf))
     .filter((row) => row.situation.status === "en_retard")
     .map((row) => ({
       student: publicStudent(row.student),
@@ -918,7 +946,7 @@ function truthy(value) {
   return value === true || value === 1 || value === "1" || value === "true" || value === "on";
 }
 
-export function createStudent(db, user, input) {
+export async function createStudent(db, user, input) {
   if (!can(user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit de créer une fiche");
   const last = String(input.lastName || "").trim();
   const first = String(input.firstName || "").trim();
@@ -932,26 +960,26 @@ export function createStudent(db, user, input) {
   if (scholarship && paymentAmount > 0) throw new HttpError(400, "Un boursier ne verse aucun frais de scolarité");
   const costumeAmount = costumeAmountOf(input.costumeAmount);
   if ((paymentAmount > 0 || costumeAmount > 0) && !METHODS.has(input.method)) throw new HttpError(400, "Choisissez le moyen de paiement");
-  const year = activeYear(db);
-  const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(Number(input.programId));
+  const year = await activeYear(db);
+  const program = await db.prepare("SELECT * FROM programs WHERE id = ?").get(Number(input.programId));
   if (!program) throw new HttpError(400, "Filière inconnue");
-  const matricule = nextMatricule(db, year.label);
   const paidOn = todayInConakry();
-  return transaction(db, () => {
-    const result = db.prepare(`
+  const created = await transaction(db, async () => {
+    const matricule = await nextMatricule(db, year.label);
+    const result = await db.prepare(`
       INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie')
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie') RETURNING id
     `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone));
-    const studentId = Number(result.lastInsertRowid);
-    audit(db, user.id, "etudiant.creer", "students", studentId, null, { matricule, last, first, level: input.level, scholarship });
+    const studentId = result.lastInsertRowid;
+    await audit(db, user.id, "etudiant.creer", "students", studentId, null, { matricule, last, first, level: input.level, scholarship });
     if (scholarship) {
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
         VALUES(?, ?, 'pourcentage', 100, ?, ?)
       `).run(studentId, SCHOLAR_LABEL, "Étudiant boursier : aucun frais de scolarité", user.id);
     }
     if (paymentAmount > 0) {
-      createPayment(db, user, {
+      await createPayment(db, user, {
         studentId,
         amount: paymentAmount,
         paidOn,
@@ -959,27 +987,27 @@ export function createStudent(db, user, input) {
         idempotencyKey: `fiche-${matricule}`,
         note: "Versement du jour à l'inscription",
         costumeAmount,
-      }, paidOn, false);
+      }, paidOn);
     } else if (costumeAmount > 0) {
-      recordCostume(db, user, studentId, { amount: costumeAmount, paidOn, method: input.method, note: "Versé à l'inscription" }, paidOn, false);
+      await recordCostume(db, user, studentId, { amount: costumeAmount, paidOn, method: input.method, note: "Versé à l'inscription" }, paidOn);
     }
-    const current = studentSituation(db, studentId, paidOn);
-    refreshCard(db, current.student, current.situation);
-    const receipt = issueEnrollmentReceipt(db, user, studentId, false);
-    const created = { ...studentSituation(db, studentId, paidOn), enrollmentReceiptId: receipt.id, enrollmentReceiptNumber: receipt.number };
-    pushStudentToCard(created.student).catch(() => {});
-    return created;
+    const current = await studentSituation(db, studentId, paidOn);
+    await refreshCard(db, current.student, current.situation);
+    const receipt = await issueEnrollmentReceipt(db, user, studentId);
+    return { ...(await studentSituation(db, studentId, paidOn)), enrollmentReceiptId: receipt.id, enrollmentReceiptNumber: receipt.number };
   });
+  pushStudentToCard(created.student).catch(() => {});
+  return created;
 }
 
-export function issueEnrollmentReceipt(db, user, studentId, transactional = true) {
-  const run = () => {
-    const existing = db.prepare("SELECT id, number FROM enrollment_receipts WHERE student_id = ?").get(studentId);
+export async function issueEnrollmentReceipt(db, user, studentId) {
+  return transaction(db, async () => {
+    const existing = await db.prepare("SELECT id, number FROM enrollment_receipts WHERE student_id = ?").get(studentId);
     if (existing) return { id: existing.id, number: existing.number, created: false };
-    const current = studentSituation(db, studentId);
+    const current = await studentSituation(db, studentId);
     const student = current.student;
     const year = Number(todayInConakry().slice(0, 4));
-    const seq = nextDocumentNumber(db, "INS", year);
+    const seq = await nextDocumentNumber(db, "INS", year);
     const number = `INS-${year}-${String(seq).padStart(6, "0")}`;
     const token = crypto.randomBytes(24).toString("base64url");
     const snapshot = {
@@ -993,28 +1021,27 @@ export function issueEnrollmentReceipt(db, user, studentId, transactional = true
       agentName: user.full_name,
       tuition: current.situation.due,
       tuitionInWords: amountInWords(current.situation.due),
-      registration: planFor(db, student).registration,
+      registration: registrationFee(student.level),
       scholar: isScholar(current.discounts),
-      costumePrice: costumePrice(db),
+      costumePrice: await costumePrice(db),
       plan: current.situation.plan.map((item) => ({
         label: item.label,
         amount: item.amount,
         dueOn: item.dueOn,
       })),
     };
-    const receipt = db.prepare(`
+    const receipt = await db.prepare(`
       INSERT INTO enrollment_receipts(student_id, number, year, seq, verify_token, snapshot_json)
-      VALUES(?, ?, ?, ?, ?, ?)
+      VALUES(?, ?, ?, ?, ?, ?) RETURNING id
     `).run(studentId, number, year, seq, token, JSON.stringify(snapshot));
-    audit(db, user.id, "inscription.recu", "enrollment_receipts", Number(receipt.lastInsertRowid), null, { number, matricule: student.matricule });
-    return { id: Number(receipt.lastInsertRowid), number, created: true };
-  };
-  return transactional ? transaction(db, run) : run();
+    await audit(db, user.id, "inscription.recu", "enrollment_receipts", receipt.lastInsertRowid, null, { number, matricule: student.matricule });
+    return { id: receipt.lastInsertRowid, number, created: true };
+  });
 }
 
-function nextMatricule(db, label) {
+async function nextMatricule(db, label) {
   const year = label.slice(0, 4);
-  const rows = db.prepare("SELECT matricule FROM students WHERE matricule LIKE ?").all(`AIM-${year}-%`);
+  const rows = await db.prepare("SELECT matricule FROM students WHERE matricule LIKE ?").all(`AIM-${year}-%`);
   let max = 0;
   for (const row of rows) {
     const value = Number(row.matricule.split("-").pop());
@@ -1028,22 +1055,24 @@ function clean(value) {
   return text || null;
 }
 
-export function updateStudent(db, user, studentId, input) {
+export async function updateStudent(db, user, studentId, input) {
   if (!can(user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit de modifier cette fiche");
   if (input.status && !can(user, "student.status")) {
     throw new HttpError(403, "Seul l'admin ou le super admin change le statut d'un étudiant");
   }
-  const before = db.prepare("SELECT * FROM students WHERE id = ?").get(studentId);
-  if (!before) throw new HttpError(404, "Étudiant introuvable");
-  const status = input.status || before.status;
-  if (!["actif", "suspendu", "archive"].includes(status)) throw new HttpError(400, "Statut inconnu");
-  db.prepare(`
-    UPDATE students SET phone = ?, email = ?, guardian_name = ?, guardian_phone = ?, status = ? WHERE id = ?
-  `).run(clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), status, studentId);
-  const current = studentSituation(db, studentId);
-  refreshCard(db, current.student, current.situation);
-  audit(db, user.id, "etudiant.modifier", "students", studentId, { status: before.status }, { status });
-  const updated = studentSituation(db, studentId);
+  const updated = await transaction(db, async () => {
+    const before = await db.prepare("SELECT * FROM students WHERE id = ?").get(studentId);
+    if (!before) throw new HttpError(404, "Étudiant introuvable");
+    const status = input.status || before.status;
+    if (!["actif", "suspendu", "archive"].includes(status)) throw new HttpError(400, "Statut inconnu");
+    await db.prepare(`
+      UPDATE students SET phone = ?, email = ?, guardian_name = ?, guardian_phone = ?, status = ? WHERE id = ?
+    `).run(clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), status, studentId);
+    const current = await studentSituation(db, studentId);
+    await refreshCard(db, current.student, current.situation);
+    await audit(db, user.id, "etudiant.modifier", "students", studentId, { status: before.status }, { status });
+    return studentSituation(db, studentId);
+  });
   if (updated.student.status !== "archive") pushStudentToCard(updated.student).catch(() => {});
   return updated;
 }
@@ -1055,67 +1084,66 @@ function moneyInput(value, label) {
   return amount;
 }
 
-export function saveFeeSchedule(db, user, input) {
+export async function saveFeeSchedule(db, user, input) {
   if (!can(user, "fee.write")) throw new HttpError(403, "La scolarité (admin) ou le super admin modifie le barème");
-  const current = db.prepare("SELECT * FROM fee_schedules WHERE id = ?").get(Number(input.id));
-  if (!current) throw new HttpError(404, "Barème introuvable");
-  if (!OFFER_LEVELS.has(current.level)) {
-    throw new HttpError(400, "Les barèmes Licence, Master et Tech Ingénieur déjà appliqués ne se modifient pas ici");
-  }
-  let registration;
-  let installment1;
-  let installment2;
-  let installment3;
-  if (input.tuition != null) {
-    const tuitionOnly = moneyInput(input.tuition, "Frais annuels");
-    if (tuitionOnly <= 0) throw new HttpError(400, "Le total des frais doit être supérieur à zéro");
-    const parts = officialInstallments(tuitionOnly);
-    registration = parts[0].amount;
-    installment1 = parts[1].amount;
-    installment2 = parts[2].amount;
-    installment3 = 0;
-  } else {
-    installment3 = input.installment3 ?? 0;
-    registration = moneyInput(input.registration, "Échéance");
-    installment1 = moneyInput(input.installment1, "Échéance");
-    installment2 = moneyInput(input.installment2, "Échéance");
-    installment3 = moneyInput(installment3, "Échéance");
-    if ([registration, installment1, installment2, installment3].some((value) => value < 0)) {
-      throw new HttpError(400, "Une échéance ne peut pas être négative");
+  return transaction(db, async () => {
+    const current = await db.prepare("SELECT * FROM fee_schedules WHERE id = ?").get(Number(input.id));
+    if (!current) throw new HttpError(404, "Barème introuvable");
+    if (!OFFER_LEVELS.has(current.level)) {
+      throw new HttpError(400, "Les barèmes Licence, Master et Tech Ingénieur déjà appliqués ne se modifient pas ici");
     }
-  }
-  const tuition = registration + installment1 + installment2 + installment3;
-  if (tuition <= 0) throw new HttpError(400, "Le total des frais doit être supérieur à zéro");
-  transaction(db, () => {
-    db.prepare(`
+    let registration;
+    let installment1;
+    let installment2;
+    let installment3;
+    if (input.tuition != null) {
+      const tuitionOnly = moneyInput(input.tuition, "Frais annuels");
+      if (tuitionOnly <= 0) throw new HttpError(400, "Le total des frais doit être supérieur à zéro");
+      const parts = officialInstallments(tuitionOnly);
+      registration = parts[0].amount;
+      installment1 = parts[1].amount;
+      installment2 = parts[2].amount;
+      installment3 = 0;
+    } else {
+      registration = moneyInput(input.registration, "Échéance");
+      installment1 = moneyInput(input.installment1, "Échéance");
+      installment2 = moneyInput(input.installment2, "Échéance");
+      installment3 = moneyInput(input.installment3 ?? 0, "Échéance");
+      if ([registration, installment1, installment2, installment3].some((value) => value < 0)) {
+        throw new HttpError(400, "Une échéance ne peut pas être négative");
+      }
+    }
+    const tuition = registration + installment1 + installment2 + installment3;
+    if (tuition <= 0) throw new HttpError(400, "Le total des frais doit être supérieur à zéro");
+    await db.prepare(`
       INSERT INTO fee_schedule_history(fee_schedule_id, snapshot_json, changed_by) VALUES(?, ?, ?)
     `).run(current.id, JSON.stringify(current), user.id);
-    db.prepare(`
+    await db.prepare(`
       UPDATE fee_schedules
       SET tuition_amount = ?, registration_amount = ?, installment_1 = ?, installment_2 = ?, installment_3 = ?
       WHERE id = ?
     `).run(tuition, registration, installment1, installment2, installment3, current.id);
-    audit(db, user.id, "bareme.modifier", "fee_schedules", current.id, current, { tuition });
+    await audit(db, user.id, "bareme.modifier", "fee_schedules", current.id, current, { tuition });
+    return db.prepare("SELECT * FROM fee_schedules WHERE id = ?").get(current.id);
   });
-  return db.prepare("SELECT * FROM fee_schedules WHERE id = ?").get(current.id);
 }
 
-export function updateSettings(db, user, input) {
+export async function updateSettings(db, user, input) {
   if (!can(user, "settings.write")) throw new HttpError(403, "Seul l'admin ou le super admin modifie les paramètres");
   const allowed = ["school_name", "school_city", "school_address", "school_phone", "school_email", "school_web", "card_threshold", "costume_price"];
-  transaction(db, () => {
+  await transaction(db, async () => {
     for (const key of allowed) {
       if (input[key] == null) continue;
       if (key === "card_threshold" || key === "costume_price") {
         const value = Number(String(input[key]).replace(/[\s.]/g, ""));
         assertGnf(value, key === "costume_price" ? "Prix du costume" : "Seuil");
         if (value < 0) throw new HttpError(400, "Le montant ne peut pas être négatif");
-        db.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, String(value));
+        await db.prepare("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, String(value));
       } else {
-        db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(String(input[key]).trim(), key);
+        await db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(String(input[key]).trim(), key);
       }
     }
-    audit(db, user.id, "parametres", "settings", null, null, input);
+    await audit(db, user.id, "parametres", "settings", null, null, input);
   });
 }
 
@@ -1141,7 +1169,14 @@ function loadAccount(db, userId) {
   `).get(userId);
 }
 
-export function createUser(db, actor, input) {
+async function activeSuperAdmins(db) {
+  return (await db.prepare(`
+    SELECT COUNT(*) AS n FROM users u JOIN roles r ON r.id = u.role_id
+    WHERE r.code = 'super_admin' AND u.active = 1
+  `).get()).n;
+}
+
+export async function createUser(db, actor, input) {
   if (actor.role !== "super_admin") throw new HttpError(403, "Seul le super admin peut créer un compte");
   const email = staffEmail(input.email);
   const name = String(input.fullName || "").trim();
@@ -1151,115 +1186,115 @@ export function createUser(db, actor, input) {
   if (weak) throw new HttpError(400, weak);
   const rights = normalizeRights(input.rights);
   if (!rights.length) throw new HttpError(400, "Cochez au moins une partie de l'application");
-  if (input.superAdmin && actor.role !== "super_admin") {
-    throw new HttpError(403, "Seul le super admin peut créer un super admin");
-  }
   const roleCode = input.superAdmin ? "super_admin" : roleCodeForRights(rights);
-  const role = db.prepare("SELECT * FROM roles WHERE code = ?").get(roleCode);
+  const role = await db.prepare("SELECT * FROM roles WHERE code = ?").get(roleCode);
   if (!role) throw new HttpError(400, "Rôle inconnu");
   try {
-    const result = db.prepare(`
-      INSERT INTO users(role_id, full_name, email, password_hash, totp_secret, totp_required, permissions_json, must_change_password, active)
-      VALUES(?, ?, ?, ?, NULL, 0, ?, 1, 1)
-    `).run(role.id, name, email, hashPassword(password), input.superAdmin ? null : JSON.stringify(rights));
-    audit(db, actor.id, "utilisateur.creer", "users", Number(result.lastInsertRowid), null, { email, role: roleCode, rights });
-    return { id: Number(result.lastInsertRowid) };
+    return await transaction(db, async () => {
+      const result = await db.prepare(`
+        INSERT INTO users(role_id, full_name, email, password_hash, totp_secret, totp_required, permissions_json, must_change_password, active)
+        VALUES(?, ?, ?, ?, NULL, 0, ?, 1, 1) RETURNING id
+      `).run(role.id, name, email, hashPassword(password), input.superAdmin ? null : JSON.stringify(rights));
+      await audit(db, actor.id, "utilisateur.creer", "users", result.lastInsertRowid, null, { email, role: roleCode, rights });
+      return { id: result.lastInsertRowid };
+    });
   } catch (error) {
-    if (String(error.message).includes("UNIQUE")) throw new HttpError(400, "Cet e-mail est déjà utilisé");
+    if (error.code === UNIQUE_VIOLATION) throw new HttpError(400, "Cet e-mail est déjà utilisé");
     throw error;
   }
 }
 
-export function updateUserAccess(db, actor, userId, input) {
+export async function updateUserAccess(db, actor, userId, input) {
   if (!can(actor, "user.write")) throw new HttpError(403, "Vous n'avez pas le droit de gérer les comptes");
-  const target = loadAccount(db, userId);
-  if (!target) throw new HttpError(404, "Compte introuvable");
-  if (target.id === actor.id) throw new HttpError(400, "Modifiez un autre compte. Votre mot de passe se change dans « Mon compte ».");
-  if (target.role === "super_admin" && actor.role !== "super_admin") {
-    throw new HttpError(403, "Seul le super admin modifie un super admin");
-  }
   const rights = normalizeRights(input.rights);
   if (!input.superAdmin && !rights.length) throw new HttpError(400, "Cochez au moins une partie de l'application");
   if (input.superAdmin && actor.role !== "super_admin") {
     throw new HttpError(403, "Seul le super admin peut donner tous les droits");
   }
-  if (target.role === "super_admin" && !input.superAdmin) {
-    const count = db.prepare(`
-      SELECT COUNT(*) AS n FROM users u JOIN roles r ON r.id = u.role_id
-      WHERE r.code = 'super_admin' AND u.active = 1
-    `).get().n;
-    if (count <= 1) throw new HttpError(400, "Le dernier super admin doit garder tous les droits");
-  }
-  const roleCode = input.superAdmin ? "super_admin" : roleCodeForRights(rights);
-  const role = db.prepare("SELECT id FROM roles WHERE code = ?").get(roleCode);
-  const name = String(input.fullName ?? target.full_name).trim();
-  if (name.length < 3) throw new HttpError(400, "Le nom est obligatoire");
-  const email = input.email == null ? target.email : staffEmail(input.email);
-  const taken = db.prepare("SELECT id FROM users WHERE email = ? AND id <> ?").get(email, target.id);
-  if (taken) throw new HttpError(400, "Cet e-mail est déjà utilisé");
   const password = String(input.password || "");
   if (password) {
     const weak = passwordIssue(password);
     if (weak) throw new HttpError(400, weak);
   }
-  transaction(db, () => {
-    db.prepare(`
+  return transaction(db, async () => {
+    const target = await loadAccount(db, userId);
+    if (!target) throw new HttpError(404, "Compte introuvable");
+    if (target.id === actor.id) throw new HttpError(400, "Modifiez un autre compte. Votre mot de passe se change dans « Mon compte ».");
+    if (target.role === "super_admin" && actor.role !== "super_admin") {
+      throw new HttpError(403, "Seul le super admin modifie un super admin");
+    }
+    if (target.role === "super_admin" && !input.superAdmin && (await activeSuperAdmins(db)) <= 1) {
+      throw new HttpError(400, "Le dernier super admin doit garder tous les droits");
+    }
+    const roleCode = input.superAdmin ? "super_admin" : roleCodeForRights(rights);
+    const role = await db.prepare("SELECT id FROM roles WHERE code = ?").get(roleCode);
+    const name = String(input.fullName ?? target.full_name).trim();
+    if (name.length < 3) throw new HttpError(400, "Le nom est obligatoire");
+    const email = input.email == null ? target.email : staffEmail(input.email);
+    const taken = await db.prepare("SELECT id FROM users WHERE email = ? AND id <> ?").get(email, target.id);
+    if (taken) throw new HttpError(400, "Cet e-mail est déjà utilisé");
+    await db.prepare(`
       UPDATE users SET full_name = ?, email = ?, role_id = ?, permissions_json = ? WHERE id = ?
     `).run(name, email, role.id, input.superAdmin ? null : JSON.stringify(rights), target.id);
     if (password) {
-      db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?").run(hashPassword(password), target.id);
-      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+      await db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?").run(hashPassword(password), target.id);
+      await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
     }
-    audit(db, actor.id, "utilisateur.modifier", "users", target.id,
+    await audit(db, actor.id, "utilisateur.modifier", "users", target.id,
       { name: target.full_name, email: target.email, role: target.role },
       { name, email, role: roleCode, rights, passwordReset: Boolean(password) });
+    return { id: target.id };
   });
-  return { id: target.id };
 }
 
-export function deactivateUser(db, actor, userId) {
+export async function deactivateUser(db, actor, userId) {
   if (!can(actor, "user.write")) throw new HttpError(403, "Vous n'avez pas le droit de gérer les comptes");
-  const target = loadAccount(db, userId);
-  if (!target) throw new HttpError(404, "Compte introuvable");
-  if (target.id === actor.id) throw new HttpError(400, "Vous ne pouvez pas supprimer votre propre compte");
-  if (!target.active) throw new HttpError(400, "Ce compte est déjà retiré");
-  if (target.role === "super_admin" && actor.role !== "super_admin") {
-    throw new HttpError(403, "Seul le super admin peut retirer un super admin");
-  }
-  if (target.role === "super_admin") {
-    const count = db.prepare(`
-      SELECT COUNT(*) AS n FROM users u JOIN roles r ON r.id = u.role_id
-      WHERE r.code = 'super_admin' AND u.active = 1
-    `).get().n;
-    if (count <= 1) throw new HttpError(400, "Le dernier super admin ne peut pas être supprimé");
-  }
-  db.prepare("UPDATE users SET active = 0 WHERE id = ?").run(target.id);
-  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
-  audit(db, actor.id, "utilisateur.retirer", "users", target.id, { email: target.email, active: 1 }, { active: 0 });
-  return { id: target.id, active: 0 };
+  return transaction(db, async () => {
+    const target = await loadAccount(db, userId);
+    if (!target) throw new HttpError(404, "Compte introuvable");
+    if (target.id === actor.id) throw new HttpError(400, "Vous ne pouvez pas supprimer votre propre compte");
+    if (!target.active) throw new HttpError(400, "Ce compte est déjà retiré");
+    if (target.role === "super_admin" && actor.role !== "super_admin") {
+      throw new HttpError(403, "Seul le super admin peut retirer un super admin");
+    }
+    if (target.role === "super_admin" && (await activeSuperAdmins(db)) <= 1) {
+      throw new HttpError(400, "Le dernier super admin ne peut pas être supprimé");
+    }
+    await db.prepare("UPDATE users SET active = 0 WHERE id = ?").run(target.id);
+    await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
+    await audit(db, actor.id, "utilisateur.retirer", "users", target.id, { email: target.email, active: 1 }, { active: 0 });
+    return { id: target.id, active: 0 };
+  });
 }
 
-export function catalog(db) {
-  return {
-    programs: db.prepare("SELECT id, code, name FROM programs ORDER BY name").all(),
-    years: db.prepare("SELECT id, label, active FROM academic_years ORDER BY label DESC").all(),
-    methods: Object.entries(METHOD_LABELS).map(([code, label]) => ({ code, label })),
-    levels: [
-      { code: "bachelor", label: "Bachelor" },
-      { code: "master", label: "Master" },
-    ],
-    statuses: Object.entries(STATUS_LABELS).map(([code, label]) => ({ code, label })),
-    settings: Object.fromEntries(db.prepare("SELECT key, value FROM settings").all().map((row) => [row.key, row.value])),
-    fees: db.prepare(`
+export async function catalog(db) {
+  const [programs, years, settings, fees, agents] = await Promise.all([
+    db.prepare("SELECT id, code, name FROM programs ORDER BY name").all(),
+    db.prepare("SELECT id, label, active FROM academic_years ORDER BY label DESC").all(),
+    db.prepare("SELECT key, value FROM settings").all(),
+    db.prepare(`
       SELECT f.*, p.name AS program_name, y.label AS year_label
       FROM fee_schedules f
       JOIN programs p ON p.id = f.program_id
       JOIN academic_years y ON y.id = f.academic_year_id
       ORDER BY p.name, f.level
     `).all(),
-    agents: db.prepare(`
+    db.prepare(`
       SELECT u.id, u.full_name, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.active = 1 ORDER BY u.full_name
     `).all(),
+  ]);
+  return {
+    programs,
+    years,
+    methods: Object.entries(METHOD_LABELS).map(([code, label]) => ({ code, label })),
+    levels: [
+      { code: "bachelor", label: "Bachelor" },
+      { code: "master", label: "Master" },
+    ],
+    statuses: Object.entries(STATUS_LABELS).map(([code, label]) => ({ code, label })),
+    settings: Object.fromEntries(settings.map((row) => [row.key, row.value])),
+    fees,
+    agents,
     registrationFees: REGISTRATION_FEES,
     hypotheses: [
       `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,

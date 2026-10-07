@@ -189,10 +189,10 @@ export function attachCardPortal(app, resolveUser = () => null) {
   app.use("/fonts", (req, res) => forward(req, res, req.originalUrl, false));
   app.use("/photo", (req, res) => forward(req, res, req.originalUrl, false));
   app.get("/theme.css", (req, res) => forward(req, res, req.originalUrl, false));
-  app.use(PREFIX, (req, res) => {
+  app.use(PREFIX, async (req, res) => {
     let tail = req.url && req.url !== "/" ? req.url : "/";
     if (!tail.startsWith("/")) tail = `/${tail}`;
-    const user = resolveUser(req);
+    const user = await resolveUser(req);
     const pathOnly = tail.split("?")[0];
     if (pathOnly.startsWith("/admin/comptes") || pathOnly.startsWith("/compte")) {
       res.status(200).type("html").send(`<!doctype html><meta charset="utf-8"><title>Comptes</title>

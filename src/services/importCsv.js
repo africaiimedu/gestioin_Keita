@@ -1,6 +1,6 @@
 import { METHOD_LABELS } from "../finance/index.js";
 import { HttpError } from "../httpError.js";
-import { transaction } from "../db.js";
+import { transaction } from "../db/index.js";
 import { audit, createPayment, issueEnrollmentReceipt, todayInConakry } from "./domain.js";
 
 const METHOD_ALIASES = {
@@ -56,7 +56,7 @@ function parseCsv(text) {
   return rows.filter((line) => line.some((value) => String(value).trim()));
 }
 
-export function previewImport(db, filename, text, userId) {
+export async function previewImport(db, filename, text, userId) {
   const table = parseCsv(text);
   if (table.length < 2) throw new HttpError(400, "Le fichier est vide. Utilisez le modèle téléchargeable.");
   const header = table[0].map((value) => value.trim().toLowerCase());
@@ -65,7 +65,8 @@ export function previewImport(db, filename, text, userId) {
     if (!header.includes(column)) throw new HttpError(400, `Colonne manquante : ${column}`);
   }
   const index = Object.fromEntries(expected.map((column) => [column, header.indexOf(column)]));
-  const programs = db.prepare("SELECT id, code, name FROM programs").all();
+  const programs = await db.prepare("SELECT id, code, name FROM programs").all();
+  const known = new Map((await db.prepare("SELECT matricule, level FROM students").all()).map((row) => [row.matricule, row]));
   const seen = new Map();
   const rows = table.slice(1).map((line, position) => {
     const get = (column) => (line[index[column]] || "").trim();
@@ -92,7 +93,7 @@ export function previewImport(db, filename, text, userId) {
     if (matricule) {
       if (seen.has(matricule)) anomalies.push("Matricule en double dans le fichier");
       seen.set(matricule, position + 2);
-      const existing = db.prepare("SELECT id, level FROM students WHERE matricule = ?").get(matricule);
+      const existing = known.get(matricule);
       if (existing && existing.level !== level) anomalies.push("Le niveau ne correspond pas à la fiche déjà enregistrée");
     }
     return {
@@ -109,43 +110,43 @@ export function previewImport(db, filename, text, userId) {
       anomalies: [...new Set(anomalies)],
     };
   });
-  const result = db.prepare(`
-    INSERT INTO import_batches(filename, status, report_json, created_by) VALUES(?, 'apercu', ?, ?)
+  const result = await db.prepare(`
+    INSERT INTO import_batches(filename, status, report_json, created_by) VALUES(?, 'apercu', ?, ?) RETURNING id
   `).run(filename || "import.csv", JSON.stringify({ rows }), userId);
-  return { batchId: Number(result.lastInsertRowid), rows };
+  return { batchId: result.lastInsertRowid, rows };
 }
 
-export function commitImport(db, user, batchId, decisions) {
-  const batch = db.prepare("SELECT * FROM import_batches WHERE id = ?").get(batchId);
+export async function commitImport(db, user, batchId, decisions) {
+  const batch = await db.prepare("SELECT * FROM import_batches WHERE id = ?").get(batchId);
   if (!batch || batch.status !== "apercu") throw new HttpError(400, "Cet aperçu d'import n'est plus valable");
   const { rows } = JSON.parse(batch.report_json);
-  const year = db.prepare("SELECT * FROM academic_years WHERE active = 1").get();
+  const year = await db.prepare("SELECT * FROM academic_years WHERE active = 1").get();
   const blocked = rows.filter((row) => row.anomalies.length && decisions?.[row.line] !== "accept" && decisions?.[row.line] !== "skip");
   if (blocked.length) throw new HttpError(400, "Chaque anomalie doit être acceptée ou la ligne ignorée");
 
-  return transaction(db, () => {
+  return transaction(db, async () => {
     let created = 0;
     let payments = 0;
     let skipped = 0;
     for (const row of rows) {
       if (decisions?.[row.line] === "skip" || row.anomalies.includes("Ligne vide")) { skipped += 1; continue; }
       if (!row.programId || !row.nom) { skipped += 1; continue; }
-      let student = row.matricule ? db.prepare("SELECT * FROM students WHERE matricule = ?").get(row.matricule) : null;
+      let student = row.matricule ? await db.prepare("SELECT * FROM students WHERE matricule = ?").get(row.matricule) : null;
       if (!student) {
-        const matricule = row.matricule || nextFreeMatricule(db, year.label);
-        const inserted = db.prepare(`
+        const matricule = row.matricule || await nextFreeMatricule(db, year.label);
+        const inserted = await db.prepare(`
           INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, source)
-          VALUES(?, ?, ?, ?, ?, ?, 'saisie')
+          VALUES(?, ?, ?, ?, ?, ?, 'saisie') RETURNING id
         `).run(matricule, row.nom.toUpperCase(), row.prenom, row.programId, year.id, row.level);
-        student = db.prepare("SELECT * FROM students WHERE id = ?").get(Number(inserted.lastInsertRowid));
-        issueEnrollmentReceipt(db, user, student.id, false);
+        student = await db.prepare("SELECT * FROM students WHERE id = ?").get(inserted.lastInsertRowid);
+        await issueEnrollmentReceipt(db, user, student.id);
         created += 1;
       }
       const codes = ["inscription", "tranche_1", "tranche_2", "tranche_3"];
       for (let index = 0; index < row.parts.length; index += 1) {
         const part = row.parts[index];
         if (!part.amount || part.amount <= 0) continue;
-        createPayment(db, user, {
+        await createPayment(db, user, {
           studentId: student.id,
           amount: part.amount,
           paidOn: todayInConakry(),
@@ -156,19 +157,19 @@ export function commitImport(db, user, batchId, decisions) {
           dateUnconfirmed: true,
           acceptCredit: true,
           acceptDuplicateReference: true,
-        }, todayInConakry(), false);
+        }, todayInConakry());
         payments += 1;
       }
     }
-    db.prepare("UPDATE import_batches SET status = 'importe', report_json = ? WHERE id = ?").run(JSON.stringify({ rows, created, payments, skipped }), batchId);
-    audit(db, user.id, "import.csv", "import_batches", batchId, null, { created, payments, skipped });
+    await db.prepare("UPDATE import_batches SET status = 'importe', report_json = ? WHERE id = ?").run(JSON.stringify({ rows, created, payments, skipped }), batchId);
+    await audit(db, user.id, "import.csv", "import_batches", batchId, null, { created, payments, skipped });
     return { created, payments, skipped };
   });
 }
 
-function nextFreeMatricule(db, label) {
+async function nextFreeMatricule(db, label) {
   const year = label.slice(0, 4);
-  const rows = db.prepare("SELECT matricule FROM students WHERE matricule LIKE ?").all(`AIM-${year}-%`);
+  const rows = await db.prepare("SELECT matricule FROM students WHERE matricule LIKE ?").all(`AIM-${year}-%`);
   let max = 100;
   for (const row of rows) {
     const value = Number(row.matricule.split("-").pop());

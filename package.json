@@ -8,13 +8,17 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "start": "node src/server.js",
     "test": "node --test tests/*.test.js",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "transfert": "node --disable-warning=ExperimentalWarning scripts/transfer-sqlite.js",
+    "docker:up": "docker compose up -d --build",
+    "docker:logs": "docker compose logs -f scolarite"
   },
   "dependencies": {
     "express": "^5.1.0",
     "pdfkit": "^0.17.2",
+    "pg": "^8.23.1",
     "qrcode": "^1.5.4"
   }
 }

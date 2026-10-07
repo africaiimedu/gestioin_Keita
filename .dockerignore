@@ -1,0 +1,11 @@
+.git
+.env
+**/.env
+node_modules
+data
+tests
+docs
+db
+Afrcaiim Card
+*.md
+.DS_Store

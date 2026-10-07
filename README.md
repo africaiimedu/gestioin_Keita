@@ -1,57 +1,88 @@
 # AfricaIIM Scolarité
 
-Registre des paiements de scolarité. Chaque encaissement est une ligne. Le total payé, le reste, le taux et le statut sont **recalculés**, jamais saisis.
+Registre des paiements de scolarité de l'Université AFRICAIIM. Chaque encaissement est une ligne. Le total payé, le reste, le taux et le statut sont **recalculés**, jamais saisis.
 
-## Stack
+## Architecture
 
-Node.js 22 et Express : un seul programme, très répandu.
-SQLite, déjà inclus dans Node : la base est un fichier, les montants sont des entiers.
-PDFKit : reçus PDF, sans service payant.
-Pages en français, sans framework lourd, pour rester rapides sur une connexion lente.
-Toutes les formules sont dans `src/finance`. L'écran, l'API, le reçu et l'export appellent ce module.
+```
+docker compose
+├── postgres     PostgreSQL 16 — base « africaiim », stockage permanent (volume africaiim_pg_data)
+│                 schéma « scolarite » : cette application (rôle dédié, sans droits d'administration)
+│                 schéma « cartes »    : réservé à l'application de cartes
+├── scolarite    Node.js 22 + Express — http://localhost:4317
+└── sauvegarde   pg_dump automatique toutes les 24 h dans data/backups (30 jours gardés)
+```
 
-## Installation
+| Dossier | Contenu |
+|---|---|
+| `src/db/` | Connexion PostgreSQL, transactions, migrations versionnées (`migrations/NNN_nom.sql`) |
+| `src/finance/` | Toutes les formules (allocation, reste, retard, montants en lettres) |
+| `src/services/` | Règles métier : paiements, reçus, costume, comptes, import CSV, liaison cartes |
+| `src/seed/` | Données de départ d'une base neuve |
+| `public/` | Interface (sans framework, rapide sur connexion lente) |
+| `db/` | Initialisation de PostgreSQL et script de sauvegarde |
+| `scripts/` | Sauvegarde manuelle, transfert depuis l'ancienne base SQLite |
+| `tests/` | Tests automatiques sur une base PostgreSQL séparée (`africaiim_test`) |
 
-1. Installer Node.js 22 ou plus récent.
-2. Dans ce dossier : `npm install`
-3. Lancer : `npm start`
-4. Ouvrir [http://localhost:4317](http://localhost:4317)
-5. Vérifier les calculs : `npm test`
+### Solidité des données
 
-Le fichier `.env` est déjà prêt pour un essai sur cet ordinateur.
+- Montants en entiers `BIGINT` (francs guinéens), dates en `DATE`, contraintes `CHECK` sur chaque valeur.
+- Un paiement validé, un reçu, une annulation et le journal d'audit ne peuvent être ni modifiés ni supprimés : des déclencheurs PostgreSQL le refusent, même en SQL direct.
+- Les encaissements passent dans une transaction verrouillée : deux caisses simultanées ne dépassent jamais le reste et les numéros de reçu restent sans trou.
+- Le schéma évolue par migrations numérotées, appliquées une seule fois au démarrage.
 
-## Comptes de démonstration
+## Démarrage
 
-À changer avant toute mise sur Internet (`DEMO_MODE=false` dans `.env`).
+Prérequis : Docker Desktop.
 
-| Rôle | E-mail | Mot de passe | Code à 6 chiffres |
-|---|---|---|---|
-| Gestionnaire | gestionnaire@univ-africaiim.com | Gestion-2026! | Non |
-| Admin (scolarité) | admin@univ-africaiim.com | Admin-2026! | Bouton sur l'écran de connexion |
-| Super admin | superadmin@univ-africaiim.com | Super-2026! | Bouton sur l'écran de connexion |
+1. Copier `.env.example` vers `.env` et remplir les mots de passe (`openssl rand -hex 24`).
+2. `docker compose up -d --build`
+3. Ouvrir [http://localhost:4317](http://localhost:4317)
 
-La fiche `AIM-2026-0099` (DÉMO Formation) sert à s'entraîner. Les 62 autres viennent du PDF.
+| Commande | Effet |
+|---|---|
+| `docker compose ps` | État des services |
+| `docker compose logs -f scolarite` | Journal de l'application |
+| `docker compose restart scolarite` | Redémarrer l'application |
+| `docker compose down` | Arrêter (les données restent sur le volume) |
+| `npm run backup` | Sauvegarde immédiate dans `data/backups` |
+| `npm test` | Tests (PostgreSQL démarré, Node 22 local) |
+
+Ne jamais lancer `docker compose down -v` : l'option `-v` efface le volume de la base.
+
+## Sauvegarde et restauration
+
+Les sauvegardes (`data/backups/*.dump`) contiennent toutes les données : copiez-les régulièrement sur un autre support. Copiez aussi `data/uploads` (justificatifs).
+
+Restaurer une sauvegarde (remplace le contenu actuel du schéma) :
+
+```sh
+docker compose stop scolarite
+docker compose exec -T sauvegarde pg_restore --clean --if-exists -d africaiim /backups/NOM_DU_FICHIER.dump
+docker compose start scolarite
+```
+
+## Ancienne base SQLite
+
+Les données ont été transférées le 7 octobre 2026. Une copie de l'ancienne base est gardée dans `data/archives`. Le transfert se rejoue sur une base PostgreSQL vide avec `npm run transfert -- chemin/vers/scolarite.sqlite` : il compare ensuite les lignes, les totaux encaissés et les numéros de reçus.
 
 ## Règles confirmées
 
-- Le droit d'inscription est **inclus** dans les frais annuels. C'est la première échéance, pas un supplément.
 - Répartition : **20 %** le 5 octobre, **40 %** le 5 décembre, **40 %** le 5 mars.
-- Licence 25 000 000 = 5 000 000 + 10 000 000 + 10 000 000.
-- Master 30 000 000 = 6 000 000 + 12 000 000 + 12 000 000.
-- Tech Ingénieur 37 000 000 = 7 400 000 + 14 800 000 + 14 800 000.
-- L'admin de la scolarité peut modifier ces trois montants. Le gestionnaire encaisse, il ne change pas le barème.
-- Les dates du PDF restent « à confirmer ». L'argent importé est affecté à la plus ancienne échéance encore ouverte.
+- Frais d'inscription : 1 000 000 en Licence et Bachelor, 3 000 000 en Master, dus au premier versement, offerts aux boursiers.
+- Réduction de 5 % quand tous les frais annuels sont payés en une fois.
+- Les fiches importées gardent leur ancien barème.
+- Le costume se suit à part, au même prix pour tous (Paramètres).
 
 ## Règles qui ne changent pas
 
 - Montants entiers, en francs guinéens.
-- Un paiement ne se modifie pas et ne se supprime pas. On l'annule avec un motif, puis on en crée un autre.
+- Un paiement ne se modifie pas et ne se supprime pas. On l'annule avec un motif ; une mise à jour ajoute un nouveau versement.
+- Un versement supérieur au reste à payer est refusé.
 - Le reçu `REC-2026-000001` ne peut pas être réutilisé ni renuméroté.
 - Un second clic sur « Valider » ne crée pas un deuxième paiement.
 
-## Sauvegarde
-
-`npm run backup` crée un fichier chiffré dans `data/backups`. Le mot de passe est `BACKUP_PASSPHRASE` dans `.env`. Copiez aussi le dossier `data/uploads` (justificatifs). En production, placez l'application derrière HTTPS.
+En production, placez l'application derrière HTTPS et mettez `DEMO_MODE=false`.
 
 ## Guides
 

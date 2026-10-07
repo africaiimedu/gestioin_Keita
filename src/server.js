@@ -4,9 +4,10 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { verifyPassword, sessionToken, can, hashPassword, passwordIssue, RIGHTS, rightsOf } from "./auth/passwords.js";
 import { verifyTotp, totp } from "./auth/totp.js";
-import { getDb } from "./db.js";
+import { closeDb, getDb } from "./db/index.js";
+import { runMigrations } from "./db/migrate.js";
 import { seedAll } from "./seed/run.js";
-import { applyIdentity, ensurePaymentControls, migrateConfirmedRules } from "./seed/migrate.js";
+import { applyIdentity } from "./seed/migrate.js";
 import { ANOMALY_LABELS } from "./seed/interpret.js";
 import { HttpError } from "./httpError.js";
 import { formatGnf } from "./finance/index.js";
@@ -52,10 +53,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv(path.join(root, ".env"));
 
 const db = getDb();
-if (Number(db.prepare("SELECT COUNT(*) AS n FROM users").get().n) === 0) seedAll(db);
-migrateConfirmedRules(db);
-ensurePaymentControls(db);
-applyIdentity(db);
+await runMigrations(db);
+if (Number((await db.prepare("SELECT COUNT(*) AS n FROM users").get()).n) === 0) await seedAll(db);
+await applyIdentity(db);
 
 const app = express();
 app.disable("x-powered-by");
@@ -70,23 +70,31 @@ app.use((req, res, next) => {
   res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'");
   next();
 });
+app.get("/api/sante", async (_req, res) => {
+  try {
+    await db.prepare("SELECT 1").get();
+    res.json({ ok: true, base: "postgresql" });
+  } catch {
+    res.status(503).json({ ok: false });
+  }
+});
 attachCardPortal(app, loadUser);
 app.use(express.json({ limit: "8mb" }));
 
 const failures = new Map();
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && req.path.startsWith("/api/") && req.path !== "/api/connexion") {
     if (req.get("x-africaiim") !== "1") {
       res.status(403).json({ error: "Requête refusée" });
       return;
     }
   }
-  req.user = loadUser(req);
+  req.user = await loadUser(req);
   next();
 });
 
-app.post("/api/connexion", (req, res) => {
+app.post("/api/connexion", async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const ip = req.ip || "";
@@ -96,13 +104,13 @@ app.post("/api/connexion", (req, res) => {
     res.status(429).json({ error: "Trop de tentatives. Réessayez dans 15 minutes." });
     return;
   }
-  const user = db.prepare(`
+  const user = await db.prepare(`
     SELECT u.*, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE email = ? AND active = 1
   `).get(email);
   if (!user || !verifyPassword(password, user.password_hash)) {
     recent.push(Date.now());
     failures.set(email, recent);
-    db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 0, ?)").run(user?.id ?? null, email, ip);
+    await db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 0, ?)").run(user?.id ?? null, email, ip);
     res.status(401).json({ error: "Identifiants incorrects" });
     return;
   }
@@ -110,7 +118,7 @@ app.post("/api/connexion", (req, res) => {
     if (!verifyTotp(user.totp_secret, req.body?.totp || "")) {
       recent.push(Date.now());
       failures.set(email, recent);
-      db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 0, ?)").run(user.id, email, ip);
+      await db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 0, ?)").run(user.id, email, ip);
       res.status(401).json({ error: "Code de vérification incorrect ou manquant", totpRequired: true });
       return;
     }
@@ -118,15 +126,15 @@ app.post("/api/connexion", (req, res) => {
   failures.delete(email);
   const id = sessionToken();
   const now = Date.now();
-  db.prepare("INSERT INTO sessions(id, user_id, created_at, last_seen, expires_at) VALUES(?, ?, ?, ?, ?)").run(id, user.id, now, now, now + 12 * 3600 * 1000);
-  db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 1, ?)").run(user.id, email, ip);
+  await db.prepare("INSERT INTO sessions(id, user_id, created_at, last_seen, expires_at) VALUES(?, ?, ?, ?, ?)").run(id, user.id, now, now, now + 12 * 3600 * 1000);
+  await db.prepare("INSERT INTO login_logs(user_id, email, success, ip) VALUES(?, ?, 1, ?)").run(user.id, email, ip);
   res.setHeader("Set-Cookie", `aim_session=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${12 * 3600}`);
   res.json({ user: publicUser(user) });
 });
 
-app.post("/api/deconnexion", (req, res) => {
+app.post("/api/deconnexion", async (req, res) => {
   const id = readCookie(req, "aim_session");
-  if (id) db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+  if (id) await db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
   res.setHeader("Set-Cookie", [
     "aim_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
     "africard=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
@@ -150,13 +158,13 @@ app.get("/api/demo", (req, res) => {
   res.json({ demo: true, accounts: [] });
 });
 
-app.get("/api/demo/code", (req, res) => {
+app.get("/api/demo/code", async (req, res) => {
   if (process.env.DEMO_MODE !== "true") {
     res.status(404).json({ error: "Indisponible" });
     return;
   }
   const email = String(req.query.email || "").toLowerCase();
-  const user = db.prepare("SELECT totp_secret, totp_required FROM users WHERE email = ?").get(email);
+  const user = await db.prepare("SELECT totp_secret, totp_required FROM users WHERE email = ?").get(email);
   if (!user?.totp_required) {
     res.json({ code: null });
     return;
@@ -164,13 +172,13 @@ app.get("/api/demo/code", (req, res) => {
   res.json({ code: totp(user.totp_secret) });
 });
 
-app.get("/api/referentiel", requireUser, (_req, res) => res.json(catalog(db)));
-app.get("/api/tableau", requireAction("dashboard.read"), (req, res) => {
-  res.json(dashboard(db, readFilters(req), todayInConakry()));
+app.get("/api/referentiel", requireUser, async (_req, res) => res.json(await catalog(db)));
+app.get("/api/tableau", requireAction("dashboard.read"), async (req, res) => {
+  res.json(await dashboard(db, readFilters(req), todayInConakry()));
 });
-app.get("/api/coherence", requireAction("dashboard.read"), (_req, res) => res.json(reconcile(db)));
-app.get("/api/etudiants", requireAction("student.read"), (req, res) => {
-  const rows = listStudents(db, {
+app.get("/api/coherence", requireAction("dashboard.read"), async (_req, res) => res.json(await reconcile(db)));
+app.get("/api/etudiants", requireAction("student.read"), async (req, res) => {
+  const rows = await listStudents(db, {
     q: req.query.q,
     yearId: numberOrNull(req.query.annee),
     programId: numberOrNull(req.query.filiere),
@@ -182,21 +190,24 @@ app.get("/api/etudiants", requireAction("student.read"), (req, res) => {
     students: rows.map((row) => ({ ...publicStudent(row.student), situation: row.situation })),
   });
 });
-app.get("/api/etudiants/:id", requireAction("student.read"), (req, res) => {
-  const current = studentSituation(db, Number(req.params.id));
-  const payments = db.prepare(`
-    SELECT p.id, p.amount, p.paid_on, p.method, p.reference, p.installment_code, p.note, p.status,
-           p.date_unconfirmed, u.full_name AS agent, r.id AS receipt_id, r.number AS receipt_number, r.print_count,
-           c.reason AS cancel_reason, c.cancelled_at, c.credit_note_number
-    FROM payments p
-    JOIN users u ON u.id = p.received_by
-    LEFT JOIN receipts r ON r.payment_id = p.id
-    LEFT JOIN cancellations c ON c.payment_id = p.id
-    WHERE p.student_id = ?
-    ORDER BY p.paid_on, p.id
-  `).all(current.student.id);
-  const reminders = db.prepare("SELECT id, channel, message, created_at FROM reminders WHERE student_id = ? ORDER BY id DESC").all(current.student.id);
-  const enrollment = db.prepare("SELECT id, number, created_at FROM enrollment_receipts WHERE student_id = ?").get(current.student.id);
+app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) => {
+  const current = await studentSituation(db, Number(req.params.id));
+  const [payments, reminders, enrollment, costume] = await Promise.all([
+    db.prepare(`
+      SELECT p.id, p.amount, p.paid_on, p.method, p.reference, p.installment_code, p.note, p.status,
+             p.date_unconfirmed, u.full_name AS agent, r.id AS receipt_id, r.number AS receipt_number, r.print_count,
+             c.reason AS cancel_reason, c.cancelled_at, c.credit_note_number
+      FROM payments p
+      JOIN users u ON u.id = p.received_by
+      LEFT JOIN receipts r ON r.payment_id = p.id
+      LEFT JOIN cancellations c ON c.payment_id = p.id
+      WHERE p.student_id = ?
+      ORDER BY p.paid_on, p.id
+    `).all(current.student.id),
+    db.prepare("SELECT id, channel, message, created_at FROM reminders WHERE student_id = ? ORDER BY id DESC").all(current.student.id),
+    db.prepare("SELECT id, number, created_at FROM enrollment_receipts WHERE student_id = ?").get(current.student.id),
+    costumeSituation(db, current.student.id),
+  ]);
   res.json({
     student: publicStudent(current.student),
     situation: current.situation,
@@ -204,17 +215,17 @@ app.get("/api/etudiants/:id", requireAction("student.read"), (req, res) => {
     payments,
     reminders,
     enrollment,
-    costume: costumeSituation(db, current.student.id),
+    costume,
   });
 });
-app.post("/api/etudiants/:id/costume", requireAction("payment.create"), (req, res) => {
-  res.status(201).json(recordCostume(db, req.user, Number(req.params.id), req.body || {}));
+app.post("/api/etudiants/:id/costume", requireAction("payment.create"), async (req, res) => {
+  res.status(201).json(await recordCostume(db, req.user, Number(req.params.id), req.body || {}));
 });
-app.post("/api/costumes/:id/annuler", requireAction("payment.cancel"), (req, res) => {
-  res.json(cancelCostume(db, req.user, Number(req.params.id), req.body?.reason));
+app.post("/api/costumes/:id/annuler", requireAction("payment.cancel"), async (req, res) => {
+  res.json(await cancelCostume(db, req.user, Number(req.params.id), req.body?.reason));
 });
-app.post("/api/etudiants", requireAction("student.write"), (req, res) => {
-  const created = createStudent(db, req.user, req.body || {});
+app.post("/api/etudiants", requireAction("student.write"), async (req, res) => {
+  const created = await createStudent(db, req.user, req.body || {});
   res.status(201).json({
     student: publicStudent(created.student),
     situation: created.situation,
@@ -222,52 +233,54 @@ app.post("/api/etudiants", requireAction("student.write"), (req, res) => {
     enrollmentReceiptNumber: created.enrollmentReceiptNumber,
   });
 });
-app.post("/api/etudiants/:id/inscription", requireAction("receipt.read"), (req, res) => {
+app.post("/api/etudiants/:id/inscription", requireAction("receipt.read"), async (req, res) => {
   const studentId = Number(req.params.id);
-  const existing = db.prepare("SELECT id FROM enrollment_receipts WHERE student_id = ?").get(studentId);
+  const existing = await db.prepare("SELECT id FROM enrollment_receipts WHERE student_id = ?").get(studentId);
   if (!existing && !can(req.user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit d'émettre un reçu d'inscription");
-  const receipt = issueEnrollmentReceipt(db, req.user, studentId);
+  const receipt = await issueEnrollmentReceipt(db, req.user, studentId);
   res.status(receipt.created ? 201 : 200).json(receipt);
 });
-app.patch("/api/etudiants/:id", requireAction("student.write"), (req, res) => {
-  const updated = updateStudent(db, req.user, Number(req.params.id), req.body || {});
+app.patch("/api/etudiants/:id", requireAction("student.write"), async (req, res) => {
+  const updated = await updateStudent(db, req.user, Number(req.params.id), req.body || {});
   res.json({ student: publicStudent(updated.student), situation: updated.situation });
 });
-app.post("/api/paiements/apercu", requireAction("payment.create"), (req, res) => {
-  res.json(previewPayment(db, req.body || {}));
+app.post("/api/paiements/apercu", requireAction("payment.create"), async (req, res) => {
+  res.json(await previewPayment(db, req.body || {}));
 });
-app.post("/api/paiements", requireAction("payment.create"), (req, res) => {
-  const result = createPayment(db, req.user, req.body || {});
+app.post("/api/paiements", requireAction("payment.create"), async (req, res) => {
+  const result = await createPayment(db, req.user, req.body || {});
   res.status(result.replay ? 200 : 201).json(result);
 });
-app.post("/api/paiements/:id/apercu", requireAction("payment.create"), (req, res) => {
-  res.json(previewPaymentUpdate(db, Number(req.params.id), req.body || {}));
+app.post("/api/paiements/:id/apercu", requireAction("payment.create"), async (req, res) => {
+  res.json(await previewPaymentUpdate(db, Number(req.params.id), req.body || {}));
 });
-app.post("/api/paiements/:id/mettre-a-jour", requireAction("payment.create"), (req, res) => {
-  const result = updatePayment(db, req.user, Number(req.params.id), req.body || {});
+app.post("/api/paiements/:id/mettre-a-jour", requireAction("payment.create"), async (req, res) => {
+  const result = await updatePayment(db, req.user, Number(req.params.id), req.body || {});
   res.status(result.replay ? 200 : 201).json(result);
 });
-app.post("/api/paiements/:id/annuler", requireAction("payment.cancel"), (req, res) => {
-  res.json(cancelPayment(db, req.user, Number(req.params.id), req.body?.reason));
+app.post("/api/paiements/:id/annuler", requireAction("payment.cancel"), async (req, res) => {
+  res.json(await cancelPayment(db, req.user, Number(req.params.id), req.body?.reason));
 });
-app.post("/api/paiements/:id/debloquer", requireUser, (req, res) => {
-  res.json(unlockPayment(db, req.user, Number(req.params.id)));
+app.post("/api/paiements/:id/debloquer", requireUser, async (req, res) => {
+  res.json(await unlockPayment(db, req.user, Number(req.params.id)));
 });
-app.get("/api/caisse/paiements", requireAction("payment.create"), (req, res) => {
-  res.json({ payments: listCashPayments(db, req.query.date || null) });
+app.get("/api/caisse/paiements", requireAction("payment.create"), async (req, res) => {
+  res.json({ payments: await listCashPayments(db, req.query.date || null) });
 });
 app.get("/api/recus/:id.pdf", requireAction("receipt.read"), async (req, res) => {
-  const receipt = db.prepare(`
-    SELECT r.*, p.status AS payment_status FROM receipts r JOIN payments p ON p.id = r.payment_id WHERE r.id = ?
+  const receipt = await db.prepare(`
+    UPDATE receipts r SET print_count = r.print_count + 1
+    FROM payments p
+    WHERE p.id = r.payment_id AND r.id = ?
+    RETURNING r.*, p.status AS payment_status
   `).get(Number(req.params.id));
   if (!receipt) throw new HttpError(404, "Reçu introuvable");
-  db.prepare("UPDATE receipts SET print_count = print_count + 1 WHERE id = ?").run(receipt.id);
-  const cancelled = db.prepare("SELECT * FROM cancellations WHERE payment_id = ?").get(receipt.payment_id);
+  const cancelled = await db.prepare("SELECT * FROM cancellations WHERE payment_id = ?").get(receipt.payment_id);
   const format = req.query.format === "a5" ? "a5" : "a4";
   const pdf = await renderReceiptPdf({
     snapshot: JSON.parse(receipt.snapshot_json),
     receipt,
-    school: schoolBlock(),
+    school: await schoolBlock(),
     format,
     cancelled: receipt.payment_status === "annule" ? cancelled : null,
     verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${receipt.verify_token}`,
@@ -277,13 +290,14 @@ app.get("/api/recus/:id.pdf", requireAction("receipt.read"), async (req, res) =>
   res.send(pdf);
 });
 app.get("/api/inscriptions/:id.pdf", requireAction("receipt.read"), async (req, res) => {
-  const receipt = db.prepare("SELECT * FROM enrollment_receipts WHERE id = ?").get(Number(req.params.id));
+  const receipt = await db.prepare(`
+    UPDATE enrollment_receipts SET print_count = print_count + 1 WHERE id = ? RETURNING *
+  `).get(Number(req.params.id));
   if (!receipt) throw new HttpError(404, "Reçu d'inscription introuvable");
-  db.prepare("UPDATE enrollment_receipts SET print_count = print_count + 1 WHERE id = ?").run(receipt.id);
   const pdf = await renderEnrollmentPdf({
     snapshot: JSON.parse(receipt.snapshot_json),
     receipt,
-    school: schoolBlock(),
+    school: await schoolBlock(),
     format: req.query.format === "a5" ? "a5" : "a4",
     verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${receipt.verify_token}`,
   });
@@ -291,27 +305,28 @@ app.get("/api/inscriptions/:id.pdf", requireAction("receipt.read"), async (req, 
   res.setHeader("Content-Disposition", `inline; filename="${receipt.number}.pdf"`);
   res.send(pdf);
 });
-app.get("/api/journal", requireAction("report.read"), (req, res) => {
-  res.json(cashJournal(db, req.query.date || todayInConakry()));
+app.get("/api/journal", requireAction("report.read"), async (req, res) => {
+  res.json(await cashJournal(db, req.query.date || todayInConakry()));
 });
-app.get("/api/retards", requireAction("student.read"), (_req, res) => res.json({ students: lateStudents(db) }));
-app.post("/api/relances", requireAction("reminder.create"), (req, res) => {
-  res.status(201).json(createReminder(db, req.user, Number(req.body?.studentId), req.body?.channel || "copie"));
+app.get("/api/retards", requireAction("student.read"), async (_req, res) => res.json({ students: await lateStudents(db) }));
+app.post("/api/relances", requireAction("reminder.create"), async (req, res) => {
+  res.status(201).json(await createReminder(db, req.user, Number(req.body?.studentId), req.body?.channel || "copie"));
 });
-app.get("/api/audit", requireAction("audit.read"), (_req, res) => {
-  res.json({
-    entries: db.prepare(`
+app.get("/api/audit", requireAction("audit.read"), async (_req, res) => {
+  const [entries, logins] = await Promise.all([
+    db.prepare(`
       SELECT a.id, a.action, a.entity, a.entity_id, a.created_at, u.full_name AS user_name
       FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
       ORDER BY a.id DESC LIMIT 200
     `).all(),
-    logins: db.prepare(`
+    db.prepare(`
       SELECT id, email, success, ip, created_at FROM login_logs ORDER BY id DESC LIMIT 50
     `).all(),
-  });
+  ]);
+  res.json({ entries, logins });
 });
-app.get("/api/anomalies", requireAction("student.read"), (_req, res) => {
-  const batch = db.prepare("SELECT report_json, created_at FROM import_batches WHERE status = 'importe' ORDER BY id LIMIT 1").get();
+app.get("/api/anomalies", requireAction("student.read"), async (_req, res) => {
+  const batch = await db.prepare("SELECT report_json, created_at FROM import_batches WHERE status = 'importe' ORDER BY id LIMIT 1").get();
   const report = batch ? JSON.parse(batch.report_json) : { rows: [] };
   res.json({
     labels: ANOMALY_LABELS,
@@ -323,24 +338,20 @@ app.get("/api/import/modele.csv", requireAction("import.run"), (_req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.send(csvTemplate());
 });
-app.post("/api/import/apercu", requireAction("import.run"), (req, res) => {
+app.post("/api/import/apercu", requireAction("import.run"), async (req, res) => {
   const text = String(req.body?.csv || "");
-  res.json(previewImport(db, req.body?.filename, text, req.user.id));
+  res.json(await previewImport(db, req.body?.filename, text, req.user.id));
 });
-app.post("/api/import/valider", requireAction("import.run"), (req, res) => {
-  const result = commitImport(db, req.user, Number(req.body?.batchId), req.body?.decisions || {});
+app.post("/api/import/valider", requireAction("import.run"), async (req, res) => {
+  const result = await commitImport(db, req.user, Number(req.body?.batchId), req.body?.decisions || {});
   syncStudentsToCard(db).catch(() => {});
   res.json(result);
 });
-app.post("/api/cartes/synchroniser", requireAction("student.write"), async (_req, res, next) => {
-  try {
-    res.json(await syncStudentsToCard(db));
-  } catch (error) {
-    next(error);
-  }
+app.post("/api/cartes/synchroniser", requireAction("student.write"), async (_req, res) => {
+  res.json(await syncStudentsToCard(db));
 });
-app.get("/api/export/etudiants.csv", requireAction("report.read"), (req, res) => {
-  const rows = listStudents(db, { yearId: numberOrNull(req.query.annee), programId: numberOrNull(req.query.filiere), level: req.query.niveau || null });
+app.get("/api/export/etudiants.csv", requireAction("report.read"), async (req, res) => {
+  const rows = await listStudents(db, { yearId: numberOrNull(req.query.annee), programId: numberOrNull(req.query.filiere), level: req.query.niveau || null });
   const header = ["Matricule", "Nom", "Prénom", "Filière", "Niveau", "Frais dus", "Total payé", "Reste", "Crédit", "Statut"];
   const lines = [header.join(";")];
   let due = 0;
@@ -369,20 +380,26 @@ app.get("/api/export/etudiants.csv", requireAction("report.read"), (req, res) =>
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.send(`\uFEFF${lines.join("\n")}`);
 });
-app.get("/api/baremes", requireUser, (_req, res) => res.json({ fees: catalog(db).fees, dues: db.prepare("SELECT code, due_on FROM installment_due_dates").all() }));
-app.put("/api/baremes/:id", requireUser, (req, res) => {
-  res.json(saveFeeSchedule(db, req.user, { ...req.body, id: Number(req.params.id) }));
+app.get("/api/baremes", requireUser, async (_req, res) => {
+  const [current, dues] = await Promise.all([
+    catalog(db),
+    db.prepare("SELECT code, due_on FROM installment_due_dates").all(),
+  ]);
+  res.json({ fees: current.fees, dues });
 });
-app.put("/api/parametres", requireUser, (req, res) => {
-  updateSettings(db, req.user, req.body || {});
-  res.json({ ok: true, settings: catalog(db).settings });
+app.put("/api/baremes/:id", requireUser, async (req, res) => {
+  res.json(await saveFeeSchedule(db, req.user, { ...req.body, id: Number(req.params.id) }));
 });
-app.get("/api/utilisateurs", requireUser, (req, res) => {
+app.put("/api/parametres", requireUser, async (req, res) => {
+  await updateSettings(db, req.user, req.body || {});
+  res.json({ ok: true, settings: (await catalog(db)).settings });
+});
+app.get("/api/utilisateurs", requireUser, async (req, res) => {
   if (!can(req.user, "user.write")) throw new HttpError(403, "Accès refusé");
-  const users = db.prepare(`
+  const users = (await db.prepare(`
     SELECT u.id, u.full_name, u.email, u.active, u.permissions_json, r.code AS role, r.label AS role_label
     FROM users u JOIN roles r ON r.id = u.role_id WHERE u.active = 1 ORDER BY u.full_name
-  `).all().map((row) => ({
+  `).all()).map((row) => ({
     id: row.id,
     name: row.full_name,
     email: row.email,
@@ -393,16 +410,16 @@ app.get("/api/utilisateurs", requireUser, (req, res) => {
   }));
   res.json({ users, rights: RIGHTS.map(([code, label]) => ({ code, label })) });
 });
-app.post("/api/utilisateurs", requireUser, (req, res) => {
-  res.status(201).json(createUser(db, req.user, req.body || {}));
+app.post("/api/utilisateurs", requireUser, async (req, res) => {
+  res.status(201).json(await createUser(db, req.user, req.body || {}));
 });
-app.put("/api/utilisateurs/:id", requireUser, (req, res) => {
-  res.json(updateUserAccess(db, req.user, Number(req.params.id), req.body || {}));
+app.put("/api/utilisateurs/:id", requireUser, async (req, res) => {
+  res.json(await updateUserAccess(db, req.user, Number(req.params.id), req.body || {}));
 });
-app.delete("/api/utilisateurs/:id", requireUser, (req, res) => {
-  res.json(deactivateUser(db, req.user, Number(req.params.id)));
+app.delete("/api/utilisateurs/:id", requireUser, async (req, res) => {
+  res.json(await deactivateUser(db, req.user, Number(req.params.id)));
 });
-app.post("/api/compte/mot-de-passe", requireUser, (req, res) => {
+app.post("/api/compte/mot-de-passe", requireUser, async (req, res) => {
   const current = String(req.body?.current || "");
   const next = String(req.body?.next || "");
   const must = Boolean(req.user.must_change_password);
@@ -412,18 +429,18 @@ app.post("/api/compte/mot-de-passe", requireUser, (req, res) => {
   if (must && verifyPassword(next, req.user.password_hash)) {
     throw new HttpError(400, "Choisissez un mot de passe différent du mot de passe provisoire");
   }
-  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(next), req.user.id);
-  audit(db, req.user.id, "motdepasse", "users", req.user.id, null, { changed: true, first: must });
-  const fresh = db.prepare(`
+  await db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(next), req.user.id);
+  await audit(db, req.user.id, "motdepasse", "users", req.user.id, null, { changed: true, first: must });
+  const fresh = await db.prepare(`
     SELECT u.*, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?
   `).get(req.user.id);
   res.json({ ok: true, user: publicUser(fresh) });
 });
-app.get("/api/integrations/cartes", (req, res) => {
+app.get("/api/integrations/cartes", async (req, res) => {
   const token = process.env.INTEGRATION_TOKEN;
   if (!token) throw new HttpError(404, "Lien cartes désactivé");
   if (req.get("authorization") !== `Bearer ${token}`) throw new HttpError(401, "Jeton refusé");
-  const rows = listStudents(db, {});
+  const rows = await listStudents(db, {});
   res.json({
     students: rows.map((row) => ({
       matricule: row.student.matricule,
@@ -434,8 +451,8 @@ app.get("/api/integrations/cartes", (req, res) => {
   });
 });
 
-app.get("/v/:token", (req, res) => {
-  const enrollment = db.prepare("SELECT number, snapshot_json FROM enrollment_receipts WHERE verify_token = ?").get(req.params.token);
+app.get("/v/:token", async (req, res) => {
+  const enrollment = await db.prepare("SELECT number, snapshot_json FROM enrollment_receipts WHERE verify_token = ?").get(req.params.token);
   if (enrollment) {
     const snap = JSON.parse(enrollment.snapshot_json);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -451,7 +468,7 @@ app.get("/v/:token", (req, res) => {
       <p class="muted">Ce document confirme l'inscription. Il ne constate pas un paiement.</p></main></html>`);
     return;
   }
-  const receipt = db.prepare(`
+  const receipt = await db.prepare(`
     SELECT r.number, r.snapshot_json, p.status, c.cancelled_at
     FROM receipts r JOIN payments p ON p.id = r.payment_id
     LEFT JOIN cancellations c ON c.payment_id = p.id
@@ -512,19 +529,19 @@ function requireAction(action) {
   };
 }
 
-function loadUser(req) {
+async function loadUser(req) {
   const id = readCookie(req, "aim_session");
   if (!id) return null;
-  const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id);
+  const session = await db.prepare("SELECT * FROM sessions WHERE id = ?").get(id);
   const now = Date.now();
   if (!session || now > Number(session.expires_at) || now - Number(session.last_seen) > 2 * 3600 * 1000) {
-    if (session) db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+    if (session) await db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
     return null;
   }
-  if (now - Number(session.last_seen) > 60_000) db.prepare("UPDATE sessions SET last_seen = ? WHERE id = ?").run(now, id);
-  return db.prepare(`
+  if (now - Number(session.last_seen) > 60_000) await db.prepare("UPDATE sessions SET last_seen = ? WHERE id = ?").run(now, id);
+  return (await db.prepare(`
     SELECT u.*, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.active = 1
-  `).get(session.user_id);
+  `).get(session.user_id)) || null;
 }
 
 function readCookie(req, name) {
@@ -566,15 +583,10 @@ function numberOrNull(value) {
   return Number.isInteger(number) ? number : null;
 }
 
-function schoolBlock() {
-  return {
-    name: setting(db, "school_name"),
-    city: setting(db, "school_city"),
-    address: setting(db, "school_address"),
-    phone: setting(db, "school_phone"),
-    email: setting(db, "school_email"),
-    web: setting(db, "school_web"),
-  };
+async function schoolBlock() {
+  const keys = ["school_name", "school_city", "school_address", "school_phone", "school_email", "school_web"];
+  const [name, city, address, phone, email, web] = await Promise.all(keys.map((key) => setting(db, key)));
+  return { name, city, address, phone, email, web };
 }
 
 function escapeHtml(value) {
@@ -593,11 +605,11 @@ function loadEnv(file) {
 }
 
 const port = Number(process.env.PORT || 4317);
-const year = activeYear(db);
-const control = reconcile(db);
+const year = await activeYear(db);
+const control = await reconcile(db);
 console.log(`AfricaIIM Scolarité — http://localhost:${port}`);
 console.log(`Année ${year.label} · ${control.students} étudiants · encaissé ${control.paid} GNF · cohérence ${control.ok ? "OK" : "ÉCART"}`);
-app.listen(port, () => {
+const server = app.listen(port, () => {
   syncStudentsToCard(db).then((report) => {
     const detail = report.ignored ? ` · ${report.ignored} fiche non envoyée` : "";
     console.log(`Cartes liées : ${report.sent} matricules${detail}`);
@@ -605,3 +617,14 @@ app.listen(port, () => {
     console.error(`Cartes : ${error.message}`);
   });
 });
+
+function shutdown(signal) {
+  console.log(`${signal} reçu : arrêt propre.`);
+  server.close(async () => {
+    await closeDb();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

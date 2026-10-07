@@ -42,7 +42,7 @@ export async function pushStudentToCard(student) {
 }
 
 export async function syncStudentsToCard(db) {
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT s.matricule, s.last_name, s.first_name, s.email, p.name AS program_name
     FROM students s
     JOIN programs p ON p.id = s.program_id

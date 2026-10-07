@@ -1,27 +1,24 @@
+// Sauvegarde immédiate de PostgreSQL (en plus de la sauvegarde automatique quotidienne).
+// Usage : npm run backup   → data/backups/africaiim_manuel_AAAA-MM-JJ_HH-MM.dump
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { databasePath, uploadDir } from "../src/db.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const passphrase = process.env.BACKUP_PASSPHRASE || "changer-ce-mot-de-passe";
-const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const outDir = path.join(root, "data", "backups");
 fs.mkdirSync(outDir, { recursive: true });
 
-const payload = {
-  createdAt: new Date().toISOString(),
-  database: fs.existsSync(databasePath()) ? fs.readFileSync(databasePath()).toString("base64") : null,
-};
-const json = Buffer.from(JSON.stringify(payload));
-const salt = crypto.randomBytes(16);
-const key = crypto.scryptSync(passphrase, salt, 32);
-const iv = crypto.randomBytes(12);
-const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-const encrypted = Buffer.concat([cipher.update(json), cipher.final()]);
-const tag = cipher.getAuthTag();
-const file = path.join(outDir, `sauvegarde-${stamp}.aimbak`);
-fs.writeFileSync(file, Buffer.concat([Buffer.from("AIM1"), salt, iv, tag, encrypted]));
-console.log(`Sauvegarde chiffrée : ${file}`);
-console.log(`Dossier des pièces : ${uploadDir()}`);
+const stamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
+const name = `africaiim_manuel_${stamp}.dump`;
+const result = spawnSync("docker", [
+  "compose", "exec", "-T", "postgres",
+  "sh", "-c", 'pg_dump --format=custom -U "$POSTGRES_USER" -d africaiim',
+], { cwd: root, maxBuffer: 1024 * 1024 * 1024 });
+
+if (result.status !== 0) {
+  console.error(result.stderr?.toString() || "pg_dump a échoué. PostgreSQL est-il démarré (docker compose up -d) ?");
+  process.exit(1);
+}
+fs.writeFileSync(path.join(outDir, name), result.stdout);
+console.log(`Sauvegarde : data/backups/${name} (${Math.round(result.stdout.length / 1024)} Ko)`);
