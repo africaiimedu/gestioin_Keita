@@ -58,7 +58,13 @@ dotenv.config({ path: path.join(root, ".env"), quiet: true });
 const db = getDb();
 const { LoginLog, Role, Session, User } = db.models;
 await runMigrations(db);
-if ((await User.count()) === 0) await seedAll(db);
+if ((await User.count()) === 0) {
+  if (process.env.NODE_ENV === "production") {
+    console.error("Base vide : installez les données avec « npm run import -- fichier » avant de démarrer.");
+    process.exit(1);
+  }
+  await seedAll(db);
+}
 await applyIdentity(db);
 
 // Le mode démonstration (comptes et codes à 6 chiffres affichés) ne s'ouvre jamais en production.
