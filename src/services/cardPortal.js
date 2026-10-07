@@ -62,7 +62,7 @@ function cardRequest(path, { method = "GET", cookie = "", body = "" } = {}) {
     const request = transport.request({
       protocol: target.protocol,
       hostname: target.hostname,
-      port: target.port || 80,
+      port: target.port || (target.protocol === "https:" ? 443 : 80),
       method,
       path,
       headers,
