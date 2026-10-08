@@ -30,6 +30,7 @@ from app.services.menu_cantine import (
     encaisser_commande,
     passer_commande,
     refuser_commande,
+    retirer_plat,
 )
 from app.services.recus import rapport
 
@@ -195,6 +196,12 @@ def test_sans_solde_encaissement_recus_et_rapport():
             assert (ligne["quantite"], ligne["montant"]) == (1, 12000)
             recu_id = recu.id
             recu_numero = recu.numero
+
+            retirer_plat(db, plat.id)
+            garde = db.get(RecuCantine, recu_id)
+            assert garde is not None and garde.annule_le is None and "1 × Plat reçu test" in garde.details
+            sans_plat = rapport(db, date.today(), date.today())
+            assert sans_plat["especes"] == apres["especes"] and sans_plat["plats"] == apres["plats"]
     except BaseException:
         _nettoyer()
         raise

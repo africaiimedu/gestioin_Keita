@@ -573,7 +573,7 @@ def supprimer_plat(
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
     else:
-        flash(request, "ok", f"{nom} a été retiré. Le QR code reste le même.")
+        flash(request, "ok", f"{nom} a été retiré du menu. Ses reçus et le rapport cuisine restent inchangés.")
     raise Redirection("/cantine/menu")
 
 

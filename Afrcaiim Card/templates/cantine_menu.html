@@ -85,7 +85,7 @@
             <strong>{{ plat.nom }}</strong>
             <small class="prix-double">{{ plat.prix|gnf }} · sans solde {{ prix_caisse(plat)|gnf }}</small>
           </a>
-          <form method="post" action="/cantine/plats/{{ plat.id }}/retirer" onsubmit="return confirm('Retirer ce plat du menu ?');">
+          <form method="post" action="/cantine/plats/{{ plat.id }}/retirer" onsubmit="return confirm('Retirer ce plat du menu ? Les reçus déjà émis et le rapport cuisine le gardent.');">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button class="bouton-danger" type="submit">Supprimer</button>
           </form>
