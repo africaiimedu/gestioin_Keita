@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=7">
+<link rel="stylesheet" href="/static/menu.css?v=8">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
@@ -42,7 +42,7 @@
                   {% if prix_caisse(plat) != plat.prix %}<small>Sans solde : {{ prix_caisse(plat)|gnf }}</small>{% endif %}
                 </span>
                 {% if plat.disponible and etudiant %}
-                  <button type="button" class="plus" data-id="{{ plat.id }}" data-nom="{{ plat.nom }}" data-prix="{{ plat.prix }}" data-prix-caisse="{{ prix_caisse(plat) }}" aria-label="Ajouter {{ plat.nom }}">+</button>
+                  <button type="button" class="plus" data-id="{{ plat.id }}" data-nom="{{ plat.nom }}" data-prix="{{ plat.prix }}" data-prix-caisse="{{ prix_caisse(plat) }}" data-stock="{{ plat.stock if plat.stock is not none else '' }}" aria-label="Ajouter {{ plat.nom }}">+</button>
                 {% elif not plat.disponible %}
                   <span class="ferme">Épuisé</span>
                 {% endif %}
@@ -73,7 +73,22 @@
     <strong id="total-panier">0 GNF</strong>
   </button>
   <div class="voile" id="voile" hidden></div>
-  <section class="feuille" id="feuille" hidden aria-label="Panier" data-solde="{{ etudiant.solde_cantine or 0 }}">
+  <section class="choix-qte" id="choix-qte" hidden role="dialog" aria-modal="true" aria-labelledby="choix-nom">
+    <h2 id="choix-nom"></h2>
+    <p class="choix-prix" id="choix-prix"></p>
+    <p class="choix-deja" id="choix-deja" hidden></p>
+    <div class="compteur" id="choix-compteur">
+      <button type="button" id="choix-moins" aria-label="Une portion de moins">−</button>
+      <output id="choix-valeur" aria-live="polite">1</output>
+      <button type="button" id="choix-plus" aria-label="Une portion de plus">+</button>
+    </div>
+    <p class="choix-limite" id="choix-limite"></p>
+    <div class="choix-actions">
+      <button type="button" class="secondaire" id="choix-annuler">Annuler</button>
+      <button type="button" class="payer" id="choix-valider">Ajouter au panier</button>
+    </div>
+  </section>
+  <section class="feuille" id="feuille" hidden aria-label="Panier" data-solde="{{ etudiant.solde_cantine or 0 }}" data-max="{{ qte_max }}">
     <header>
       <h2>Votre panier</h2>
       <button type="button" id="fermer-panier" aria-label="Fermer">×</button>
@@ -92,5 +107,5 @@
     </form>
   </section>
 {% endif %}
-<script src="/static/menu.js?v=3"></script>
+<script src="/static/menu.js?v=4"></script>
 {% endblock %}

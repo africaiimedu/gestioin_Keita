@@ -90,6 +90,9 @@ def catalogue(db) -> list[dict]:
     return [{"categorie": cat, "plats": par_cat.get(cat.id, [])} for cat in categories if par_cat.get(cat.id)]
 
 
+QTE_MAX = 10
+
+
 def lire_panier(brut: list) -> list[tuple[int, int]]:
     if not isinstance(brut, list) or not brut or len(brut) > 8:
         raise RefusCommande("Le panier doit contenir entre 1 et 8 plats.")
@@ -105,8 +108,8 @@ def lire_panier(brut: list) -> list[tuple[int, int]]:
             raise RefusCommande("Une quantité n'est pas un nombre.") from None
         if plat_id in vus:
             raise RefusCommande("Un plat est en double dans le panier.")
-        if quantite < 1 or quantite > 4:
-            raise RefusCommande("La quantité d'un plat doit être entre 1 et 4.")
+        if quantite < 1 or quantite > QTE_MAX:
+            raise RefusCommande(f"La quantité d'un plat doit être entre 1 et {QTE_MAX}.")
         vus.add(plat_id)
         lignes.append((plat_id, quantite))
     return lignes

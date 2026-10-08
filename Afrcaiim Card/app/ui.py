@@ -12,7 +12,7 @@ from app.config import ROOT, charger_config
 from app.services.courrier import formater_francs
 from app.services.ecoles import ECOLES, annee_academique_courante
 from app.services.import_etudiants import validite_par_defaut
-from app.services.menu_cantine import image_plat, prix_caisse
+from app.services.menu_cantine import QTE_MAX, image_plat, prix_caisse
 from app.services.statut import libelle_action, libelle_role, libelle_statut
 
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
@@ -40,6 +40,7 @@ templates.env.filters["actionfr"] = libelle_action
 templates.env.filters["rolefr"] = libelle_role
 templates.env.globals["image_plat"] = image_plat
 templates.env.globals["prix_caisse"] = prix_caisse
+templates.env.globals["qte_max"] = QTE_MAX
 
 
 def assurer_csrf(request: Request) -> str:

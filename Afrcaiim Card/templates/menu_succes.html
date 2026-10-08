@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Commande {{ commande.numero }}{% endblock %}
-{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=8">{% endblock %}
 {% block contenu %}
 <section class="recu">
   <p class="coche{% if commande.statut == 'a_payer' %} coche-attente{% endif %}" aria-hidden="true">{% if commande.statut == "a_payer" %}…{% else %}✓{% endif %}</p>

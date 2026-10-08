@@ -23,7 +23,17 @@ from app.models import (
 )
 from app.security import hash_mot_de_passe
 from app.seed import _assurer_menu, _colonnes_cantine
-from app.services.menu_cantine import RefusCommande, passer_commande
+from app.services.menu_cantine import QTE_MAX, RefusCommande, lire_panier, passer_commande
+
+
+def test_quantite_par_plat_et_plat_en_double():
+    assert lire_panier([{"id": 1, "qte": QTE_MAX}, {"id": 2, "qte": 1}]) == [(1, QTE_MAX), (2, 1)]
+    for mauvais in ([{"id": 1, "qte": QTE_MAX + 1}], [{"id": 1, "qte": 0}], [{"id": 1, "qte": 1}, {"id": 1, "qte": 2}]):
+        try:
+            lire_panier(mauvais)
+            raise AssertionError(f"panier accepté à tort : {mauvais}")
+        except RefusCommande:
+            pass
 
 _MATRICULE = "AIIM-MENU-TEST"
 _IDENTIFIANT = "test.menu"
