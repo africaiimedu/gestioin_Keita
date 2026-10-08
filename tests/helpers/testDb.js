@@ -16,6 +16,10 @@ export async function freshTestDb() {
   if (!url) throw new Error("TEST_DATABASE_URL manquant : voir .env.example");
   if (!new URL(url).pathname.endsWith("_test")) throw new Error("TEST_DATABASE_URL doit viser une base dont le nom finit par _test");
   process.env.UPLOAD_DIR = path.join(mkdtempSync(path.join(tmpdir(), "aim-")), "uploads");
+  // Les fiches de test ne doivent jamais partir vers une vraie application Cartes.
+  process.env.CARD_API_URL = "";
+  process.env.CARD_API_TOKEN = "";
+  process.env.CARD_EMBEDDED = "false";
   const db = connect(url);
   await db.exec("DROP SCHEMA IF EXISTS scolarite CASCADE; CREATE SCHEMA scolarite;");
   await runMigrations(db);
