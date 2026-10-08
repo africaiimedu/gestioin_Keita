@@ -150,7 +150,13 @@ def _lire_config() -> tuple[str, str, Path | None]:
 
 def _certificat_du_site(adresse: str) -> str:
     morceaux = urllib.parse.urlsplit(adresse)
-    return ssl.get_server_certificate((morceaux.hostname, morceaux.port or 443))
+    contexte = ssl.create_default_context()
+    contexte.check_hostname = False
+    contexte.verify_mode = ssl.CERT_NONE
+    # Le nom du site doit être annoncé (SNI) : sans lui, l'hébergeur renvoie un autre certificat.
+    with socket.create_connection((morceaux.hostname, morceaux.port or 443), timeout=20) as brut:
+        with contexte.wrap_socket(brut, server_hostname=morceaux.hostname) as chiffre:
+            return ssl.DER_cert_to_PEM_cert(chiffre.getpeercert(binary_form=True))
 
 
 def installer(adresse: str) -> None:
