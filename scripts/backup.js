@@ -41,7 +41,8 @@ function directDump() {
     PGDATABASE: url.pathname.slice(1),
   };
   const schema = process.env.DB_SCHEMA || "scolarite";
-  return spawnSync("pg_dump", ["--format=custom", "--no-owner", `--schema=${schema}`, `--file=${temporary}`], { env });
+  const cards = process.env.CARD_DB_SCHEMA || "cartes";
+  return spawnSync("pg_dump", ["--format=custom", "--no-owner", `--schema=${schema}`, `--schema=${cards}`, `--file=${temporary}`], { env });
 }
 
 function dockerDump() {

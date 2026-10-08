@@ -51,6 +51,7 @@ import { renderEnrollmentPdf, renderReceiptPdf } from "./services/receiptPdf.js"
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { syncStudentsToCard } from "./services/cardSync.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
+import { startEmbeddedCards } from "./services/cardRuntime.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: path.join(root, ".env"), quiet: true });
@@ -647,6 +648,7 @@ console.log(`AfricaIIM Scolarité — http://localhost:${port}`);
 console.log(`Année ${year.label} · ${control.students} étudiants · encaissé ${control.paid} GNF · cohérence ${control.ok ? "OK" : "ÉCART"}`);
 await purgeExpiredSessions();
 setInterval(() => purgeExpiredSessions().catch((error) => console.error(`Sessions : ${error.message}`)), 3600 * 1000).unref();
+startEmbeddedCards();
 const server = app.listen(port, () => {
   syncStudentsToCard(db).then((report) => {
     const detail = report.ignored ? ` · ${report.ignored} fiche non envoyée` : "";

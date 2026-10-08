@@ -1,3 +1,5 @@
+import { cardCall, cardConfigured, cardReady, cardToken } from "./cardRuntime.js";
+
 const NOM = /^[A-Za-zÀ-ÖØ-öø-ÿ'’\- ]{2,80}$/;
 const MATRICULE = /^[A-Z0-9][A-Z0-9-]{2,30}$/;
 const EMAIL = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,24}$/;
@@ -17,28 +19,14 @@ export function ficheCarte(student) {
 }
 
 export async function pushStudentToCard(student) {
-  const base = process.env.CARD_API_URL;
-  const token = process.env.CARD_API_TOKEN;
-  if (!base || !token) return { ok: false, skipped: true, matricule: student.matricule, error: "La liaison avec les cartes n'est pas configurée." };
+  if (!cardConfigured() || !cardToken()) return { ok: false, skipped: true, matricule: student.matricule, error: "La liaison avec les cartes n'est pas configurée." };
   const fiche = ficheCarte(student);
   if (!fiche.ok) return fiche;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const response = await fetch(`${base.replace(/\/$/, "")}/api/inscriptions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Jeton": token },
-      body: JSON.stringify(fiche.payload),
-      signal: controller.signal,
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return { ok: false, matricule: fiche.payload.matricule, error: data.message || "L'application de cartes a refusé la fiche." };
-    return { ok: true, matricule: data.matricule || fiche.payload.matricule };
-  } catch {
-    return { ok: false, matricule: fiche.payload.matricule, error: "L'application de cartes ne répond pas." };
-  } finally {
-    clearTimeout(timer);
-  }
+  await cardReady();
+  const response = await cardCall("/api/inscriptions", { method: "POST", body: JSON.stringify(fiche.payload) });
+  if (!response.status) return { ok: false, matricule: fiche.payload.matricule, error: "L'application de cartes ne répond pas." };
+  if (response.status >= 400) return { ok: false, matricule: fiche.payload.matricule, error: response.body.message || "L'application de cartes a refusé la fiche." };
+  return { ok: true, matricule: response.body.matricule || fiche.payload.matricule };
 }
 
 export async function syncStudentsToCard(db) {
@@ -49,6 +37,9 @@ export async function syncStudentsToCard(db) {
     WHERE s.status != 'archive'
     ORDER BY s.matricule
   `).all();
+  if (cardConfigured() && cardToken() && !(await cardReady(60_000))) {
+    return { sent: 0, ignored: rows.length, errors: [{ matricule: "", error: "L'application de cartes ne répond pas." }] };
+  }
   const results = [];
   for (const row of rows) results.push(await pushStudentToCard(row));
   const errors = results.filter((item) => !item.ok);

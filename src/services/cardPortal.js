@@ -1,12 +1,9 @@
-import http from "node:http";
-import https from "node:https";
 import { can } from "../auth/passwords.js";
+import { cardCall, cardOrigin, cardReady, cardTarget, cardToken } from "./cardRuntime.js";
 
 const PREFIX = "/portail/cartes";
 
-function origin() {
-  return new URL(process.env.CARD_API_URL || "http://127.0.0.1:8000");
-}
+const origin = cardOrigin;
 
 export function isCardPortal(req) {
   return req.path === "/theme.css"
@@ -47,39 +44,16 @@ function cookiePair(header, name) {
   return match ? `${name}=${match[1]}` : "";
 }
 
-function cardRequest(path, { method = "GET", cookie = "", body = "" } = {}) {
-  const token = process.env.CARD_API_TOKEN;
-  const target = origin();
-  const transport = target.protocol === "https:" ? https : http;
-  const headers = { host: target.host };
-  if (cookie) headers.cookie = cookie;
-  if (body) {
-    headers["content-type"] = "application/json";
-    headers["content-length"] = Buffer.byteLength(body);
-    if (token) headers["x-jeton"] = token;
-  }
-  return new Promise((resolve) => {
-    const request = transport.request({
-      protocol: target.protocol,
-      hostname: target.hostname,
-      port: target.port || (target.protocol === "https:" ? 443 : 80),
-      method,
-      path,
-      headers,
-    }, (response) => {
-      const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => {
-        let body = {};
-        try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { body = {}; }
-        const line = response.headers["set-cookie"];
-        const chosen = (Array.isArray(line) ? line : [line]).find((item) => item && String(item).startsWith("africard="));
-        resolve({ status: response.statusCode || 0, cookie: chosen || "", body });
-      });
-    });
-    request.on("error", () => resolve({ status: 0, cookie: "" }));
-    request.end(body || undefined);
-  });
+async function cardRequest(path, options = {}) {
+  const response = await cardCall(path, options);
+  const line = response.headers["set-cookie"];
+  const chosen = (Array.isArray(line) ? line : [line]).find((item) => item && String(item).startsWith("africard="));
+  return { status: response.status, cookie: chosen || "", body: response.body };
+}
+
+function cookiesFor(req, value) {
+  if (!value || req.secure) return value;
+  return [].concat(value).map((item) => String(item).replace(/;\s*secure(?=;|$)/gi, ""));
 }
 
 function replaceCookie(header, pair) {
@@ -107,7 +81,7 @@ function portalAllowed(user, tail) {
 
 async function ensureCardSession(req, user) {
   const wanted = portalRole(user);
-  if (!user || !wanted || !process.env.CARD_API_TOKEN) return;
+  if (!user || !wanted || !cardToken()) return;
   const current = cookiePair(req.headers.cookie, "africard");
   if (current) {
     const state = await cardRequest("/api/portail/session", { cookie: current });
@@ -124,18 +98,16 @@ async function ensureCardSession(req, user) {
 
 function unavailable(_req, res) {
   res.status(503).type("html").send(`<!doctype html><meta charset="utf-8"><title>Cartes</title>
-    <p style="font-family:Georgia,serif;color:#0c3d2e;padding:28px 24px;line-height:1.5">L'application des cartes ne répond pas. Ouvrez-la, puis rechargez cette page.</p>`);
+    <p style="font-family:Georgia,serif;color:#0c3d2e;padding:28px 24px;line-height:1.5">L'application des cartes démarre ou ne répond pas. Rechargez cette page dans quelques secondes.</p>`);
 }
 
-function forward(req, res, targetPath, rewrite) {
-  const target = origin();
-  const transport = target.protocol === "https:" ? https : http;
-  const headers = { ...req.headers, host: target.host };
+async function forward(req, res, targetPath, rewrite) {
+  if (!(await cardReady())) return unavailable(req, res);
+  const { transport, options, host } = cardTarget();
+  const headers = { ...req.headers, host };
   delete headers["accept-encoding"];
   const proxyReq = transport.request({
-    protocol: target.protocol,
-    hostname: target.hostname,
-    port: target.port || (target.protocol === "https:" ? 443 : 80),
+    ...options,
     method: req.method,
     path: targetPath,
     headers,
@@ -146,11 +118,9 @@ function forward(req, res, targetPath, rewrite) {
     delete headersOut["x-frame-options"];
     delete headersOut["content-security-policy"];
     if (headersOut.location) headersOut.location = rewriteLocation(String(headersOut.location));
+    const cookies = [].concat(headersOut["set-cookie"] || [], req.portalCookie || []);
+    if (cookies.length) headersOut["set-cookie"] = cookiesFor(req, cookies);
     if (!textual) {
-      if (req.portalCookie) {
-        const current = headersOut["set-cookie"];
-        headersOut["set-cookie"] = current ? [].concat(current, req.portalCookie) : req.portalCookie;
-      }
       res.writeHead(upstream.statusCode || 502, headersOut);
       upstream.pipe(res);
       return;
@@ -170,10 +140,6 @@ function forward(req, res, targetPath, rewrite) {
       delete headersOut["transfer-encoding"];
       delete headersOut["content-encoding"];
       headersOut["content-length"] = String(body.length);
-      if (req.portalCookie) {
-        const current = headersOut["set-cookie"];
-        headersOut["set-cookie"] = current ? [].concat(current, req.portalCookie) : req.portalCookie;
-      }
       res.writeHead(upstream.statusCode || 502, headersOut);
       res.end(body);
     });
@@ -204,6 +170,7 @@ export function attachCardPortal(app, resolveUser = () => null) {
       res.status(403).type("html").send(`<!doctype html><meta charset="utf-8"><p style="font-family:Georgia,serif;color:#0c3d2e;padding:28px 24px">Cette partie n'est pas autorisée pour votre compte.</p>`);
       return;
     }
+    if (!(await cardReady())) return unavailable(req, res);
     ensureCardSession(req, user).then(() => {
       if (user && (tail === "/login" || tail.startsWith("/login?"))) {
         tail = can(user, "kitchen.manage") && !can(user, "cards.manage") ? "/cantine" : "/admin/etudiants";

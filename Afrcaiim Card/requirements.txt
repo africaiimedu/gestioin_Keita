@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-a2wsgi
 sqlalchemy
 psycopg[binary]
 jinja2

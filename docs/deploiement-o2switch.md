@@ -129,18 +129,23 @@ touch tmp/restart.txt
 
 ## Application Cartes
 
-L'application Cartes (Python FastAPI) tourne à part, sur `cartes.univ-africaiim.com`, avec sa propre base PostgreSQL. La scolarité l'affiche dans son menu (portail `/portail/cartes`).
+Une seule application : la scolarité (Node) lance elle-même l'application Cartes (Python FastAPI) depuis le dossier `Afrcaiim Card`, sans application Python cPanel ni sous-domaine. Les deux communiquent par un socket privé (`tmp/cartes/`, accès réservé au compte). Les cartes sont dans la même base PostgreSQL, schéma `cartes`, et la sauvegarde quotidienne contient les deux schémas. Le portail est `https://scolarite.univ-africaiim.com/portail/cartes`.
 
-1. cPanel → **Domaines** : créer `cartes.univ-africaiim.com`, puis **Let's Encrypt™ SSL** → **Issue**.
-2. cPanel → **Bases de données PostgreSQL** : base `USER_cartes`, utilisateur `USER_cartes_user`, tous les privilèges.
-3. SSH : `bash ~/gestioin_Keita/scripts/cartes-o2switch.sh` copie le code dans `~/africaiim-cartes`.
-4. cPanel → **Setup Python App** → **Create Application** : Python le plus récent, racine `africaiim-cartes`, URL `cartes.univ-africaiim.com`, fichier de démarrage `passenger_wsgi.py`, point d'entrée `application`.
-5. `~/africaiim-cartes/.env` (`chmod 600`) :
+1. Environnement Python (une fois) :
+
+```bash
+cd ~/gestioin_Keita/"Afrcaiim Card"
+/opt/alt/python312/bin/python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+2. Schéma : `psql … -c "CREATE SCHEMA cartes"` avec l'utilisateur de la base scolarité.
+3. `~/gestioin_Keita/Afrcaiim Card/.env` (`chmod 600`) :
 
 ```ini
-DATABASE_URL=postgresql+psycopg://USER_cartes_user:MOT_DE_PASSE@localhost:5432/USER_cartes
-SECRET_SESSION=chaine-aleatoire-de-48-caracteres
-BASE_URL=https://cartes.univ-africaiim.com
+DATABASE_URL=postgresql+psycopg://UTILISATEUR:MOT_DE_PASSE@localhost:5432/BASE?options=-csearch_path%3Dcartes
+SECRET_SESSION=chaine-aleatoire-de-64-caracteres
+BASE_URL=https://scolarite.univ-africaiim.com/portail/cartes
 ADMIN_IDENTIFIANT=…
 ADMIN_MOT_DE_PASSE=…
 CUISINIERE_IDENTIFIANT=cuisiniere
@@ -149,9 +154,8 @@ INSCRIPTION_JETON=chaine-aleatoire-de-48-caracteres
 SMTP_HOST=
 ```
 
-6. Relancer `bash ~/gestioin_Keita/scripts/cartes-o2switch.sh` : il installe les dépendances et redémarre.
-7. Dans le `.env` de la scolarité : `CARD_API_URL=https://cartes.univ-africaiim.com` et `CARD_API_TOKEN` = la même valeur que `INSCRIPTION_JETON`, puis `touch ~/gestioin_Keita/tmp/restart.txt`.
+4. Dans le `.env` de la scolarité : `CARD_EMBEDDED=true`, `CARD_API_URL=` et `CARD_API_TOKEN=` vides (le jeton est lu dans le `.env` des cartes), puis `touch ~/gestioin_Keita/tmp/restart.txt`.
 
-Données du poste : `pg_dump --data-only --column-inserts` de la base Cartes, chargé avec `psql` dans la base vide après création des tables, et photos copiées dans `~/africaiim-cartes/data/photos`.
+Données du poste : `pg_dump --data-only --column-inserts` de la base Cartes, `public.` remplacé par `cartes.`, chargé avec `psql` après création des tables, et photos copiées dans `Afrcaiim Card/data/photos`.
 
-Mise à jour du code Cartes : `cd ~/gestioin_Keita && git pull && bash scripts/cartes-o2switch.sh`.
+Mise à jour : `git pull`, puis `.venv/bin/pip install -r requirements.txt` si les dépendances Python ont changé, et `touch tmp/restart.txt`.
