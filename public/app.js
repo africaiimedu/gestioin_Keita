@@ -1375,44 +1375,73 @@ function costumeCard(costume) {
   </article>`;
 }
 
-function openPaymentUpdate(payment, onDone) {
+function openPaymentUpdate(record, onDone) {
   const dialog = document.querySelector("#update-dialog");
-  const methods = state.catalog.methods.map((item) => `<option value="${item.code}" ${item.code === payment.method ? "selected" : ""}>${esc(item.label)}</option>`).join("");
-  dialog.innerHTML = `<form id="update-form" novalidate>
-      <div class="dialog-head"><h2>Mettre à jour le paiement</h2><button class="dialog-close" id="close-update" type="button">Fermer</button></div>
-      <p class="muted">Le montant déjà enregistré${payment.receipt_number ? ` sur ${esc(payment.receipt_number)}` : ""} ne change pas. Le versement du jour s'ajoute, et un nouveau reçu est émis pour ce complément.</p>
-      <div id="update-preview" class="receipt-preview"><p class="muted">Calcul du reçu…</p></div>
-      <div class="duo"><p><label>Versement du jour à ajouter (GNF)</label><input name="amount" inputmode="numeric" required placeholder="Montant à ajouter"></p>
-      <p><label>Date</label><input name="paidOn" type="date" required value="${esc(payment.paid_on)}"></p></div>
-      ${costumeField()}
-      <label>Moyen de paiement</label><select name="method" required>${methods}</select>
-      <label>Référence de transaction <span class="muted">(facultatif)</span></label><input name="reference" placeholder="Numéro de transaction, chèque ou bordereau">
-      <label>Observation <span class="muted">(facultatif)</span></label><textarea name="note" placeholder="Motif du versement"></textarea>
-      <p id="update-error" class="error" hidden></p>
-      <button class="btn" type="submit">Enregistrer la mise à jour</button>
+  const methodLabel = (code) => state.catalog.methods.find((item) => item.code === code)?.label || code || "—";
+  const history = record.history || [];
+  const lastValid = history.filter((item) => item.status === "valide").at(-1);
+  const methods = state.catalog.methods.map((item) => `<option value="${item.code}" ${item.code === lastValid?.method ? "selected" : ""}>${esc(item.label)}</option>`).join("");
+  const identity = [record.matricule, record.program, record.level ? levelLabel(record.level) : ""].filter(Boolean).map(esc).join(" · ");
+  dialog.innerHTML = `<form id="update-form" class="update-sheet" novalidate>
+      <div class="dialog-head update-head">
+        <div><p class="mark">Mise à jour du paiement</p><h2>${esc(record.name)}</h2><p class="muted">${identity}</p></div>
+        <button class="dialog-close" id="close-update" type="button">Fermer</button>
+      </div>
+      <div class="stat-row update-tiles">
+        <div class="stat-tile"><span>Montant dû</span><strong>${gnf(record.due)}</strong></div>
+        <div class="stat-tile"><span>Déjà versé</span><strong>${gnf(record.tuitionPaid)}</strong></div>
+        <div class="stat-tile ${record.reste ? "alert" : ""}"><span>Reste à payer</span><strong>${gnf(record.reste)}</strong></div>
+      </div>
+      <section class="update-history">
+        <h3>Historique des versements <span class="muted">(${record.count})</span></h3>
+        <div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th></tr></thead><tbody>
+          ${history.map((item) => `<tr class="${item.status === "annule" ? "is-cancelled" : ""}">
+            <td class="when-cell">${esc(frenchDay(item.paid_on))}</td>
+            <td class="num"><strong>${gnf(item.amount)}</strong>${item.costume_amount ? `<br><span class="muted">+ costume ${gnf(item.costume_amount)}</span>` : ""}</td>
+            <td>${esc(methodLabel(item.method))}${item.status === "annule" ? ` <span class="tag trop_percu">Annulé</span>` : ""}</td>
+            <td>${item.receipt_number ? `<a href="/api/recus/${item.receipt_id}.pdf" target="_blank">${esc(item.receipt_number)}</a>` : `<span class="muted">Avant l'application</span>`}</td>
+          </tr>`).join("")}
+        </tbody></table></div>
+      </section>
+      <section class="update-new">
+        <h3>Nouveau versement</h3>
+        <p class="muted">Il s'ajoute à l'historique, rien n'est effacé. Le nouveau reçu reprend tous les versements précédents : c'est lui qui fait foi.</p>
+        <div class="duo"><p><label>Montant versé ce jour (GNF)</label><input name="amount" inputmode="numeric" required placeholder="${record.reste ? `Reste ${esc(grouped(record.reste))}` : "Montant"}"></p>
+        <p><label>Date</label><input name="paidOn" type="date" required value="${new Date().toISOString().slice(0, 10)}"></p></div>
+        <div id="update-preview" class="receipt-preview" hidden></div>
+        ${costumeField()}
+        <div class="duo"><p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p>
+        <p><label>Référence <span class="muted">(facultatif)</span></label><input name="reference" placeholder="Transaction, chèque ou bordereau"></p></div>
+        <label>Observation <span class="muted">(facultatif)</span></label><textarea name="note" rows="2" placeholder="Motif du versement"></textarea>
+        <p id="update-error" class="error" hidden></p>
+        <button class="btn" type="submit">Enregistrer et émettre le reçu</button>
+      </section>
     </form>`;
   dialog.showModal();
   document.querySelector("#close-update").addEventListener("click", () => dialog.close());
   dialog.addEventListener("cancel", (event) => event.preventDefault());
   const form = document.querySelector("#update-form");
   const key = newKey();
+  const payment = { id: record.lastPaymentId };
   const paintPreview = (data) => {
     const box = document.querySelector("#update-preview");
     if (!box) return;
-    box.innerHTML = `<p><span>Montant dû</span><strong>${gnf(data.due)}</strong></p>
-      <p><span>Dernier versement</span><strong>${gnf(data.lastAmount)}</strong></p>
-      <p class="today"><span>Versement du jour</span><strong>${gnf(data.todayAmount)}</strong></p>
+    box.hidden = false;
+    box.innerHTML = `<p class="preview-title"><span>Ce que portera le reçu</span></p>
       <p><span>Déjà versé avant ce jour</span><strong>${gnf(data.paidBefore)}</strong></p>
+      <p class="today"><span>Versé ce jour</span><strong>${gnf(data.todayAmount)}</strong></p>
       <p><span>Cumul versé</span><strong>${gnf(data.paidAfter)}</strong></p>
-      <p class="reste"><span>Reste à payer</span><strong>${gnf(data.reste)}</strong></p>
+      <p class="reste"><span>Reste à payer après ce versement</span><strong>${gnf(data.reste)}</strong></p>
       <p class="seal"><span>Mention du reçu</span><strong>${esc(data.seal)}</strong></p>
-      ${data.costume?.price ? `<p><span>Costume (prix ${gnf(data.costume.price)})</span><strong>versé ${gnf(data.costume.paid)} · reste ${gnf(data.costume.reste)}</strong></p>` : ""}
       ${data.limitedMessage ? `<p class="limited">${esc(data.limitedMessage)}</p>` : ""}
       ${data.cashDiscount ? `<p class="muted">Remise de ${gnf(state.catalog.cashDiscount || 0)} : toute l'année est payée en une fois.</p>` : ""}`;
   };
   const refreshUpdatePreview = async () => {
     const amountValue = Number(form.amount.value.replace(/\D/g, ""));
-    if (!amountValue) return;
+    if (!amountValue) {
+      document.querySelector("#update-preview").hidden = true;
+      return;
+    }
     try {
       const data = await api(`/api/paiements/${payment.id}/apercu`, { method: "POST", body: JSON.stringify({
         amount: amountValue,
@@ -1484,26 +1513,27 @@ function openPaymentUpdate(payment, onDone) {
 async function loadCashPayments() {
   const box = document.querySelector("#cash-payments");
   if (!box) return;
-  const data = await api("/api/caisse/paiements");
-  const methodLabel = (code) => state.catalog.methods.find((item) => item.code === code)?.label || code;
-  if (!data.payments.length) {
+  const data = await api("/api/caisse/etudiants");
+  if (!data.students.length) {
     box.innerHTML = `<div class="empty"><span class="empty-icon" aria-hidden="true">GNF</span><p><strong>Aucun paiement enregistré.</strong></p><p class="muted">Cliquez sur « Ouvrir la caisse » : chaque paiement validé apparaîtra ici avec son reçu, et y restera.</p></div>`;
     return;
   }
-  const valid = data.payments.filter((payment) => payment.status === "valide");
-  const total = valid.reduce((sum, payment) => sum + payment.amount + Number(payment.costume_amount || 0), 0);
+  const { totals } = data;
+  const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
+  const summary = `${plural(totals.students, "étudiant")} · ${plural(totals.payments, "versement")} · ${gnf(totals.amount)} encaissés`;
   box.innerHTML = `<div class="cash-tools">
-      <input id="cash-search" type="search" placeholder="Nom, matricule ou numéro de reçu" aria-label="Rechercher un encaissement">
-      <p class="muted" id="cash-count">${data.payments.length} encaissement${data.payments.length > 1 ? "s" : ""} · ${gnf(total)}</p>
+      <input id="cash-search" type="search" placeholder="Nom, matricule ou numéro de reçu" aria-label="Rechercher un étudiant">
+      <p class="cash-count" id="cash-count">${summary}</p>
     </div>
-    <div class="table-scroll"><table class="cash-table"><thead><tr><th>Date</th><th>Étudiant</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th><th class="actions">Action</th></tr></thead><tbody>
-    ${data.payments.map((payment) => `<tr data-find="${esc(`${payment.name} ${payment.matricule} ${payment.receipt_number || ""}`.toLowerCase())}">
-      <td class="when-cell">${esc(frenchDay(payment.paid_on))}</td>
-      <td><div class="who-cell"><strong>${esc(payment.name)}</strong><span class="muted">${esc(payment.matricule)}</span></div></td>
-      <td class="num">${gnf(payment.amount)}${payment.costume_amount ? `<br><span class="muted">+ costume ${gnf(payment.costume_amount)}</span>` : ""}</td>
-      <td>${esc(methodLabel(payment.method))}${payment.status === "annule" ? `<span class="tag trop_percu">Annulé</span>` : ""}</td>
-      <td class="receipt">${payment.receipt_number ? `<a href="/api/recus/${payment.receipt_id}.pdf" target="_blank">${esc(payment.receipt_number)}</a>` : ""}</td>
-      <td class="actions"><div class="row-actions">${payment.status === "valide" && allowed("payment.create") ? `<button data-update="${payment.id}" class="btn secondary" type="button">Mettre à jour</button>` : ""}</div></td>
+    <p class="muted cash-legend">Total des versements validés, toutes dates confondues : scolarité ${gnf(totals.tuition)}${totals.costume ? ` + costume ${gnf(totals.costume)}` : ""}. Les versements saisis à l'import comptent aussi.${totals.cancelled ? ` ${plural(totals.cancelled, "versement annulé")} non compté${totals.cancelled > 1 ? "s" : ""}.` : ""}</p>
+    <div class="table-scroll"><table class="cash-table"><thead><tr><th>Dernier versement</th><th>Étudiant</th><th class="num">Total versé</th><th class="num">Reste à payer</th><th>Dernier reçu</th><th class="actions">Action</th></tr></thead><tbody>
+    ${data.students.map((row) => `<tr data-find="${esc(`${row.name} ${row.matricule} ${row.history.map((item) => item.receipt_number || "").join(" ")}`.toLowerCase())}">
+      <td class="when-cell">${esc(frenchDay(row.lastPaidOn))}</td>
+      <td><div class="who-cell"><strong>${esc(row.name)}</strong><span class="muted">${esc(row.matricule)}</span></div></td>
+      <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">+ costume ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
+      <td class="num">${row.reste ? gnf(row.reste) : `<span class="tag solde">Soldé</span>`}</td>
+      <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>` : `<span class="muted">Avant l'application</span>`}</td>
+      <td class="actions"><div class="row-actions">${row.lastPaymentId && allowed("payment.create") ? `<button data-update="${row.studentId}" class="btn secondary" type="button">Mettre à jour</button>` : ""}</div></td>
     </tr>`).join("")}
   </tbody></table></div>`;
   const search = box.querySelector("#cash-search");
@@ -1514,16 +1544,14 @@ async function loadCashPayments() {
       row.hidden = Boolean(query) && !row.dataset.find.includes(query);
       if (!row.hidden) shown += 1;
     });
-    box.querySelector("#cash-count").textContent = query
-      ? `${shown} sur ${data.payments.length} encaissements`
-      : `${data.payments.length} encaissement${data.payments.length > 1 ? "s" : ""} · ${gnf(total)}`;
+    box.querySelector("#cash-count").textContent = query ? `${shown} sur ${plural(totals.students, "étudiant")}` : summary;
   });
   document.querySelectorAll("#cash-payments [data-update]").forEach((button) => button.addEventListener("click", () => {
-    const payment = data.payments.find((item) => String(item.id) === button.dataset.update);
-    openPaymentUpdate({ ...payment, paid_on: payment.paid_on }, async (result) => {
+    const record = data.students.find((item) => String(item.studentId) === button.dataset.update);
+    openPaymentUpdate(record, async (result) => {
       const success = document.querySelector("#pay-success");
       if (success && result?.receiptNumber) {
-        success.innerHTML = `<div class="banner">Versement ajouté. Nouveau reçu <a href="/api/recus/${result.receiptId}.pdf" target="_blank">${esc(result.receiptNumber)}</a>. Le montant déjà enregistré n'a pas été modifié.</div>`;
+        success.innerHTML = `<div class="banner">Versement ajouté à l'historique de ${esc(record.name)}. Nouveau reçu <a href="/api/recus/${result.receiptId}.pdf" target="_blank">${esc(result.receiptNumber)}</a> : il reprend tous les versements précédents.</div>`;
       }
       await loadCashPayments();
     });
@@ -1532,10 +1560,10 @@ async function loadCashPayments() {
 
 async function showPayment(screen) {
   screen.innerHTML = `<div class="top"><div><p class="mark">Caisse</p><h1>Enregistrer un paiement</h1>
-      <p class="lead">Tous les encaissements restent dans la liste ci-dessous, du plus récent au plus ancien. Une mise à jour ajoute un nouveau versement : le montant déjà enregistré ne change pas.</p></div>
+      <p class="lead">Une ligne par étudiant. « Mettre à jour » ajoute le versement du jour à son historique, sans rien effacer, et émet un reçu qui reprend tous les versements précédents.</p></div>
       <button class="btn" id="open-pay" type="button">Ouvrir la caisse</button></div>
     <p id="pay-success"></p>
-    <article class="card"><h2>Tous les encaissements</h2><div id="cash-payments"><p class="muted">Chargement…</p></div></article>
+    <article class="card"><h2>Encaissements par étudiant</h2><div id="cash-payments"><p class="muted">Chargement…</p></div></article>
     <dialog id="update-dialog" class="sheet" closedby="none"></dialog>
     <dialog id="pay-dialog" class="sheet" closedby="none"><form id="pay-form">
         <div class="dialog-head"><h2>Encaissement</h2><button class="dialog-close" id="close-pay" type="button">Fermer</button></div>

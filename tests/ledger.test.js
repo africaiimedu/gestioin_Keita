@@ -310,6 +310,33 @@ test("une mise à jour ajoute un versement sans modifier le montant déjà enreg
   await assert.rejects(() => domain.cancelPayment(db, agent, added.paymentId, "Seconde annulation impossible", "2026-10-06"));
   assert.equal((await db.prepare("SELECT status FROM payments WHERE id = ?").get(added.paymentId)).status, "annule");
   assert.equal((await db.prepare("SELECT amount FROM payments WHERE id = ?").get(first.paymentId)).amount, 100_000);
+
+  const receipt = await db.prepare("SELECT snapshot_json FROM receipts WHERE payment_id = ?").get(updated.paymentId);
+  const snapshot = JSON.parse(receipt.snapshot_json);
+  assert.equal(snapshot.history.at(-1).amount, 100_000);
+  assert.equal(snapshot.history.at(-1).receiptNumber, first.receiptNumber);
+  assert.equal(snapshot.history.reduce((sum, item) => sum + item.amount, 0), snapshot.paidAfter - snapshot.amount);
+
+  const { students, totals } = await domain.listCashStudents(db, "2026-10-06");
+  const rows = students.filter((row) => row.studentId === student.id);
+  assert.equal(rows.length, 1);
+  const [row] = rows;
+  assert.equal(row.count, row.history.length - 1);
+  assert.equal(row.cancelled, 1);
+  assert.equal(row.tuitionPaid, before + 100_000 + 250_000);
+  assert.equal(row.lastPaymentId, row.history.filter((item) => item.status === "valide").at(-1).id);
+  assert.equal(row.receiptNumber, row.history.filter((item) => item.status === "valide" && item.receipt_number).at(-1).receipt_number);
+  assert.ok(row.history.some((item) => item.receipt_number === updated.receiptNumber));
+  assert.deepEqual(row.history.filter((item) => item.paid_on === "2026-10-06").map((item) => item.amount), [100_000, 250_000, 50_000]);
+  const dates = row.history.map((item) => item.paid_on);
+  assert.deepEqual(dates, [...dates].sort());
+  const sql = await db.prepare(`
+    SELECT COUNT(*)::int AS n, COUNT(DISTINCT student_id)::int AS students, COALESCE(SUM(amount), 0)::bigint AS total
+    FROM payments WHERE status = 'valide'
+  `).get();
+  assert.equal(totals.payments, sql.n);
+  assert.equal(totals.students, students.length);
+  assert.equal(totals.tuition, Number(sql.total));
 });
 
 test("un versement supérieur au montant à payer n'est pas enregistré", async () => {

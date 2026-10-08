@@ -691,11 +691,24 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
       payments: after.payments.filter((payment) => payment.paidOn < input.paidOn || (payment.paidOn === input.paidOn && payment.id <= paymentId)),
       asOf,
     });
+    const earlier = await db.prepare(`
+      SELECT p.amount, p.paid_on, p.method, r.number AS receipt_number
+      FROM payments p LEFT JOIN receipts r ON r.payment_id = p.id
+      WHERE p.student_id = ? AND p.status = 'valide' AND p.id <> ?
+        AND (p.paid_on < ?::date OR (p.paid_on = ?::date AND p.id < ?))
+      ORDER BY p.paid_on, p.id
+    `).all(current.student.id, paymentId, input.paidOn, input.paidOn, paymentId);
     const year = Number(input.paidOn.slice(0, 4));
     const seq = await nextDocumentNumber(db, "REC", year);
     const number = `REC-${year}-${String(seq).padStart(6, "0")}`;
     const token = crypto.randomBytes(24).toString("base64url");
     const snapshot = {
+      history: earlier.map((item) => ({
+        paidOn: String(item.paid_on).slice(0, 10),
+        amount: item.amount,
+        methodLabel: METHOD_LABELS[item.method] || item.method,
+        receiptNumber: item.receipt_number || null,
+      })),
       studentName: `${current.student.last_name} ${current.student.first_name}`.trim(),
       matricule: current.student.matricule,
       program: current.student.program_name,
@@ -853,7 +866,7 @@ export async function unlockPayment(db, user, paymentId) {
 export async function listCashPayments(db, date = null) {
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError(400, "Date invalide");
   return (await db.prepare(`
-    SELECT p.id, p.amount, p.paid_on, p.method, p.reference, p.note, p.status,
+    SELECT p.id, p.student_id, p.amount, p.paid_on, p.method, p.reference, p.note, p.status,
            s.matricule, s.last_name, s.first_name,
            r.id AS receipt_id, r.number AS receipt_number,
            COALESCE((SELECT SUM(k.amount) FROM costume_payments k WHERE k.payment_id = p.id AND k.status = 'valide'), 0) AS costume_amount,
@@ -873,6 +886,58 @@ export async function listCashPayments(db, date = null) {
     canCancel: row.status === "valide" && row.cancel_used < 1,
     locked: row.status === "valide" && row.updates_used >= 1 && row.unlocked !== 1,
   }));
+}
+
+/** Une ligne par étudiant : l'historique complet de ses versements, du plus ancien au plus récent. */
+export async function listCashStudents(db, asOf = todayInConakry()) {
+  const payments = await listCashPayments(db);
+  const groups = new Map();
+  for (const payment of payments) {
+    if (!groups.has(payment.student_id)) groups.set(payment.student_id, []);
+    groups.get(payment.student_id).push(payment);
+  }
+  const students = groups.size
+    ? await db.prepare(`${STUDENT_SELECT} WHERE s.id IN (SELECT DISTINCT student_id FROM payments)`).all()
+    : [];
+  const ledger = await loadLedger(db, students);
+  const rows = students.map((student) => {
+    const history = groups.get(student.id).slice().reverse();
+    const valid = history.filter((item) => item.status === "valide");
+    const last = valid.at(-1) || null;
+    const withReceipt = valid.filter((item) => item.receipt_id).at(-1) || null;
+    const situation = bundleFrom(student, ledger, asOf).situation;
+    return {
+      studentId: student.id,
+      name: `${student.last_name} ${student.first_name}`.trim(),
+      matricule: student.matricule,
+      program: student.program_name,
+      level: student.level,
+      history,
+      count: valid.length,
+      cancelled: history.length - valid.length,
+      tuitionPaid: valid.reduce((sum, item) => sum + item.amount, 0),
+      costumePaid: valid.reduce((sum, item) => sum + Number(item.costume_amount || 0), 0),
+      due: situation.due,
+      reste: situation.reste,
+      status: situation.status,
+      statusLabel: STATUS_LABELS[situation.status],
+      lastPaymentId: last?.id || null,
+      lastPaidOn: (last || history.at(-1)).paid_on,
+      lastSortId: (last || history.at(-1)).id,
+      receiptId: withReceipt?.receipt_id || null,
+      receiptNumber: withReceipt?.receipt_number || null,
+    };
+  });
+  rows.sort((a, b) => String(b.lastPaidOn).localeCompare(String(a.lastPaidOn)) || b.lastSortId - a.lastSortId);
+  const totals = {
+    students: rows.length,
+    payments: rows.reduce((sum, row) => sum + row.count, 0),
+    cancelled: rows.reduce((sum, row) => sum + row.cancelled, 0),
+    tuition: rows.reduce((sum, row) => sum + row.tuitionPaid, 0),
+    costume: rows.reduce((sum, row) => sum + row.costumePaid, 0),
+  };
+  totals.amount = totals.tuition + totals.costume;
+  return { students: rows, totals };
 }
 
 export async function cashJournal(db, date) {

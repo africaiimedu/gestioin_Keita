@@ -264,11 +264,35 @@ function drawCostume(doc, y, costume) {
   return y + 50;
 }
 
-export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4", cancelled = null, verifyUrl }) {
+const HISTORY_LINES = 4;
+
+function drawHistory(doc, y, history) {
+  const shown = history.length > HISTORY_LINES ? history.slice(-(HISTORY_LINES - 1)) : history;
+  const older = history.slice(0, history.length - shown.length);
+  write(doc, "VERSEMENTS PRÉCÉDENTS", LEFT + 12, y, 7.5, "Helvetica-Bold", LEAF, 300);
+  y += 14;
+  const line = (left, middle, amount) => {
+    write(doc, left, LEFT + 24, y, 9.5, "Helvetica", INK, 150);
+    write(doc, middle, LEFT + 175, y, 9.5, "Helvetica", MUTED, 200);
+    write(doc, money(amount), RIGHT - 230, y, 9.5, "Helvetica", INK, 218, "right");
+    y += 14;
+  };
+  if (older.length) {
+    const total = older.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    line(`${older.length} versements antérieurs`, `du ${frenchDate(older[0].paidOn)} au ${frenchDate(older.at(-1).paidOn)}`, total);
+  }
+  for (const item of shown) {
+    line(frenchDate(item.paidOn), [item.receiptNumber || "Avant l'application", item.methodLabel].filter(Boolean).join(" · "), item.amount);
+  }
+  return y + 6;
+}
+
+export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4", cancelled = null, replacedBy = null, verifyUrl }) {
   const qr = await QRCode.toBuffer(verifyUrl, { margin: 0, width: 240 });
   const { doc, done } = openDoc(format);
   const costume = snapshot.costume || null;
-  const compact = Boolean(costume);
+  const history = !costume && Array.isArray(snapshot.history) ? snapshot.history : [];
+  const compact = Boolean(costume) || history.length > 0;
   const costumeToday = Number(costume?.today || 0);
   const total = Number(snapshot.totalAmount ?? snapshot.amount ?? 0);
   const paidBefore = Math.max(0, Number(snapshot.paidAfter || 0) - Number(snapshot.amount || 0));
@@ -296,12 +320,13 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
     ["Cumul versé à ce jour", money(snapshot.paidAfter)],
   ];
   if (snapshot.creditAfter > 0) rows.push(["Crédit", money(snapshot.creditAfter)]);
-  if (!compact) rows[0][0] = "Montant total dû";
-  for (const [label, value] of rows) {
+  if (!costume) rows[0][0] = "Montant total dû";
+  rows.forEach(([label, value], index) => {
+    if (index === 1 && history.length) y = drawHistory(doc, y - 4, history);
     write(doc, label, LEFT + 12, y, 11, "Helvetica", MUTED, 300);
     write(doc, value, RIGHT - 230, y, 11, "Helvetica-Bold", INK, 218, "right");
     y += step;
-  }
+  });
   doc.rect(LEFT, y - 8, WIDTH, 28).fill(settled ? "#e6efe9" : "#fbf2dc");
   const resteColor = settled ? LEAF : GOLD_TEXT;
   write(doc, compact ? "Reste à payer (scolarité)" : "Reste à payer", LEFT + 12, y, 12, "Helvetica-Bold", resteColor, 300);
@@ -329,6 +354,9 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
   if (cancelled) {
     const reason = `Annulé : ${cancelled.reason}${cancelled.credit_note_number ? ` · avoir ${cancelled.credit_note_number}` : ""}`;
     write(doc, reason, LEFT, Math.min(y, 676), 9, "Helvetica-Bold", GOLD_TEXT, WIDTH);
+  } else if (replacedBy) {
+    const note = `Versement repris dans le reçu ${replacedBy.number} du ${frenchDate(replacedBy.paidOn)}, qui fait foi pour le cumul.`;
+    write(doc, note, LEFT, Math.min(y, 676), 9, "Helvetica-Bold", GOLD_TEXT, WIDTH);
   }
 
   drawFoot(doc, qr, receipt.number);
