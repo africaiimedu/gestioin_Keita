@@ -6,7 +6,8 @@ import express from "express";
 import { Op } from "sequelize";
 import { verifyPassword, sessionToken, can, hashPassword, passwordIssue, RIGHTS, rightsOf } from "./auth/passwords.js";
 import { verifyTotp, totp } from "./auth/totp.js";
-import { closeDb, getDb } from "./db/index.js";
+import { closeDb, getDb, transaction } from "./db/index.js";
+import { ensureAccountEmails } from "./services/identity.js";
 import { runMigrations } from "./db/migrate.js";
 import { seedAll } from "./seed/run.js";
 import { applyIdentity } from "./seed/migrate.js";
@@ -67,6 +68,8 @@ if ((await User.count()) === 0) {
   await seedAll(db);
 }
 await applyIdentity(db);
+const newAccounts = await transaction(db, () => ensureAccountEmails(db));
+if (newAccounts) console.log(`Comptes étudiants : ${newAccounts} adresses attribuées`);
 
 // Le mode démonstration (comptes et codes à 6 chiffres affichés) ne s'ouvre jamais en production.
 const DEMO = process.env.DEMO_MODE === "true" && process.env.NODE_ENV !== "production";

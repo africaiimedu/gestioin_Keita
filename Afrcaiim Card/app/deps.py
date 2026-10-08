@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import Utilisateur
+from app.services.comptes import doit_choisir_mot_de_passe
 
 
 class Redirection(Exception):
@@ -97,6 +98,8 @@ def exiger_etudiant(
         raise Redirection("/login")
     if utilisateur.role != "etudiant" or not utilisateur.etudiant_id:
         raise Redirection(maison(utilisateur.role))
+    if doit_choisir_mot_de_passe(utilisateur):
+        raise Redirection("/compte")
     return utilisateur
 
 

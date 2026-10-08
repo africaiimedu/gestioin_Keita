@@ -690,9 +690,31 @@ async function onLogin(event) {
     else openHome();
     render();
   } catch (caught) {
+    const email = String(form.get("email") || "").trim().toLowerCase();
+    if (/^[a-z0-9-]+\.[a-z0-9.-]+@univ-africaiim\.com$/.test(email)
+      && await studentLogin(email, String(form.get("password") || "")).catch(() => false)) return;
     error.hidden = false;
     error.textContent = caught.message;
   }
+}
+
+async function studentLogin(email, password) {
+  const page = await fetch("/portail/cartes/login", { credentials: "same-origin" });
+  if (!new URL(page.url).pathname.endsWith("/login")) {
+    location.href = page.url;
+    return true;
+  }
+  const csrf = (await page.text()).match(/name="csrf" value="([^"]+)"/)?.[1];
+  if (!csrf) return false;
+  const sent = await fetch("/portail/cartes/login", {
+    method: "POST",
+    credentials: "same-origin",
+    body: new URLSearchParams({ identifiant: email, mot_de_passe: password, csrf, suivant: "" }),
+  });
+  const target = new URL(sent.url);
+  if (!sent.ok || target.pathname.endsWith("/login")) return false;
+  location.href = target.pathname + target.search;
+  return true;
 }
 
 async function openScreen() {
@@ -1178,7 +1200,9 @@ async function showStudents(screen) {
           method: form.method.value,
         }) });
         state.freshReceipt = created.enrollmentReceiptId ? { id: created.enrollmentReceiptId, number: created.enrollmentReceiptNumber } : null;
-        saved("Fiche enregistrée");
+        saved(created.student.accountEmail
+          ? `Fiche enregistrée · compte ${created.student.accountEmail} · mot de passe de départ Africaiim2026`
+          : "Fiche enregistrée");
         openStudent(created.student.id);
       } catch (caught) {
         if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
@@ -1221,7 +1245,8 @@ async function showStudent(screen, id) {
   const student = data.student;
   const situation = data.situation;
   screen.innerHTML = `<div class="top"><div><p class="mark">${esc(student.matricule)}</p><h1>${esc(student.name)}</h1>
-      <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)}</p></div>
+      <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)}</p>
+      ${student.accountEmail ? `<p class="muted">Compte étudiant : ${esc(student.accountEmail)}</p>` : ""}</div>
       <div class="row-actions">
         ${data.enrollment ? `<a class="btn" href="/api/inscriptions/${data.enrollment.id}.pdf" target="_blank">Imprimer le reçu d'inscription ${esc(data.enrollment.number)}</a>` : `<button class="btn" id="issue-enrollment" type="button">Émettre le reçu d'inscription</button>`}
         <button class="btn secondary" id="pay-this" type="button">Encaisser</button>

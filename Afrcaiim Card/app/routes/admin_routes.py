@@ -389,7 +389,7 @@ async def ajouter(
         if photo is not None and photo.filename:
             blob = await photo.read()
             jpeg = normaliser_photo(blob)
-        _, secret = creer_etudiant(
+        _, secret, compte = creer_etudiant(
             db,
             prenom=fiche.prenom,
             nom=fiche.nom,
@@ -408,7 +408,7 @@ async def ajouter(
     flash(
         request,
         "ok",
-        f"{fiche.prenom} {fiche.nom} {'créée' if fiche.sexe == 'F' else 'créé'}. Mot de passe temporaire : {secret} — copiez-le maintenant, il ne sera plus affiché.",
+        f"{fiche.prenom} {fiche.nom} {'créée' if fiche.sexe == 'F' else 'créé'}. Compte : {compte} · mot de passe de départ : {secret} (à changer à la première connexion).",
     )
     raise Redirection("/admin/etudiants")
 
@@ -1110,7 +1110,7 @@ async def importer(
                     f"{fiche.matricule} : photo manquante, la carte ne pourra pas être imprimée."
                 )
             try:
-                _, secret = creer_etudiant(
+                _, secret, compte = creer_etudiant(
                     db,
                     prenom=fiche.prenom,
                     nom=fiche.nom,
@@ -1125,7 +1125,7 @@ async def importer(
                     action="importee",
                     details=f"Import ligne {ligne.numero}",
                 )
-                crees.append({"nom": f"{fiche.prenom} {fiche.nom}", "matricule": fiche.matricule, "mot_de_passe": secret})
+                crees.append({"nom": f"{fiche.prenom} {fiche.nom}", "matricule": fiche.matricule, "compte": compte, "mot_de_passe": secret})
             except ValueError as exc:
                 erreurs.append(f"Ligne {ligne.numero} : {exc}")
     rapport = {"crees": crees, "erreurs": erreurs, "avertissements": avertissements}

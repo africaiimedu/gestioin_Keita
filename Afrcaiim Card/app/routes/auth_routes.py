@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.deps import Redirection, exiger_connecte, get_db, maison, utilisateur_courant
 from app.models import Utilisateur
 from app.security import hash_mot_de_passe, verifier_mot_de_passe
+from app.services.comptes import doit_choisir_mot_de_passe, mot_de_passe_depart
 from app.services.limite import autoriser
 from app.ui import csrf_valide, flash, render, retour_sur
 
@@ -80,6 +81,8 @@ def login(
     request.session.clear()
     request.session["uid"] = utilisateur.id
     request.session["csrf"] = secrets.token_urlsafe(32)
+    if doit_choisir_mot_de_passe(utilisateur):
+        return RedirectResponse("/compte", status_code=303)
     return RedirectResponse(_destination(utilisateur.role, suivant), status_code=303)
 
 
@@ -120,8 +123,12 @@ def changer_mot_de_passe(
     if nouveau.lower() == utilisateur.identifiant.lower():
         flash(request, "erreur", "Le mot de passe ne doit pas être identique à l'identifiant.")
         raise Redirection("/compte")
+    if nouveau == mot_de_passe_depart():
+        flash(request, "erreur", "Choisissez un mot de passe différent du mot de passe de départ.")
+        raise Redirection("/compte")
+    premiere_fois = doit_choisir_mot_de_passe(utilisateur)
     utilisateur.mot_de_passe_hash = hash_mot_de_passe(nouveau)
     utilisateur.doit_changer_mot_de_passe = False
     db.commit()
     flash(request, "ok", "Mot de passe modifié.")
-    raise Redirection("/compte")
+    raise Redirection(maison(utilisateur.role) if premiere_fois else "/compte")

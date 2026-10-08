@@ -20,6 +20,7 @@ from app.models import (
     maintenant,
 )
 from app.security import hash_mot_de_passe, mot_de_passe_temporaire, nouveau_jeton
+from app.services.comptes import adresse_compte, mot_de_passe_depart
 from app.services.photos import enregistrer_photo
 from app.services.statut import statut_effectif
 
@@ -83,10 +84,12 @@ def creer_etudiant(
     email: str = "",
     sexe: str = "M",
     mot_de_passe: str | None = None,
+    identifiant: str | None = None,
     acteur_id: int | None = None,
     action: str = "creee",
     details: str = "Fiche et carte créées",
-) -> tuple[Etudiant, str]:
+) -> tuple[Etudiant, str, str]:
+    compte = identifiant or matricule
     try:
         etudiant = Etudiant(
             prenom=prenom,
@@ -104,10 +107,11 @@ def creer_etudiant(
         db.flush()
         if jpeg:
             etudiant.photo_chemin = enregistrer_photo(etudiant.id, jpeg)
-        secret = mot_de_passe or mot_de_passe_temporaire()
+        secret = mot_de_passe or mot_de_passe_depart()
+        compte = identifiant or adresse_compte(db, prenom, nom) or compte
         db.add(
             Utilisateur(
-                identifiant=matricule,
+                identifiant=compte,
                 mot_de_passe_hash=hash_mot_de_passe(secret),
                 role="etudiant",
                 actif=True,
@@ -129,10 +133,10 @@ def creer_etudiant(
         )
         db.commit()
         db.refresh(etudiant)
-        return etudiant, secret
+        return etudiant, secret, compte
     except IntegrityError as exc:
         db.rollback()
-        raise ValueError(f"Le matricule {matricule} existe déjà.") from exc
+        raise ValueError(f"Le matricule {matricule} ou le compte {compte} existe déjà.") from exc
     except Exception:
         db.rollback()
         raise

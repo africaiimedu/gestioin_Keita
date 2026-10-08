@@ -2,6 +2,7 @@ import { METHOD_LABELS } from "../finance/index.js";
 import { HttpError } from "../httpError.js";
 import { transaction } from "../db/index.js";
 import { audit, createPayment, issueEnrollmentReceipt, todayInConakry } from "./domain.js";
+import { assignAccountEmail, findSamePerson, personKey } from "./identity.js";
 
 const METHOD_ALIASES = {
   especes: "especes",
@@ -66,7 +67,10 @@ export async function previewImport(db, filename, text, userId) {
   }
   const index = Object.fromEntries(expected.map((column) => [column, header.indexOf(column)]));
   const programs = await db.prepare("SELECT id, code, name FROM programs").all();
-  const known = new Map((await db.prepare("SELECT matricule, level FROM students").all()).map((row) => [row.matricule, row]));
+  const students = await db.prepare("SELECT matricule, level, last_name, first_name, status FROM students").all();
+  const known = new Map(students.map((row) => [row.matricule, row]));
+  const people = new Map(students.filter((row) => row.status !== "archive").map((row) => [personKey(row.last_name, row.first_name), row]));
+  const seenPeople = new Set();
   const seen = new Map();
   const rows = table.slice(1).map((line, position) => {
     const get = (column) => (line[index[column]] || "").trim();
@@ -95,6 +99,13 @@ export async function previewImport(db, filename, text, userId) {
       seen.set(matricule, position + 2);
       const existing = known.get(matricule);
       if (existing && existing.level !== level) anomalies.push("Le niveau ne correspond pas à la fiche déjà enregistrée");
+    }
+    const person = nom && prenom ? personKey(nom, prenom) : "";
+    if (person) {
+      const twin = people.get(person);
+      if (twin && twin.matricule !== matricule) anomalies.push(`Personne déjà enregistrée (${twin.matricule}) : les versements seront ajoutés à sa fiche`);
+      if (seenPeople.has(person)) anomalies.push("Personne en double dans le fichier");
+      seenPeople.add(person);
     }
     return {
       line: position + 2,
@@ -132,6 +143,10 @@ export async function commitImport(db, user, batchId, decisions) {
       if (decisions?.[row.line] === "skip" || row.anomalies.includes("Ligne vide")) { skipped += 1; continue; }
       if (!row.programId || !row.nom) { skipped += 1; continue; }
       let student = row.matricule ? await db.prepare("SELECT * FROM students WHERE matricule = ?").get(row.matricule) : null;
+      if (!student && row.prenom) {
+        const twin = await findSamePerson(db, row.nom, row.prenom);
+        if (twin) student = await db.prepare("SELECT * FROM students WHERE id = ?").get(twin.id);
+      }
       if (!student) {
         const matricule = row.matricule || await nextFreeMatricule(db, year.label);
         const inserted = await db.prepare(`
@@ -139,6 +154,7 @@ export async function commitImport(db, user, batchId, decisions) {
           VALUES(?, ?, ?, ?, ?, ?, 'saisie') RETURNING id
         `).run(matricule, row.nom.toUpperCase(), row.prenom, row.programId, year.id, row.level);
         student = await db.prepare("SELECT * FROM students WHERE id = ?").get(inserted.lastInsertRowid);
+        await assignAccountEmail(db, student);
         await issueEnrollmentReceipt(db, user, student.id);
         created += 1;
       }

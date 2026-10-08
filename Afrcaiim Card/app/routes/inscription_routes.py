@@ -14,7 +14,8 @@ from app.config import env
 from app.deps import get_db, utilisateur_courant
 from app.models import Etudiant, Utilisateur
 from app.services.import_etudiants import _MATRICULE, controler_fiche
-from app.services.metier import creer_etudiant, modifier_etudiant, supprimer_etudiant
+from app.services.comptes import ADRESSE, aligner_compte
+from app.services.metier import creer_etudiant, journaliser, modifier_etudiant, supprimer_etudiant
 
 router = APIRouter()
 
@@ -67,22 +68,36 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
         )
     except ValueError as exc:
         return JSONResponse({"message": str(exc)}, status_code=400)
+    compte = str(corps.get("compte") or "").strip().lower()
+    if compte and not ADRESSE.match(compte):
+        return JSONResponse({"message": "L'adresse du compte doit finir par @univ-africaiim.com."}, status_code=400)
     existant = db.scalar(select(Etudiant).where(Etudiant.matricule == fiche.matricule))
     if existant is None:
-        etudiant, _secret = creer_etudiant(
-            db,
-            prenom=fiche.prenom,
-            nom=fiche.nom,
-            matricule=fiche.matricule,
-            filiere=fiche.filiere,
-            annee_academique=fiche.annee_academique,
-            date_validite=fiche.date_validite,
-            email=fiche.email,
-            sexe=fiche.sexe or "M",
-            action="importee",
-            details="Inscription reçue du site",
-        )
+        try:
+            etudiant, _secret, _compte = creer_etudiant(
+                db,
+                prenom=fiche.prenom,
+                nom=fiche.nom,
+                matricule=fiche.matricule,
+                filiere=fiche.filiere,
+                annee_academique=fiche.annee_academique,
+                date_validite=fiche.date_validite,
+                email=fiche.email,
+                sexe=fiche.sexe or "M",
+                identifiant=compte or None,
+                action="importee",
+                details="Inscription reçue du site",
+            )
+        except ValueError as exc:
+            return JSONResponse({"message": str(exc)}, status_code=409)
     else:
+        if compte:
+            try:
+                if aligner_compte(db, existant, compte):
+                    journaliser(db, "compte_etudiant", etudiant_id=existant.id, details=compte)
+            except ValueError as exc:
+                db.rollback()
+                return JSONResponse({"message": str(exc)}, status_code=409)
         modifier_etudiant(
             db,
             existant,
@@ -98,6 +113,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
         etudiant = existant
     return {
         "matricule": etudiant.matricule,
+        "compte": compte or None,
         "ecole": fiche.filiere,
         "annee_academique": fiche.annee_academique,
     }

@@ -70,6 +70,7 @@ const tables = () => ({
     level: { type: DataTypes.TEXT, allowNull: false, validate: { isIn: [LEVELS] } },
     phone: text(),
     email: text(),
+    account_email: text(),
     guardian_name: text(),
     guardian_phone: text(),
     status: { type: DataTypes.TEXT, allowNull: false, defaultValue: "actif" },

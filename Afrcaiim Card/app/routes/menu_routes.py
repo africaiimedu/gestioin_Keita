@@ -31,6 +31,7 @@ from app.models import (
     Utilisateur,
 )
 from app.security import verifier_mot_de_passe
+from app.services.comptes import doit_choisir_mot_de_passe
 from app.services.limite import autoriser
 from app.services.menu_cantine import (
     RefusCommande,
@@ -95,6 +96,8 @@ def menu(
         raise Redirection(f"/login?suivant=/m/{jeton}")
     if utilisateur.role != "etudiant" or not utilisateur.etudiant_id:
         raise Redirection(maison(utilisateur.role))
+    if doit_choisir_mot_de_passe(utilisateur):
+        raise Redirection("/compte")
     etudiant = _etudiant_de(db, utilisateur)
     commandes = db.scalars(
         select(CommandeCantine)

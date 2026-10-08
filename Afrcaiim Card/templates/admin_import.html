@@ -25,15 +25,16 @@
   {% if rapport %}
     <h2>{{ rapport.crees|length }} fiche(s) créée(s)</h2>
     {% if rapport.crees %}
-      <p class="flash flash-avertissement">Copiez ces mots de passe maintenant. Ils ne seront plus affichés.</p>
+      <p class="flash flash-avertissement">Chaque étudiant choisit son propre mot de passe à la première connexion.</p>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>Nom</th><th>Matricule</th><th>Mot de passe temporaire</th></tr></thead>
+          <thead><tr><th>Nom</th><th>Matricule</th><th>Compte</th><th>Mot de passe de départ</th></tr></thead>
           <tbody>
             {% for ligne in rapport.crees %}
               <tr>
                 <td>{{ ligne.nom }}</td>
                 <td>{{ ligne.matricule }}</td>
+                <td><code>{{ ligne.compte }}</code></td>
                 <td><code>{{ ligne.mot_de_passe }}</code></td>
               </tr>
             {% endfor %}

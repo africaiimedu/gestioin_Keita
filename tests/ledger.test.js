@@ -243,6 +243,36 @@ test("bachelor, masters, réduction de 5 % et boursier", async () => {
   assert.equal((await db.prepare("SELECT registration_amount FROM fee_schedules WHERE id = ?").get(bachelor2.id)).registration_amount, 5_200_000);
 });
 
+test("compte étudiant créé à l'inscription, et une personne n'est jamais enregistrée deux fois", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const first = await domain.createStudent(db, agent, {
+    lastName: "Kourouma", firstName: "Mamadou Alpha", programId: program.id, level: "bachelor_1",
+    paymentAmount: 1_000_000, method: "especes",
+  });
+  assert.equal(first.student.account_email, "alpha.kourouma@univ-africaiim.com");
+  const count = async () => (await db.prepare("SELECT COUNT(*) AS n FROM students").get()).n;
+  const before = await count();
+  await assert.rejects(
+    () => domain.createStudent(db, agent, {
+      lastName: "KOUROUMA", firstName: "alpha mamadou", programId: program.id, level: "bachelor_1",
+      paymentAmount: 2_000_000, method: "especes",
+    }),
+    (error) => error.status === 409 && error.message.includes(first.student.matricule),
+  );
+  assert.equal(await count(), before);
+  const other = await domain.createStudent(db, agent, {
+    lastName: "KOUROUMA", firstName: "Alpha", programId: program.id, level: "bachelor_1",
+    paymentAmount: 0, method: "especes",
+  });
+  assert.equal(other.student.account_email, "alpha.kourouma2@univ-africaiim.com");
+  const payment = await db.prepare("SELECT id FROM payments WHERE student_id = ? ORDER BY id LIMIT 1").get(first.student.id);
+  const added = await domain.updatePayment(db, agent, payment.id, {
+    amount: 2_000_000, paidOn: "2026-10-06", method: "especes", idempotencyKey: "compte-maj-0001",
+  }, "2026-10-06");
+  assert.equal(added.after.paid, 3_000_000);
+  assert.equal(await count(), before + 1);
+});
+
 test("une mise à jour ajoute un versement sans modifier le montant déjà enregistré", async () => {
   const student = await db.prepare("SELECT id FROM students WHERE last_name = 'CAMARA' AND first_name = 'Partiel'").get();
   const before = (await domain.studentSituation(db, student.id, "2026-10-06")).situation.paid;

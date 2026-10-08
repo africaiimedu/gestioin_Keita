@@ -129,7 +129,7 @@ async function forward(req, res, targetPath, rewrite) {
     upstream.on("data", (chunk) => chunks.push(chunk));
     upstream.on("end", () => {
       let text = rewriteText(Buffer.concat(chunks).toString("utf8"));
-      if (/text\/html/.test(type) && text.includes("barre")) {
+      if (/text\/html/.test(type) && text.includes("barre") && req.cardEmbed !== false) {
         const style = text.includes('class="atelier')
           ? `<style>header.barre{display:none!important}html,body{height:100%!important;background:#eceff1!important}</style>`
           : EMBED_STYLE;
@@ -159,8 +159,9 @@ export function attachCardPortal(app, resolveUser = () => null) {
     let tail = req.url && req.url !== "/" ? req.url : "/";
     if (!tail.startsWith("/")) tail = `/${tail}`;
     const user = await resolveUser(req);
+    req.cardEmbed = Boolean(user);
     const pathOnly = tail.split("?")[0];
-    if (pathOnly.startsWith("/admin/comptes") || pathOnly.startsWith("/compte")) {
+    if (pathOnly.startsWith("/admin/comptes") || (user && pathOnly.startsWith("/compte"))) {
       res.status(200).type("html").send(`<!doctype html><meta charset="utf-8"><title>Comptes</title>
         <script>(window.top || window).location.href = "/#finances/comptes";</script>
         <p style="font-family:Georgia,serif;color:#0c3d2e;padding:28px 24px">Les comptes se gèrent uniquement dans <a href="/#finances/comptes" target="_top">Comptes</a>.</p>`);

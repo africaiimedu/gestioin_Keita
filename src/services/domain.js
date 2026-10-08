@@ -21,6 +21,7 @@ import {
 } from "../finance/index.js";
 import { HttpError } from "../httpError.js";
 import { pushStudentToCard } from "./cardSync.js";
+import { assignAccountEmail, refuseSamePerson } from "./identity.js";
 
 const METHODS = new Set(Object.keys(METHOD_LABELS));
 const INSTALLMENTS = ["inscription", "tranche_1", "tranche_2", "tranche_3"];
@@ -573,6 +574,7 @@ function publicStudent(student) {
     year: student.year_label,
     phone: student.phone,
     email: student.email,
+    accountEmail: student.account_email,
     guardianName: student.guardian_name,
     guardianPhone: student.guardian_phone,
     status: student.status,
@@ -961,12 +963,14 @@ export async function createStudent(db, user, input) {
   if (!program) throw new HttpError(400, "Filière inconnue");
   const paidOn = todayInConakry();
   const created = await transaction(db, async () => {
+    await refuseSamePerson(db, last, first);
     const matricule = await nextMatricule(db, year.label);
     const result = await db.prepare(`
       INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source)
       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie') RETURNING id
     `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone));
     const studentId = result.lastInsertRowid;
+    await assignAccountEmail(db, { id: studentId, first_name: first, last_name: last });
     await audit(db, user.id, "etudiant.creer", "students", studentId, null, { matricule, last, first, level: input.level, scholarship });
     if (scholarship) {
       await db.prepare(`
@@ -1061,6 +1065,7 @@ export async function updateStudent(db, user, studentId, input) {
     if (!before) throw new HttpError(404, "Étudiant introuvable");
     const status = input.status || before.status;
     if (!["actif", "suspendu", "archive"].includes(status)) throw new HttpError(400, "Statut inconnu");
+    if (before.status === "archive" && status !== "archive") await refuseSamePerson(db, before.last_name, before.first_name, before.id);
     await db.prepare(`
       UPDATE students SET phone = ?, email = ?, guardian_name = ?, guardian_phone = ?, status = ? WHERE id = ?
     `).run(clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), status, studentId);

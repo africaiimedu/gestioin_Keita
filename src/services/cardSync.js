@@ -15,7 +15,8 @@ export function ficheCarte(student) {
   if (!ecole) return { ok: false, matricule, error: "L'école est absente." };
   let email = String(student.email || "").trim().toLowerCase();
   if (email && !EMAIL.test(email)) email = "";
-  return { ok: true, payload: { prenom, nom, matricule, ecole, email } };
+  const compte = String(student.account_email || "").trim().toLowerCase();
+  return { ok: true, payload: { prenom, nom, matricule, ecole, email, ...(compte ? { compte } : {}) } };
 }
 
 export async function pushStudentToCard(student) {
@@ -31,7 +32,7 @@ export async function pushStudentToCard(student) {
 
 export async function syncStudentsToCard(db) {
   const rows = await db.prepare(`
-    SELECT s.matricule, s.last_name, s.first_name, s.email, p.name AS program_name
+    SELECT s.matricule, s.last_name, s.first_name, s.email, s.account_email, p.name AS program_name
     FROM students s
     JOIN programs p ON p.id = s.program_id
     WHERE s.status != 'archive'
