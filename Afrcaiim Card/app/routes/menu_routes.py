@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 from datetime import date, timedelta
 
 import qrcode
@@ -33,9 +32,7 @@ from app.models import (
     Utilisateur,
     maintenant,
 )
-from app.security import verifier_mot_de_passe
 from app.services.comptes import doit_choisir_mot_de_passe
-from app.services.limite import autoriser
 from app.services.menu_cantine import (
     RefusCommande,
     annuler_commande,
@@ -58,7 +55,6 @@ from app.services.recus import MODES, NATURES, lister, rapport
 from app.ui import csrf_valide, flash, render
 
 router = APIRouter()
-_PIN = re.compile(r"^\d{4}$")
 _LIBELLES = {
     "a_payer": "À payer à la caisse",
     "recue": "Reçue",
@@ -132,7 +128,7 @@ def commander(
     request: Request,
     panier: str = Form(""),
     cle: str = Form(""),
-    pin: str = Form(""),
+    confirme: str = Form(""),
     csrf: str = Form(""),
     utilisateur: Utilisateur = Depends(exiger_etudiant),
     db: Session = Depends(get_db),
@@ -151,23 +147,11 @@ def commander(
     except (json.JSONDecodeError, RefusCommande) as exc:
         flash(request, "erreur", str(exc) if isinstance(exc, RefusCommande) else "Le panier est illisible.")
         raise Redirection(retour) from exc
-    pin_nouveau = None
-    if utilisateur.pin_cantine_hash:
-        if not autoriser(f"pin-cantine:{utilisateur.id}", 5, 600):
-            flash(request, "erreur", "Trop de codes incorrects. Réessayez dans quelques minutes.")
-            raise Redirection(retour)
-        if not verifier_mot_de_passe(pin, utilisateur.pin_cantine_hash):
-            flash(request, "erreur", "Code cantine incorrect.")
-            raise Redirection(retour)
-    else:
-        if not _PIN.match(pin or ""):
-            flash(request, "erreur", "Choisissez un code cantine à 4 chiffres.")
-            raise Redirection(retour)
-        pin_nouveau = pin
+    if confirme != "1":
+        flash(request, "erreur", "Confirmez la commande avant de la valider.")
+        raise Redirection(retour)
     try:
-        commande, _nouvelle = passer_commande(
-            db, etudiant, utilisateur, point, lignes, cle, pin_nouveau
-        )
+        commande, _nouvelle = passer_commande(db, etudiant, utilisateur, point, lignes, cle)
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
         raise Redirection(retour) from exc

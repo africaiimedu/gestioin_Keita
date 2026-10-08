@@ -28,7 +28,7 @@
     catch (e) { return {}; }
   }
   function sauver() { sessionStorage.setItem(stockage, JSON.stringify(panier)); }
-  function francs(montant) { return new Intl.NumberFormat("fr-FR").format(montant) + " GNF"; }
+  function francs(montant) { return String(Math.trunc(montant)).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " GNF"; }
   function articles() {
     return Object.keys(panier).map(function (id) { return { id: Number(id), qte: panier[id].qte }; });
   }
@@ -55,6 +55,51 @@
     sessionStorage.setItem(cleStock, neuve);
     return neuve;
   }
+  var confirmation = document.getElementById("confirmation");
+  var valider = document.getElementById("valider-commande");
+  function masquerConfirmation() {
+    confirmation.hidden = true;
+    valider.hidden = false;
+    document.getElementById("confirme").value = "";
+  }
+  function montrerConfirmation() {
+    var liste = document.getElementById("confirmation-lignes");
+    liste.innerHTML = "";
+    Object.keys(panier).forEach(function (id) {
+      var ligne = document.createElement("li");
+      var nom = document.createElement("span");
+      nom.textContent = panier[id].qte + " × " + panier[id].nom;
+      var prix = document.createElement("strong");
+      prix.textContent = francs(prixLigne(id) * panier[id].qte);
+      ligne.append(nom, prix);
+      liste.appendChild(ligne);
+    });
+    document.getElementById("confirmation-total").textContent = francs(total());
+    document.getElementById("confirmation-texte").textContent = parSolde()
+      ? "Le montant sera retiré de votre solde cantine (" + francs(solde) + "). La cuisine commence la préparation dès la validation."
+      : "Vous payez ce montant à la caisse, en espèces ou par Orange Money. La cuisine prépare la commande une fois le paiement validé.";
+    valider.hidden = true;
+    confirmation.hidden = false;
+    document.getElementById("confirmation-oui").focus();
+  }
+  valider.addEventListener("click", function () {
+    if (!Object.keys(panier).length) return;
+    montrerConfirmation();
+  });
+  document.getElementById("confirmation-retour").addEventListener("click", function () {
+    masquerConfirmation();
+    valider.focus();
+  });
+  document.getElementById("form-commande").addEventListener("submit", function (event) {
+    if (confirmation.hidden || !Object.keys(panier).length) {
+      event.preventDefault();
+      return;
+    }
+    document.getElementById("confirme").value = "1";
+    var oui = document.getElementById("confirmation-oui");
+    oui.disabled = true;
+    oui.textContent = "Envoi de la commande…";
+  });
   function dessiner() {
     var compte = Object.keys(panier).reduce(function (n, id) { return n + panier[id].qte; }, 0);
     barre.hidden = compte === 0;
@@ -121,8 +166,9 @@
     avis.textContent = caisse
       ? "Votre solde (" + francs(solde) + ") ne couvre pas cette commande. Elle passe au prix sans solde : vous payez " + francs(total()) + " à la caisse (espèces ou Orange Money), puis la cuisine la prépare."
       : "";
-    document.getElementById("payer-libelle").textContent = caisse ? "Commander, payer à la caisse" : "Payer avec mon solde";
+    document.getElementById("payer-libelle").textContent = caisse ? "Commander et payer à la caisse" : "Payer avec mon solde";
     document.getElementById("payer-montant").textContent = francs(total());
+    masquerConfirmation();
     document.getElementById("panier-json").value = JSON.stringify(articles());
     document.getElementById("cle-commande").value = cle();
   }

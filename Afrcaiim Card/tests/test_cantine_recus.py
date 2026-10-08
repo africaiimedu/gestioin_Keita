@@ -221,7 +221,7 @@ def test_sans_solde_encaissement_recus_et_rapport():
             assert liste.status_code == 200 and recu_numero in liste.text
             page = client.get(f"/menu/recus/{recu_id}")
             assert page.status_code == 200
-            assert "Imprimer le reçu" in page.text and "Espèces" in page.text and "12 000" in page.text.replace("\u202f", " ").replace("\xa0", " ")
+            assert "Imprimer le reçu" in page.text and "Espèces" in page.text and "12.000 GNF" in page.text
             client.post("/logout", data={"csrf": page.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]})
 
             _entrer(client, _IDENTIFIANTS[1])

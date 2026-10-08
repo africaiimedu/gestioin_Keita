@@ -10,8 +10,8 @@ from app.config import ROOT, env
 
 
 def formater_francs(montant: int) -> str:
-    """Montant en francs guinéens, format monétaire : 10 000 GNF."""
-    nombre = f"{abs(int(montant)):,}".replace(",", "\u202f")
+    """Montant en francs guinéens, séparateur des milliers à point : 10.000 GNF."""
+    nombre = f"{abs(int(montant)):,}".replace(",", ".")
     signe = "−" if int(montant) < 0 else ""
     return f"{signe}{nombre} GNF"
 

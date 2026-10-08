@@ -904,7 +904,7 @@ document.getElementById("origine").onclick = async () => {
   message("Modèle d'origine rétabli.");
 };
 function francs(montant) {
-  const nombre = String(Math.max(0, Number(montant) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+  const nombre = String(Math.max(0, Number(montant) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${nombre} GNF`;
 }
 document.getElementById("recharger").onclick = () => {

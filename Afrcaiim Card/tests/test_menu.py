@@ -177,18 +177,26 @@ def test_page_menu_et_commande():
             assert "apercu-recto" not in client.get("/espace").text
             assert "Programme" in client.get("/espace").text
             csrf = menu.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+            sans_confirmation = client.post(
+                f"/m/{jeton}/commander",
+                data={"csrf": csrf, "panier": f'[{{"id": {plat_id}, "qte": 1}}]', "cle": "clehttpmmenutest00"},
+                follow_redirects=False,
+            )
+            assert sans_confirmation.status_code == 303
+            assert sans_confirmation.headers["location"] == f"/m/{jeton}"
             commande = client.post(
                 f"/m/{jeton}/commander",
                 data={
                     "csrf": csrf,
                     "panier": f'[{{"id": {plat_id}, "qte": 1}}]',
                     "cle": "clehttpmmenutest01",
-                    "pin": "1357",
+                    "confirme": "1",
                 },
                 follow_redirects=False,
             )
             assert commande.status_code == 303, commande.text
             assert commande.headers["location"].startswith("/menu/commande/")
+            assert "Code cantine" not in menu.text and 'id="confirmation"' in menu.text
             recu = client.get(commande.headers["location"])
             assert recu.status_code == 200
             assert "A-" in recu.text
@@ -309,7 +317,7 @@ def test_etudiant_compte_cuisiniere_menu_qr_stable():
             assert menu.status_code == 200
             assert "Soupe test" in menu.text
             assert f"/static/plats/perso/{plat_id}.jpg" in menu.text
-            assert "8 000 GNF" in menu.text or "8 000 GNF" in menu.text
+            assert "8.000 GNF" in menu.text
             refus = client.post(
                 f"/cantine/plats/{plat_id}/retirer",
                 data={"csrf": menu.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]},

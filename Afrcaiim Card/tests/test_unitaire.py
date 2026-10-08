@@ -29,7 +29,7 @@ def test_compte_cantine_et_mail():
     from app.services.courrier import formater_francs, message_debit
     from app.services.import_etudiants import controler_email
 
-    assert formater_francs(10000) == "10\u202f000 GNF"
+    assert formater_francs(10000) == "10.000 GNF"
     assert controler_email("Amina.Diop@AfricaIIM.edu.gn") == "amina.diop@africaiim.edu.gn"
     try:
         controler_email("pas-un-mail")
@@ -42,7 +42,7 @@ def test_compte_cantine_et_mail():
     ok = decision_repas(20000, 10000, "amina.diop@africaiim.edu.gn", True)
     assert ok.ok is True
     sujet, corps = message_debit("Amina", "Diop", 10000, 40000)
-    assert "10\u202f000 GNF" in corps
+    assert "10.000 GNF" in corps
     assert "débité" in corps
     assert "Amina Diop" in corps
     assert "débit" in sujet

@@ -99,13 +99,23 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="panier" id="panier-json">
       <input type="hidden" name="cle" id="cle-commande">
-      <label>Code cantine à 4 chiffres
-        <input name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off">
-      </label>
-      <p class="aide">Ce code confirme la commande. Il n'est pas votre mot de passe de connexion.</p>
-      <button class="payer" type="submit"><span id="payer-libelle">Payer</span> <span id="payer-montant"></span></button>
+      <input type="hidden" name="confirme" id="confirme" value="">
+      <button class="payer" type="button" id="valider-commande">
+        <span id="payer-libelle">Valider la commande</span>
+        <strong id="payer-montant"></strong>
+      </button>
+      <div class="confirmation" id="confirmation" hidden role="alertdialog" aria-labelledby="confirmation-titre" aria-describedby="confirmation-texte">
+        <h3 id="confirmation-titre">Confirmer la commande ?</h3>
+        <ul id="confirmation-lignes"></ul>
+        <p class="confirmation-total"><span>Total</span><strong id="confirmation-total"></strong></p>
+        <p id="confirmation-texte"></p>
+        <div class="confirmation-actions">
+          <button type="button" class="secondaire" id="confirmation-retour">Modifier</button>
+          <button type="submit" class="payer" id="confirmation-oui">Oui, je confirme</button>
+        </div>
+      </div>
     </form>
   </section>
 {% endif %}
-<script src="/static/menu.js?v=4"></script>
+<script src="/static/menu.js?v=5"></script>
 {% endblock %}
