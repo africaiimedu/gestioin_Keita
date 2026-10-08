@@ -32,8 +32,14 @@
   function articles() {
     return Object.keys(panier).map(function (id) { return { id: Number(id), qte: panier[id].qte }; });
   }
-  function total() {
+  var solde = Number(feuille.dataset.solde || 0);
+  function totalSolde() {
     return Object.keys(panier).reduce(function (somme, id) { return somme + panier[id].prix * panier[id].qte; }, 0);
+  }
+  function parSolde() { return solde >= totalSolde(); }
+  function prixLigne(id) { return parSolde() ? panier[id].prix : (panier[id].caisse || panier[id].prix); }
+  function total() {
+    return Object.keys(panier).reduce(function (somme, id) { return somme + prixLigne(id) * panier[id].qte; }, 0);
   }
   function cle() {
     var existante = sessionStorage.getItem(cleStock);
@@ -54,7 +60,7 @@
       var nom = document.createElement("span");
       nom.textContent = panier[id].qte + " × " + panier[id].nom;
       var prix = document.createElement("strong");
-      prix.textContent = francs(panier[id].prix * panier[id].qte);
+      prix.textContent = francs(prixLigne(id) * panier[id].qte);
       var moins = document.createElement("button");
       moins.type = "button";
       moins.textContent = "Retirer";
@@ -67,6 +73,13 @@
       ligne.append(nom, prix, moins);
       liste.appendChild(ligne);
     });
+    var avis = document.getElementById("avis-caisse");
+    var caisse = compte > 0 && !parSolde();
+    avis.hidden = !caisse;
+    avis.textContent = caisse
+      ? "Votre solde (" + francs(solde) + ") ne couvre pas cette commande. Elle passe au prix sans solde : vous payez " + francs(total()) + " à la caisse (espèces ou Orange Money), puis la cuisine la prépare."
+      : "";
+    document.getElementById("payer-libelle").textContent = caisse ? "Commander, payer à la caisse" : "Payer avec mon solde";
     document.getElementById("payer-montant").textContent = francs(total());
     document.getElementById("panier-json").value = JSON.stringify(articles());
     document.getElementById("cle-commande").value = cle();
@@ -75,6 +88,7 @@
     bouton.addEventListener("click", function () {
       var id = bouton.dataset.id;
       if (!panier[id]) panier[id] = { nom: bouton.dataset.nom, prix: Number(bouton.dataset.prix), qte: 0 };
+      panier[id].caisse = Number(bouton.dataset.prixCaisse || bouton.dataset.prix);
       if (panier[id].qte >= 4) return;
       panier[id].qte += 1;
       bouton.classList.add("ajoute");

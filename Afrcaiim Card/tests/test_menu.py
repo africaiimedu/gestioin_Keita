@@ -17,6 +17,7 @@ from app.models import (
     MouvementCantine,
     Plat,
     PointCantine,
+    RecuCantine,
     Utilisateur,
     maintenant,
 )
@@ -41,6 +42,7 @@ def _nettoyer() -> None:
             db.commit()
             return
         commandes = db.scalars(select(CommandeCantine.id).where(CommandeCantine.etudiant_id == etudiant.id)).all()
+        db.execute(delete(RecuCantine).where(RecuCantine.etudiant_id == etudiant.id))
         if commandes:
             db.execute(delete(LigneCommande).where(LigneCommande.commande_id.in_(commandes)))
             db.execute(delete(CommandeCantine).where(CommandeCantine.id.in_(commandes)))
@@ -116,11 +118,9 @@ def test_debit_unique_solde_et_carte():
             assert encore.id == commande.id
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 5000
-            try:
-                passer_commande(db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0002")
-                raise AssertionError("le solde aurait dû refuser")
-            except RefusCommande as exc:
-                assert "insuffisant" in str(exc).lower()
+            a_payer, _ = passer_commande(db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0002")
+            assert a_payer.statut == "a_payer"
+            assert a_payer.mode_paiement == "caisse"
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 5000
             carte = db.scalar(select(Carte).where(Carte.etudiant_id == etudiant.id))
@@ -244,7 +244,7 @@ def test_etudiant_compte_cuisiniere_menu_qr_stable():
             assert edition.status_code == 200
             assert "Ajouter un repas" in edition.text
             assert "Supprimer" in edition.text
-            assert "Prix en GNF" not in edition.text
+            assert "Prix avec solde cantine" not in edition.text
             assert "/static/plats/thieb.jpg" in edition.text
             csrf = edition.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
             ajoute = client.post(
@@ -269,7 +269,7 @@ def test_etudiant_compte_cuisiniere_menu_qr_stable():
             edition = client.get("/cantine/menu")
             csrf = edition.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
             fiche = client.get(f"/cantine/menu?plat={plat_id}")
-            assert "Prix en GNF" in fiche.text and "Nouvelle image" in fiche.text
+            assert "Prix avec solde cantine" in fiche.text and "Prix sans solde" in fiche.text and "Nouvelle image" in fiche.text
             from io import BytesIO
             from PIL import Image
             tampon = BytesIO()

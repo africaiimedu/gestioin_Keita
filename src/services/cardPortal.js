@@ -36,7 +36,7 @@ header.barre{display:none!important}
 .login{min-height:70vh;background:transparent!important;display:grid!important;place-items:center}
 </style>
 <link rel="stylesheet" href="/portail-cartes.css?v=3">
-<script src="/portail-cartes.js?v=3" defer></script>`;
+<script src="/portail-cartes.js?v=4" defer></script>`;
 
 function cookiePair(header, name) {
   const source = Array.isArray(header) ? header.join("; ") : String(header || "");
@@ -75,6 +75,7 @@ function portalRole(user) {
 function portalAllowed(user, tail) {
   if (!user) return false;
   if (tail.startsWith("/cantine")) return can(user, "kitchen.manage");
+  if (tail.startsWith("/verif")) return can(user, "kitchen.manage") || can(user, "cards.manage");
   if (tail.startsWith("/login")) return can(user, "cards.manage") || can(user, "kitchen.manage");
   return can(user, "cards.manage");
 }

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=4">
+<link rel="stylesheet" href="/static/menu.css?v=7">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
@@ -10,7 +10,10 @@
     <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Menu du jour{% endif %}</h1>
     <p class="ouvert">Ouvert · déjeuner</p>
     {% if etudiant %}
-      <p class="solde">Compte <strong>{{ etudiant.solde_cantine|gnf }}</strong></p>
+      <p class="solde">Compte <strong>{{ etudiant.solde_cantine|gnf }}</strong> · <a href="/menu/recus">Mes reçus</a></p>
+      {% if not etudiant.solde_cantine %}
+        <p class="sans-solde">Sans solde, vous commandez quand même : le prix « sans solde » se paie à la caisse.</p>
+      {% endif %}
     {% endif %}
   </section>
 
@@ -34,9 +37,12 @@
               <p>{{ plat.description }}</p>
               <p class="meta">{{ plat.temps_min }} min{% if plat.stock is not none %} · {{ plat.stock }} restant{{ "s" if plat.stock > 1 else "" }}{% endif %}</p>
               <div class="ligne-prix">
-                <strong>{{ plat.prix|gnf }}</strong>
+                <span class="prix-double">
+                  <strong>{{ plat.prix|gnf }}</strong>
+                  {% if prix_caisse(plat) != plat.prix %}<small>Sans solde : {{ prix_caisse(plat)|gnf }}</small>{% endif %}
+                </span>
                 {% if plat.disponible and etudiant %}
-                  <button type="button" class="plus" data-id="{{ plat.id }}" data-nom="{{ plat.nom }}" data-prix="{{ plat.prix }}" aria-label="Ajouter {{ plat.nom }}">+</button>
+                  <button type="button" class="plus" data-id="{{ plat.id }}" data-nom="{{ plat.nom }}" data-prix="{{ plat.prix }}" data-prix-caisse="{{ prix_caisse(plat) }}" aria-label="Ajouter {{ plat.nom }}">+</button>
                 {% elif not plat.disponible %}
                   <span class="ferme">Épuisé</span>
                 {% endif %}
@@ -67,12 +73,13 @@
     <strong id="total-panier">0 GNF</strong>
   </button>
   <div class="voile" id="voile" hidden></div>
-  <section class="feuille" id="feuille" hidden aria-label="Panier">
+  <section class="feuille" id="feuille" hidden aria-label="Panier" data-solde="{{ etudiant.solde_cantine or 0 }}">
     <header>
       <h2>Votre panier</h2>
       <button type="button" id="fermer-panier" aria-label="Fermer">×</button>
     </header>
     <ul id="lignes"></ul>
+    <p class="avis-caisse" id="avis-caisse" hidden></p>
     <form method="post" action="/m/{{ point.jeton }}/commander" id="form-commande">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="panier" id="panier-json">
@@ -80,10 +87,10 @@
       <label>Code cantine à 4 chiffres
         <input name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off">
       </label>
-      <p class="aide">Ce code confirme le débit. Il n'est pas votre mot de passe de connexion.</p>
-      <button class="payer" type="submit">Payer <span id="payer-montant"></span></button>
+      <p class="aide">Ce code confirme la commande. Il n'est pas votre mot de passe de connexion.</p>
+      <button class="payer" type="submit"><span id="payer-libelle">Payer</span> <span id="payer-montant"></span></button>
     </form>
   </section>
 {% endif %}
-<script src="/static/menu.js?v=2"></script>
+<script src="/static/menu.js?v=3"></script>
 {% endblock %}

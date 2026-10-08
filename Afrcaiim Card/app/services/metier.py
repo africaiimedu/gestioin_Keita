@@ -149,13 +149,16 @@ def supprimer_etudiant(db, etudiant: Etudiant) -> None:
         chemin = (ROOT / etudiant.photo_chemin).resolve()
         if ROOT.resolve() in chemin.parents or chemin.parent == ROOT.resolve():
             chemin.unlink(missing_ok=True)
+    from app.services.recus import detacher_fiche
+
     commandes = db.scalars(select(CommandeCantine.id).where(CommandeCantine.etudiant_id == etudiant.id)).all()
+    identifiants = [carte.id for carte in etudiant.cartes]
+    detacher_fiche(db, etudiant.id, list(commandes), identifiants)
     if commandes:
         db.execute(delete(LigneCommande).where(LigneCommande.commande_id.in_(commandes)))
         db.execute(delete(CommandeCantine).where(CommandeCantine.id.in_(commandes)))
     db.execute(delete(MouvementCantine).where(MouvementCantine.etudiant_id == etudiant.id))
     db.execute(delete(Journal).where(Journal.etudiant_id == etudiant.id))
-    identifiants = [carte.id for carte in etudiant.cartes]
     if identifiants:
         db.execute(delete(Journal).where(Journal.carte_id.in_(identifiants)))
         db.execute(delete(MouvementCantine).where(MouvementCantine.carte_id.in_(identifiants)))

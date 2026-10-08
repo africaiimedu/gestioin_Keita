@@ -21,6 +21,8 @@
           <a href="/cantine" {% if chemin == "/cantine" or chemin.startswith("/cantine/affiche") %}class="actif" aria-current="page"{% endif %}>Cantine</a>
           <a href="/cantine/menu" {% if chemin.startswith("/cantine/menu") %}class="actif" aria-current="page"{% endif %}>Menu</a>
           <a href="/cantine/commandes" {% if chemin.startswith("/cantine/commandes") %}class="actif" aria-current="page"{% endif %}>Commandes</a>
+          <a href="/cantine/recus" {% if chemin.startswith("/cantine/recus") %}class="actif" aria-current="page"{% endif %}>Reçus</a>
+          <a href="/cantine/rapport" {% if chemin.startswith("/cantine/rapport") %}class="actif" aria-current="page"{% endif %}>Rapport</a>
         </div>
       </div>
       <a href="/securite" {% if chemin.startswith("/securite") %}class="actif" aria-current="page"{% endif %}>Contrôle</a>
@@ -30,11 +32,14 @@
     <a href="/cantine" {% if chemin == "/cantine" %}class="actif" aria-current="page"{% endif %}>Cantine</a>
     <a href="/cantine/menu" {% if chemin.startswith("/cantine/menu") %}class="actif" aria-current="page"{% endif %}>Menu</a>
     <a href="/cantine/commandes" {% if chemin.startswith("/cantine/commandes") %}class="actif" aria-current="page"{% endif %}>Commandes</a>
+    <a href="/cantine/recus" {% if chemin.startswith("/cantine/recus") %}class="actif" aria-current="page"{% endif %}>Reçus</a>
+    <a href="/cantine/rapport" {% if chemin.startswith("/cantine/rapport") %}class="actif" aria-current="page"{% endif %}>Rapport</a>
   {% elif user and user.role == "securite" %}
     <a href="/securite" {% if chemin.startswith("/securite") %}class="actif" aria-current="page"{% endif %}>Contrôle</a>
   {% elif user %}
     <a href="/espace" {% if chemin.startswith("/espace") %}class="actif" aria-current="page"{% endif %}>Mon compte</a>
-    <a href="/menu" {% if chemin.startswith("/menu") or chemin.startswith("/m/") %}class="actif" aria-current="page"{% endif %}>Commander</a>
+    <a href="/menu" {% if (chemin.startswith("/menu") and not chemin.startswith("/menu/recus")) or chemin.startswith("/m/") %}class="actif" aria-current="page"{% endif %}>Commander</a>
+    <a href="/menu/recus" {% if chemin.startswith("/menu/recus") %}class="actif" aria-current="page"{% endif %}>Reçus</a>
   {% elif not chemin.startswith("/login") %}
     <a href="/login">Connexion</a>
   {% endif %}

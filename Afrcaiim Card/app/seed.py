@@ -52,6 +52,10 @@ def _colonnes_cantine() -> None:
         connexion.execute(text("ALTER TABLE utilisateurs ALTER COLUMN peut_valider_qr SET NOT NULL"))
         connexion.execute(text("ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS pin_cantine_hash VARCHAR(255)"))
         connexion.execute(text("ALTER TABLE plats ADD COLUMN IF NOT EXISTS photo_chemin VARCHAR(120)"))
+        connexion.execute(text("ALTER TABLE plats ADD COLUMN IF NOT EXISTS prix_sans_solde INTEGER"))
+        connexion.execute(
+            text("ALTER TABLE commandes_cantine ADD COLUMN IF NOT EXISTS mode_paiement VARCHAR(20) NOT NULL DEFAULT 'solde'")
+        )
         connexion.execute(
             text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS sexe VARCHAR(1) NOT NULL DEFAULT 'M'")
         )
@@ -180,6 +184,7 @@ def _retirer_ecoles_hors_liste(db) -> None:
     from app.models import Carte, CommandeCantine, Journal, LigneCommande, MouvementCantine, Utilisateur
     from app.services.ecoles import ECOLES, annee_academique_courante
     from app.services.import_etudiants import validite_par_defaut
+    from app.services.recus import detacher_fiche
 
     annee = annee_academique_courante()
     fin = validite_par_defaut(annee)
@@ -190,6 +195,7 @@ def _retirer_ecoles_hors_liste(db) -> None:
                 if ROOT.resolve() in chemin.parents or chemin.parent == ROOT.resolve():
                     chemin.unlink(missing_ok=True)
             commandes = db.scalars(select(CommandeCantine.id).where(CommandeCantine.etudiant_id == etudiant.id)).all()
+            detacher_fiche(db, etudiant.id, list(commandes), [carte.id for carte in etudiant.cartes])
             if commandes:
                 db.execute(delete(LigneCommande).where(LigneCommande.commande_id.in_(commandes)))
                 db.execute(delete(CommandeCantine).where(CommandeCantine.id.in_(commandes)))

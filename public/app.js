@@ -145,6 +145,8 @@ function carteGroups() {
       ["cantine", "Cantine", "/portail/cartes/cantine"],
       ["menu", "Menu", "/portail/cartes/cantine/menu"],
       ["commandes", "Commandes", "/portail/cartes/cantine/commandes"],
+      ["recus", "Reçus", "/portail/cartes/cantine/recus"],
+      ["rapport", "Rapport", "/portail/cartes/cantine/rapport"],
     ]],
     ["Liens", [
       ["controle", "Contrôle", "/portail/cartes/securite"],
@@ -722,7 +724,7 @@ async function openScreen() {
   if (!screen) return;
   if (state.suite !== "finances" || state.screen !== "tableau") stopDashboard();
   if (state.suite === "cartes") {
-    const kitchen = ["cantine", "menu", "commandes"].includes(state.carte);
+    const kitchen = ["cantine", "menu", "commandes", "recus", "rapport"].includes(state.carte);
     if (kitchen ? !allowed("kitchen.manage") : !allowed("cards.manage")) {
       screen.classList.remove("carte-host");
       screen.innerHTML = `<p class="error">Cette partie n'est pas autorisée pour votre compte.</p>`;
@@ -943,7 +945,7 @@ function dashboardHtml(data, control) {
       ${offerChip("bachelor_3", "Bachelor 3")}
       ${offerChip("master_1", "Master 1")}
       ${offerChip("master_2", "Master 2")}
-      <span>Comptant −5 %</span>
+      <span>Licence et Bachelor en une fois : −${gnf(state.catalog.cashDiscount || 0)}</span>
       <span>Boursier : aucun frais</span>
     </div>
     <section class="dash-kpis">
@@ -1098,7 +1100,7 @@ async function showStudents(screen) {
         <p id="year-row"><label id="year-label">Année de bachelor</label><select name="studyYear" required></select></p>
         <p class="muted" id="fee-hint"></p>
         <label class="check"><input type="checkbox" name="scholarship"> Boursier — aucun frais de scolarité</label>
-        <label class="check"><input type="checkbox" name="payInFull"> Paiement de toute la scolarité en une fois (−5 %)</label>
+        <label class="check" id="pay-in-full-row"><input type="checkbox" name="payInFull"> Paiement de toute la scolarité en une fois (−${gnf(state.catalog.cashDiscount || 0)})</label>
         <div class="duo" id="payment-fields"><p><label>Versement du jour (GNF)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
           <p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p></div>
         ${costumeField("Costume versé à l'inscription (GNF)")}
@@ -1122,7 +1124,8 @@ async function showStudents(screen) {
       return form.studyYear.value.startsWith("master") ? fees.master : fees.bachelor;
     };
     const tuitionOf = () => (schoolingOf() ? schoolingOf() + registrationOf() : 0);
-    const cashOf = (tuition) => tuition - Math.floor((tuition * 5 + 50) / 100);
+    const isMaster = () => form.studyYear.value.startsWith("master") || form.level.value === "master";
+    const cashOf = (tuition) => (isMaster() ? tuition : Math.max(0, tuition - (state.catalog.cashDiscount || 0)));
     const syncFee = () => {
       const track = form.level.value === "master" ? "master" : "bachelor";
       const options = yearOptions[track];
@@ -1135,9 +1138,11 @@ async function showStudents(screen) {
       const scholar = form.scholarship.checked;
       document.querySelector("#fee-hint").textContent = scholar
         ? "Boursier : les frais de scolarité sont à 0 GNF."
-        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + inscription ${gnf(registrationOf())}). En une fois : ${gnf(cash)} (−5 %).`;
+        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + inscription ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : ` En une fois : ${gnf(cash)} (−${gnf(state.catalog.cashDiscount || 0)}).`}`;
       document.querySelector("#payment-fields").hidden = scholar;
-      form.payInFull.disabled = scholar;
+      document.querySelector("#pay-in-full-row").hidden = isMaster();
+      if (isMaster()) form.payInFull.checked = false;
+      form.payInFull.disabled = scholar || isMaster();
       const amount = form.paymentAmount;
       amount.required = !scholar;
       form.method.required = !scholar;
@@ -1403,7 +1408,7 @@ function openPaymentUpdate(payment, onDone) {
       <p class="seal"><span>Mention du reçu</span><strong>${esc(data.seal)}</strong></p>
       ${data.costume?.price ? `<p><span>Costume (prix ${gnf(data.costume.price)})</span><strong>versé ${gnf(data.costume.paid)} · reste ${gnf(data.costume.reste)}</strong></p>` : ""}
       ${data.limitedMessage ? `<p class="limited">${esc(data.limitedMessage)}</p>` : ""}
-      ${data.cashDiscount ? `<p class="muted">Réduction de 5 % : le versement du jour sur le reçu est le prix comptant.</p>` : ""}`;
+      ${data.cashDiscount ? `<p class="muted">Remise de ${gnf(state.catalog.cashDiscount || 0)} : toute l'année est payée en une fois.</p>` : ""}`;
   };
   const refreshUpdatePreview = async () => {
     const amountValue = Number(form.amount.value.replace(/\D/g, ""));
@@ -2053,7 +2058,7 @@ function openAccountDialog(screen, data, account, creator) {
             <div class="acc-checks">${financeList.map(check).join("")}</div>
           </div>
           ${switchTile("cards.manage", "Gestion des cartes", "Étudiants, atelier, impression, import et contrôle.", "cards")}
-          ${switchTile("kitchen.manage", "Cuisine", "Cantine, menus et commandes.", "kitchen")}
+          ${switchTile("kitchen.manage", "Cuisine", "Cantine, menus, commandes, reçus et rapport.", "kitchen")}
           ${otherList.length ? `<div class="acc-tile other"><span class="acc-tile-text"><strong>Autres autorisations</strong></span><div class="acc-checks">${otherList.map(check).join("")}</div></div>` : ""}
         </div>
       </section>

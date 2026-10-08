@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titre %}Reçu {{ recu.numero }}{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
+{% block contenu %}
+<article class="ticket-recu{% if recu.annule_le %} ticket-annule{% endif %}">
+  <header>
+    <img src="/static/marque.png" alt="Université AFRICAIIM">
+    <p class="enseigne">AfricaIIM Cantine</p>
+    <h1>Reçu {{ recu.numero }}</h1>
+    <p>{{ recu.cree_le|datefr }}</p>
+  </header>
+  {% if recu.annule_le %}
+    <p class="tampon-annule">ANNULÉ le {{ recu.annule_le|datefr }}{% if recu.mode == "solde" %} · remboursé sur le compte cantine{% endif %}</p>
+  {% endif %}
+  <dl>
+    <div><dt>Étudiant</dt><dd>{{ recu.nom_etudiant }}</dd></div>
+    <div><dt>Matricule</dt><dd>{{ recu.matricule }}</dd></div>
+    <div><dt>Objet</dt><dd>{{ natures.get(recu.nature, recu.nature) }}{% if commande %} {{ commande.numero }}{% endif %}</dd></div>
+  </dl>
+  {% if lignes %}
+    <ul>
+      {% for ligne in lignes %}<li>{{ ligne }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+  <p class="ticket-total"><span>{% if recu.nature == "recharge" %}Montant crédité{% else %}Montant payé{% endif %}</span><strong>{{ recu.montant|gnf }}</strong></p>
+  <dl>
+    <div><dt>Paiement</dt><dd>{{ modes.get(recu.mode, recu.mode) }}</dd></div>
+    {% if recu.solde_apres is not none %}
+      <div><dt>Solde après</dt><dd>{{ recu.solde_apres|gnf }}</dd></div>
+    {% endif %}
+    {% if agent %}
+      <div><dt>Validé par</dt><dd>{{ agent.identifiant }}</dd></div>
+    {% endif %}
+  </dl>
+  <p class="ticket-pied">Merci. Gardez ce reçu.</p>
+</article>
+<p class="actions ticket-actions">
+  <button type="button" class="bouton" onclick="window.print()">Imprimer le reçu</button>
+  <a class="bouton bouton-secondaire" href="{{ retour }}">Retour</a>
+</p>
+{% endblock %}

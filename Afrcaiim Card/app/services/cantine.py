@@ -12,6 +12,7 @@ from app.models import Carte, Etudiant, MouvementCantine, maintenant
 from app.services.courrier import expedier_debit, formater_francs
 from app.services.import_etudiants import controler_email
 from app.services.metier import journaliser
+from app.services.recus import emettre_recu
 
 
 @dataclass
@@ -62,12 +63,21 @@ def crediter(db, etudiant: Etudiant, montant: int, acteur_id: int | None) -> int
             cree_le=maintenant(),
         )
     )
+    recu = emettre_recu(
+        db,
+        etudiant,
+        nature="recharge",
+        mode="versement",
+        montant=montant,
+        solde_apres=etudiant.solde_cantine,
+        agent_id=acteur_id,
+    )
     journaliser(
         db,
         "credit_cantine",
         utilisateur_id=acteur_id,
         etudiant_id=etudiant.id,
-        details=f"+{formater_francs(montant)} · reste {formater_francs(etudiant.solde_cantine)}",
+        details=f"+{formater_francs(montant)} · reste {formater_francs(etudiant.solde_cantine)} · {recu.numero}",
     )
     db.commit()
     return etudiant.solde_cantine
@@ -99,6 +109,16 @@ def valider_repas(db, carte: Carte, agent_id: int) -> dict:
             cree_le=maintenant(),
         )
     )
+    recu = emettre_recu(
+        db,
+        etudiant,
+        nature="repas",
+        mode="solde",
+        montant=prix,
+        solde_apres=etudiant.solde_cantine,
+        details="1 × Repas",
+        agent_id=agent_id,
+    )
     envoye = expedier_debit(etudiant.email, etudiant.prenom, etudiant.nom, prix, etudiant.solde_cantine)
     suite = "e-mail envoyé" if envoye else "e-mail en attente : le serveur de messagerie n'est pas configuré"
     journaliser(
@@ -107,7 +127,7 @@ def valider_repas(db, carte: Carte, agent_id: int) -> dict:
         utilisateur_id=agent_id,
         etudiant_id=etudiant.id,
         carte_id=carte.id,
-        details=f"-{formater_francs(prix)} · reste {formater_francs(etudiant.solde_cantine)} · {suite}",
+        details=f"-{formater_francs(prix)} · reste {formater_francs(etudiant.solde_cantine)} · {recu.numero} · {suite}",
     )
     db.commit()
     return {
@@ -115,6 +135,8 @@ def valider_repas(db, carte: Carte, agent_id: int) -> dict:
         "solde": etudiant.solde_cantine,
         "email": etudiant.email,
         "envoye": envoye,
+        "recu_id": recu.id,
+        "recu_numero": recu.numero,
     }
 
 

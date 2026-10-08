@@ -136,22 +136,32 @@ def _dessiner_qr(c, url: str, x, y, largeur, hauteur, encre="#111111") -> None:
     nombre = len(matrice)
     if nombre <= 0:
         return
+    from reportlab.pdfgen.canvas import FILL_NON_ZERO
+
     cote = min(largeur, hauteur)
     origine_x = x + (largeur - cote) / 2
     origine_y = y + (hauteur - cote) / 2
     pas = cote / nombre
-    c.setFillColor(_hex(encre, "#111111"))
+    # Une seule forme, rangées légèrement chevauchées : aucun filet blanc entre les modules à l'impression.
+    chevauche = pas * 0.03
+    chemin = c.beginPath()
     for ligne, rangee in enumerate(matrice):
-        for colonne, noir in enumerate(rangee):
-            if noir:
-                c.rect(
-                    origine_x + colonne * pas,
-                    origine_y + (nombre - 1 - ligne) * pas,
-                    pas,
-                    pas,
-                    stroke=0,
-                    fill=1,
-                )
+        colonne = 0
+        while colonne < nombre:
+            if not rangee[colonne]:
+                colonne += 1
+                continue
+            debut = colonne
+            while colonne < nombre and rangee[colonne]:
+                colonne += 1
+            chemin.rect(
+                origine_x + debut * pas,
+                origine_y + (nombre - 1 - ligne) * pas - chevauche,
+                (colonne - debut) * pas,
+                pas + 2 * chevauche,
+            )
+    c.setFillColor(_hex(encre, "#111111"))
+    c.drawPath(chemin, stroke=0, fill=1, fillMode=FILL_NON_ZERO)
 
 
 def image_code128(valeur: str, encre: str = "#111111", fond: str = "#FFFFFF") -> bytes:
@@ -695,32 +705,41 @@ def _guilloche(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
     c._setFillAlpha(1)
 
 
+PPP_PHOTO = 600
+
+
 def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
-    """Recadre la photo comme object-fit: cover. JPEG 95, sans sous-échantillonnage des couleurs."""
-    from PIL import Image, ImageOps
+    """Recadre comme object-fit: cover, puis ramène la photo à 600 ppp à sa taille imprimée.
+
+    La Primacy 2 imprime à 300 ppp : 600 ppp lui laisse de la marge sans alourdir le travail.
+    JPEG 97 sans sous-échantillonnage des couleurs, avec un léger renforcement de netteté.
+    """
+    from PIL import Image, ImageFilter, ImageOps
 
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(photo)))
     image.load()
     if image.mode != "RGB":
         image = image.convert("RGB")
     largeur_px, hauteur_px = image.size
-    if largeur_px <= 0 or hauteur_px <= 0:
+    if largeur_px <= 0 or hauteur_px <= 0 or largeur <= 0 or hauteur <= 0:
         return
-    echelle = max(largeur / largeur_px, hauteur / hauteur_px)
-    dest_w = largeur_px * echelle
-    dest_h = hauteur_px * echelle
+    rapport = largeur / hauteur
+    if largeur_px / hauteur_px > rapport:
+        garde = max(1, round(hauteur_px * rapport))
+        gauche = (largeur_px - garde) // 2
+        image = image.crop((gauche, 0, gauche + garde, hauteur_px))
+    else:
+        garde = max(1, round(largeur_px / rapport))
+        haut = (hauteur_px - garde) // 2
+        image = image.crop((0, haut, largeur_px, haut + garde))
+    cible = (max(1, round(largeur / 72 * PPP_PHOTO)), max(1, round(hauteur / 72 * PPP_PHOTO)))
+    if image.width > cible[0]:
+        image = image.resize(cible, Image.Resampling.LANCZOS)
+        image = image.filter(ImageFilter.UnsharpMask(radius=1.2, percent=55, threshold=2))
     tampon = io.BytesIO()
-    image.save(tampon, format="JPEG", quality=95, subsampling=0, optimize=True)
+    image.save(tampon, format="JPEG", quality=97, subsampling=0, optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
-    c.drawImage(
-        ImageReader(tampon),
-        x + (largeur - dest_w) / 2,
-        y + (hauteur - dest_h) / 2,
-        dest_w,
-        dest_h,
-        preserveAspectRatio=False,
-        mask=None,
-    )
+    c.drawImage(ImageReader(tampon), x, y, largeur, hauteur, preserveAspectRatio=False, mask=None)
 
 
 def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> None:

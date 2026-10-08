@@ -199,16 +199,26 @@ test("une nouvelle fiche produit un reçu d'inscription, et l'e-mail du personne
   assert.equal((await db.prepare("SELECT active FROM users WHERE id = ?").get(account.id)).active, 0);
 });
 
-test("bachelor, masters, réduction de 5 % et boursier", async () => {
+test("bachelor, masters, remise de 1.200.000 en une fois et boursier", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const comptant = await domain.createStudent(db, agent, {
     lastName: "BARRY", firstName: "Comptant", programId: program.id, level: "bachelor",
     paymentAmount: 25_000_000, method: "marchand",
   });
-  assert.equal(comptant.situation.due, 23_750_000);
-  assert.equal(comptant.situation.paid, 23_750_000);
+  assert.equal(comptant.situation.due, 23_800_000);
+  assert.equal(comptant.situation.paid, 23_800_000);
   assert.equal(comptant.situation.status, "solde");
   assert.equal((await db.prepare("SELECT method FROM payments WHERE student_id = ?").get(comptant.student.id)).method, "marchand");
+  const remise = await db.prepare("SELECT mode, value FROM discounts WHERE student_id = ?").get(comptant.student.id);
+  assert.deepEqual([remise.mode, Number(remise.value)], ["fixe", 1_200_000]);
+
+  const masterComptant = await domain.createStudent(db, agent, {
+    lastName: "BAH", firstName: "Toutpaye", programId: program.id, level: "master_2",
+    paymentAmount: 31_000_000, method: "especes",
+  });
+  assert.equal(masterComptant.situation.due, 31_000_000);
+  assert.equal(masterComptant.situation.paid, 31_000_000);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM discounts WHERE student_id = ?").get(masterComptant.student.id)).n, 0);
 
   const partiel = await domain.createStudent(db, agent, {
     lastName: "CAMARA", firstName: "Partiel", programId: program.id, level: "master_2",

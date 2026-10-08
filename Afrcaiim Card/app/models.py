@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -102,6 +102,7 @@ class Plat(Base):
     nom: Mapped[str] = mapped_column(String(80))
     description: Mapped[str] = mapped_column(String(180), default="")
     prix: Mapped[int] = mapped_column(Integer)
+    prix_sans_solde: Mapped[int | None] = mapped_column(Integer, nullable=True)
     badge: Mapped[str | None] = mapped_column(String(24), nullable=True)
     visuel: Mapped[str] = mapped_column(String(20), default="bol")
     temps_min: Mapped[int] = mapped_column(Integer, default=15)
@@ -120,6 +121,7 @@ class CommandeCantine(Base):
     point_id: Mapped[int] = mapped_column(ForeignKey("points_cantine.id"))
     montant: Mapped[int] = mapped_column(Integer)
     statut: Mapped[str] = mapped_column(String(20), index=True, default="recue")
+    mode_paiement: Mapped[str] = mapped_column(String(20), default="solde", server_default="solde")
     cle: Mapped[str] = mapped_column(String(64), unique=True)
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
 
@@ -133,6 +135,62 @@ class LigneCommande(Base):
     nom: Mapped[str] = mapped_column(String(80))
     prix: Mapped[int] = mapped_column(Integer)
     quantite: Mapped[int] = mapped_column(Integer)
+
+
+class RecuCantine(Base):
+    """Un reçu par paiement validé. Il garde le nom et le matricule si la fiche disparaît."""
+
+    __tablename__ = "recus_cantine"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    numero: Mapped[str] = mapped_column(String(16), unique=True)
+    etudiant_id: Mapped[int | None] = mapped_column(ForeignKey("etudiants.id"), nullable=True, index=True)
+    commande_id: Mapped[int | None] = mapped_column(ForeignKey("commandes_cantine.id"), nullable=True, index=True)
+    nom_etudiant: Mapped[str] = mapped_column(String(170), default="")
+    matricule: Mapped[str] = mapped_column(String(40), default="")
+    nature: Mapped[str] = mapped_column(String(20))
+    mode: Mapped[str] = mapped_column(String(20))
+    montant: Mapped[int] = mapped_column(Integer)
+    solde_apres: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    details: Mapped[str] = mapped_column(String(500), default="")
+    agent_id: Mapped[int | None] = mapped_column(ForeignKey("utilisateurs.id"), nullable=True)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant, index=True)
+    annule_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PosteImpression(Base):
+    """Ordinateur du bureau qui imprime pour le site en ligne (relais)."""
+
+    __tablename__ = "postes_impression"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nom: Mapped[str] = mapped_column(String(80))
+    jeton_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    imprimantes: Mapped[str] = mapped_column(Text, default="[]")
+    actif: Mapped[bool] = mapped_column(default=True)
+    vu_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
+
+
+class TravailImpression(Base):
+    __tablename__ = "travaux_impression"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    poste_id: Mapped[int] = mapped_column(ForeignKey("postes_impression.id"), index=True)
+    etudiant_id: Mapped[int | None] = mapped_column(ForeignKey("etudiants.id"), nullable=True)
+    carte_id: Mapped[int | None] = mapped_column(ForeignKey("cartes.id"), nullable=True)
+    libelle: Mapped[str] = mapped_column(String(200), default="")
+    imprimante: Mapped[str] = mapped_column(String(200))
+    copies: Mapped[int] = mapped_column(Integer, default=1)
+    recto_verso: Mapped[bool] = mapped_column(default=True)
+    sens: Mapped[str] = mapped_column(String(10), default="paysage")
+    media: Mapped[str] = mapped_column(String(40), default="")
+    statut: Mapped[str] = mapped_column(String(12), index=True, default="attente")
+    message: Mapped[str] = mapped_column(String(300), default="")
+    cree_par: Mapped[int | None] = mapped_column(ForeignKey("utilisateurs.id"), nullable=True)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
+    pris_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fini_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Journal(Base):

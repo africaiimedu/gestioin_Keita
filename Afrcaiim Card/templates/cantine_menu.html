@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Menu de la cantine{% endblock %}
-{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=6">{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
 {% block contenu %}
 <section class="bloc menu-edition">
   <h1>Menu du jour</h1>
@@ -24,8 +24,11 @@
           {% endfor %}
         </select>
       </label>
-      <label>Prix en GNF
+      <label>Prix avec solde cantine (GNF)
         <input name="prix" required inputmode="numeric" placeholder="15000">
+      </label>
+      <label>Prix sans solde, payé à la caisse (GNF)
+        <input name="prix_sans_solde" inputmode="numeric" placeholder="Vide = même prix">
       </label>
       <label>Description
         <input name="description" maxlength="180" placeholder="Quelques mots pour l'étudiant">
@@ -52,8 +55,11 @@
           {% endfor %}
         </select>
       </label>
-      <label>Prix en GNF
+      <label>Prix avec solde cantine (GNF)
         <input name="prix" required inputmode="numeric" value="{{ choisi.prix }}">
+      </label>
+      <label>Prix sans solde, payé à la caisse (GNF)
+        <input name="prix_sans_solde" inputmode="numeric" value="{{ choisi.prix_sans_solde or '' }}" placeholder="Vide = même prix">
       </label>
       <label>Description
         <input name="description" maxlength="180" value="{{ choisi.description }}">
@@ -77,6 +83,7 @@
           <a href="/cantine/menu?plat={{ plat.id }}">
             <img src="{{ image_plat(plat) }}" alt="">
             <strong>{{ plat.nom }}</strong>
+            <small class="prix-double">{{ plat.prix|gnf }} · sans solde {{ prix_caisse(plat)|gnf }}</small>
           </a>
           <form method="post" action="/cantine/plats/{{ plat.id }}/retirer" onsubmit="return confirm('Retirer ce plat du menu ?');">
             <input type="hidden" name="csrf" value="{{ csrf }}">

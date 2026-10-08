@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titre %}Ordinateurs d'impression{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <p class="surtitre">Cartes étudiantes</p>
+  <h1>Ordinateurs d'impression</h1>
+  <p class="intro">Le site est en ligne : il ne voit pas directement les imprimantes du bureau. Un petit programme, le relais, tourne sur l'ordinateur où elles sont branchées. Il annonce toutes ses imprimantes au site, reçoit les cartes à imprimer et les envoie au pilote avec les réglages de qualité Evolis.</p>
+
+  {% if nouveau %}
+    <div class="panneau relais-nouveau">
+      <h2>{{ nouveau.nom }} : jeton du relais</h2>
+      <p>Copiez ce jeton maintenant : il ne sera plus jamais affiché. Il donne le droit d'imprimer les cartes, gardez-le secret.</p>
+      <p><code class="jeton">{{ nouveau.jeton }}</code></p>
+      <ol>
+        <li>Sur cet ordinateur, téléchargez <a href="/admin/postes/relais.zip">le relais d'impression</a> et ouvrez le dossier.</li>
+        <li>Ouvrez le Terminal dans ce dossier, puis tapez :<br><code>python3 relais_impression.py --installer --adresse {{ adresse }}</code></li>
+        <li>Collez le jeton quand il est demandé (il ne s'affiche pas à l'écran).</li>
+      </ol>
+      <p>Le relais démarre tout seul à chaque ouverture de session. Ses imprimantes apparaissent ensuite dans la page Impression.</p>
+    </div>
+  {% endif %}
+
+  <h2>Ordinateurs reliés</h2>
+  <ul class="postes">
+    {% for poste in postes %}
+      <li class="{{ 'actif' if poste.actif else 'retire' }}">
+        <div>
+          <strong>{{ poste.nom }}</strong>
+          {% if not poste.actif %}
+            <span class="pastille">retiré</span>
+          {% elif en_ligne(poste) %}
+            <span class="pastille pastille-active">en ligne</span>
+          {% else %}
+            <span class="pastille">hors ligne{% if poste.vu_le %} · vu le {{ poste.vu_le|datefr }}{% endif %}</span>
+          {% endif %}
+        </div>
+        {% if poste.actif %}
+          <p>
+            {% for imp in imprimantes_de(poste) %}{{ imp.nom }}{% if imp.primacy %} (Primacy 2){% endif %}{% if not loop.last %} · {% endif %}{% else %}Aucune imprimante annoncée.{% endfor %}
+          </p>
+          <form method="post" action="/admin/postes/{{ poste.id }}/retirer" onsubmit="return confirm('Retirer cet ordinateur ? Son jeton ne fonctionnera plus.');">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="bouton bouton-secondaire">Retirer</button>
+          </form>
+        {% endif %}
+      </li>
+    {% else %}
+      <li>Aucun ordinateur relié pour le moment.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>Ajouter un ordinateur</h2>
+  <form method="post" action="/admin/postes" class="panneau">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Nom de l'ordinateur
+      <input name="nom" required maxlength="80" placeholder="ex. Mac du bureau scolarité">
+    </label>
+    <button type="submit">Créer le jeton du relais</button>
+  </form>
+</section>
+<style>
+  .postes { list-style: none; padding: 0; }
+  .postes li { border-bottom: 1px solid #e4dfd4; padding: 0.7rem 0; }
+  .postes li.retire { color: #888; }
+  .postes li > div { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .relais-nouveau { border-left: 6px solid #FEAB00; }
+  .relais-nouveau code { overflow-wrap: anywhere; }
+  .jeton { display: inline-block; background: #F4F1EA; padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 1rem; user-select: all; }
+</style>
+{% endblock %}

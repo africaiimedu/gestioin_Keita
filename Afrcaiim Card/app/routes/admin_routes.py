@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import re
-import subprocess
-import tempfile
+import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -13,6 +13,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import ROOT, base_url
+from app.services import cups, relais
 from app.services.cantine import crediter, prix_repas, regler_prix
 from app.services.courrier import formater_francs
 from app.deps import Redirection, exiger_admin, exiger_bureau, get_db
@@ -59,69 +60,8 @@ def _etudiant(db: Session, etudiant_id: int) -> Etudiant:
     return etudiant
 
 
-_NOM_IMPRIMANTE = re.compile(
-    r"(?:printer|imprimante)\s+(\S+)\s+(?:is|est|disabled|désactivée|desactivee)\b",
-    re.IGNORECASE,
-)
-_URI_IMPRIMANTE = re.compile(r"(\S+)\s*:\s*(\S+://\S+)")
-
-
-def _etat_imprimante(ligne: str) -> str:
-    """Le Mac répond en français ou en anglais. « inactive » veut dire prête, pas arrêtée."""
-    texte = ligne.lower()
-    if "désactiv" in texte or "desactiv" in texte or "disabled" in texte:
-        return "arrêtée"
-    if "printing" in texte or "imprime" in texte or "impression" in texte:
-        return "en cours"
-    return "prête"
-
-
-def _est_primacy(nom: str, uri: str = "") -> bool:
-    texte = f"{nom} {uri}".lower()
-    return "primacy" in texte or "evolis" in texte
-
-
-def _analyser_imprimantes(etat: str, liens: str, noms: str = "") -> list[dict]:
-    uris: dict[str, str] = {}
-    for ligne in liens.splitlines():
-        trouve = _URI_IMPRIMANTE.search(ligne)
-        if trouve:
-            uris[trouve.group(1)] = trouve.group(2)
-    resultat = []
-    vus: set[str] = set()
-    for ligne in etat.splitlines():
-        trouve = _NOM_IMPRIMANTE.search(ligne)
-        if not trouve:
-            continue
-        nom = trouve.group(1)
-        vus.add(nom)
-        uri = uris.get(nom, "")
-        resultat.append({
-            "nom": nom,
-            "etat": _etat_imprimante(ligne),
-            "primacy": _est_primacy(nom, uri),
-            "uri": uri,
-        })
-    for ligne in noms.splitlines():
-        nom = ligne.strip()
-        if not nom or nom in vus:
-            continue
-        uri = uris.get(nom, "")
-        resultat.append({
-            "nom": nom,
-            "etat": "prête",
-            "primacy": _est_primacy(nom, uri),
-            "uri": uri,
-        })
-    return resultat
-
-
-def _imprimante_primacy() -> str | None:
-    """Nom CUPS de la Primacy 2, s'il est installé sur cet ordinateur."""
-    for imp in _lister_imprimantes():
-        if imp["primacy"]:
-            return imp["nom"]
-    return None
+_analyser_imprimantes = cups.analyser_imprimantes
+_commande_lp = cups.commande_lp
 
 
 def _media_cr80() -> str:
@@ -135,146 +75,21 @@ def _media_cr80() -> str:
     return f"Custom.{_fmt(largeur)}x{_fmt(hauteur)}mm"
 
 
-def _lister_imprimantes() -> list[dict]:
-    """Toutes les imprimantes que le Mac connaît (CUPS), Primacy comprise."""
-    def _lire(*args: str) -> str:
-        resultat = subprocess.run(
-            ["lpstat", *args],
-            capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL,
-        )
-        return resultat.stdout or ""
-
-    try:
-        return _analyser_imprimantes(_lire("-p"), _lire("-v"), _lire("-e"))
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-
-
-def _choix_pilote(nom: str) -> dict[str, list[str]]:
-    """Options réelles du pilote, pour ne lui envoyer que ce qu'il sait faire."""
-    try:
-        resultat = subprocess.run(
-            ["lpoptions", "-p", nom, "-l"],
-            capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return {}
-    if resultat.returncode != 0:
-        return {}
-    options: dict[str, list[str]] = {}
-    for ligne in resultat.stdout.splitlines():
-        gauche, sep, droite = ligne.partition(":")
-        if not sep or "/" not in gauche:
-            continue
-        cle = gauche.split("/", 1)[0].strip()
-        options[cle] = [mot.lstrip("*") for mot in droite.split() if mot.strip()]
-    return options
-
-
 def _orientation_modele() -> str:
     return "portrait" if str(charger_modele().get("orientation") or "paysage") == "portrait" else "paysage"
 
 
-def _poser_option(commande: list[str], choix: dict[str, list[str]], cle: str, valeur: str) -> None:
-    if valeur in choix.get(cle, []):
-        commande += ["-o", f"{cle}={valeur}"]
-
-
-def _commande_lp(
-    nom: str, copies: int, duplex: bool, media: str, choix: dict[str, list[str]], orientation: str = "paysage",
-) -> list[str]:
-    """Même orientation que la carte, couleurs RVB du fichier, sans réduire la page."""
-    paysage = orientation != "portrait"
-    commande = [
-        "lp", "-d", nom, "-n", str(max(1, min(20, copies))),
-        "-o", "fit-to-page=false",
-        "-o", "print-color-mode=color",
-        "-o", "orientation-requested=5" if paysage else "orientation-requested=3",
-    ]
-    if "Card" in choix.get("PageSize", []):
-        commande += ["-o", "PageSize=Card"]
-    elif "CR80" in choix.get("PageSize", []):
-        commande += ["-o", "PageSize=CR80"]
-    else:
-        commande += ["-o", f"media={media}"]
-    if paysage:
-        _poser_option(commande, choix, "Orientation", "LANDSCAPE_CC90")
-    else:
-        _poser_option(commande, choix, "Orientation", "PORTRAIT")
-    if duplex:
-        commande += ["-o", "sides=two-sided-long-edge"]
-        for cle, valeurs in choix.items():
-            if "DuplexNoTumble" in valeurs:
-                commande += ["-o", f"{cle}=DuplexNoTumble"]
-                break
-    else:
-        commande += ["-o", "sides=one-sided"]
-        for valeur in ("NONE", "None"):
-            if valeur in choix.get("Duplex", []):
-                commande += ["-o", f"Duplex={valeur}"]
-                break
-    for cle in ("ColorModel", "ColorMode"):
-        valeurs = choix.get(cle, [])
-        if "RGB" in valeurs:
-            commande += ["-o", f"{cle}=RGB"]
-            break
-        if "Color" in valeurs:
-            commande += ["-o", f"{cle}=Color"]
-            break
-    # 1200 dpi gonfle le fichier : le travail tarde, puis la Primacy 2 sort une carte vierge.
-    for voulu in ("600dpi", "300dpi", "300x300dpi"):
-        if voulu in choix.get("Resolution", []):
-            commande += ["-o", f"Resolution={voulu}"]
-            break
-    for cle in ("FColorContrast", "BColorContrast"):
-        _poser_option(commande, choix, cle, "VAL16")
-    for cle in ("FColorBrightness", "BColorBrightness"):
-        _poser_option(commande, choix, cle, "VAL10")
-    _poser_option(commande, choix, "GDuplexType", "DUPLEX_CC")
-    for cle in ("FHalftoning", "BHalftoning"):
-        _poser_option(commande, choix, cle, "DITHERING")
-    for cle in ("FBlackManagement", "BBlackManagement"):
-        _poser_option(commande, choix, cle, "TEXTINBLACK")
-    for cle in ("IFColorProfileMode", "IBColorProfileMode"):
-        _poser_option(commande, choix, cle, "DRIVERPROFILE")
-    for cle in ("IFColorProfile", "IBColorProfile"):
-        _poser_option(commande, choix, cle, "STDPROFILE")
-    _poser_option(commande, choix, "GSmoothing", "ADVSMOOTH")
-    demi_tour = "ON" if paysage else "OFF"
-    for cle in ("FPageRotate180", "BPageRotate180"):
-        _poser_option(commande, choix, cle, demi_tour)
-    return commande
+def _lister_imprimantes(db: Session | None = None) -> list[dict]:
+    """Imprimantes de ce serveur (CUPS) puis celles des ordinateurs du bureau reliés par le relais."""
+    locales = [{**imp, "cle": f"local:{imp['nom']}", "lieu": "Ce serveur"} for imp in cups.lister_imprimantes()]
+    if db is None:
+        return locales
+    return locales + relais.imprimantes_relais(db)
 
 
 def _envoyer_vers(pdf: bytes, nom: str, duplex: bool, copies: int, orientation: str | None = None) -> tuple[bool, str]:
-    """Envoie le PDF CR80 au pilote choisi, dans le sens demandé, sans le réduire à une page A4."""
     sens = orientation if orientation in ("paysage", "portrait") else _orientation_modele()
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf)
-        chemin = tmp.name
-    commande = _commande_lp(nom, copies, duplex, _media_cr80(), _choix_pilote(nom), sens)
-    commande.append(chemin)
-    try:
-        resultat = subprocess.run(
-            commande,
-            capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False, "Le système d'impression du Mac n'a pas répondu."
-    finally:
-        Path(chemin).unlink(missing_ok=True)
-    if resultat.returncode != 0:
-        detail = (resultat.stderr or resultat.stdout or "").strip().splitlines()
-        return False, (detail[0][:180] if detail else "L'imprimante a refusé le travail.")
-    return True, nom
-
-
-def _envoyer_primacy(pdf: bytes) -> str | None:
-    nom = _imprimante_primacy()
-    if not nom:
-        return None
-    ok, nom_ou_message = _envoyer_vers(pdf, nom, duplex=True, copies=1)
-    return nom_ou_message if ok else None
+    return cups.envoyer(pdf, nom, duplex, copies, _media_cr80(), sens)
 
 
 def _raison_blocage(etudiant: Etudiant, carte) -> str | None:
@@ -703,6 +518,44 @@ def _format_carte() -> str:
     return f"CR80 · {_fr(largeur)} × {_fr(hauteur)} mm"
 
 
+def _imprimer(
+    db: Session, admin: Utilisateur, etudiant: Etudiant, carte, cle: str, copies: int, recto_verso: bool, sens: str,
+) -> tuple[bool, str]:
+    """Imprime sur ce serveur, ou confie la carte au relais de l'ordinateur du bureau."""
+    face = "recto-verso, bord long" if recto_verso else "recto seul"
+    if cle.startswith("poste:"):
+        cible = next((imp for imp in relais.imprimantes_relais(db) if imp["cle"] == cle), None)
+        if cible is None:
+            return False, "Cette imprimante n'est plus en ligne. Vérifiez que l'ordinateur du bureau est allumé, puis rechargez la page."
+        relais.mettre_en_file(
+            db,
+            cible["poste_id"],
+            cible["nom"],
+            etudiant_id=etudiant.id,
+            carte_id=carte.id,
+            libelle=f"{etudiant.nom} {etudiant.prenom} · {etudiant.matricule}",
+            copies=copies,
+            recto_verso=recto_verso,
+            sens=sens,
+            media=_media_cr80(),
+            cree_par=admin.id,
+        )
+        return True, f"Carte confiée à {cible['nom']} ({cible['lieu']}, {face}, {sens}). Elle sort dans quelques secondes."
+    nom = cle.split(":", 1)[1] if cle.startswith("local:") else cle
+    if nom not in {imp["nom"] for imp in cups.lister_imprimantes()}:
+        return False, "Cette imprimante n'est pas installée."
+    photo = lire_photo(etudiant.photo_chemin)
+    contenu = pdf_individuel(
+        etudiant, photo, carte.jeton, carte.numero_edition, base_url(),
+        recto_verso, retourner_verso=False,
+    )
+    ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, sens)
+    if not ok:
+        return False, detail
+    marquer_imprimee(db, carte, admin.id, f"{nom} · {copies} copie(s) · {face} · {sens}")
+    return True, f"Carte envoyée à {nom} ({face}, {sens}, {_format_carte()}, 100 %)."
+
+
 @router.get("/impression")
 def page_impression(
     request: Request,
@@ -712,8 +565,8 @@ def page_impression(
 ):
     etudiants = db.scalars(select(Etudiant).order_by(Etudiant.nom, Etudiant.prenom)).all()
     choisi = next((ligne for ligne in etudiants if ligne.id == etudiant), None)
-    imprimantes = _lister_imprimantes()
-    preferee = next((imp["nom"] for imp in imprimantes if imp["primacy"]), "")
+    imprimantes = _lister_imprimantes(db)
+    preferee = next((imp["cle"] for imp in imprimantes if imp["primacy"]), "")
     raison = None
     if choisi is not None:
         raison = _raison_blocage(choisi, carte_courante(db, choisi.id))
@@ -729,7 +582,26 @@ def page_impression(
         format_carte=_format_carte(),
         duplex=bool(preferee),
         orientation=_orientation_modele(),
+        postes=relais.postes(db),
+        en_ligne=relais.en_ligne,
+        travaux=relais.derniers(db),
+        libelles_travaux=relais.LIBELLES,
     )
+
+
+@router.get("/impression/travaux.json")
+def travaux_impression(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
+    return {
+        "travaux": [
+            {
+                "id": travail.id,
+                "statut": travail.statut,
+                "libelle": relais.LIBELLES.get(travail.statut, travail.statut),
+                "message": travail.message,
+            }
+            for travail in relais.derniers(db)
+        ]
+    }
 
 
 @router.post("/impression")
@@ -755,28 +627,12 @@ def lancer_page_impression(
     if raison:
         flash(request, "erreur", raison)
         raise Redirection(retour)
-    connues = {imp["nom"] for imp in _lister_imprimantes()}
-    if imprimante not in connues:
-        flash(request, "erreur", "Cette imprimante n'est pas installée sur ce Mac.")
-        raise Redirection(retour)
     if copies < 1 or copies > 20:
         flash(request, "erreur", "Le nombre de copies doit être entre 1 et 20.")
         raise Redirection(retour)
-    recto_verso = duplex == "1"
     sens = "portrait" if orientation == "portrait" else "paysage"
-    photo = lire_photo(etudiant.photo_chemin)
-    contenu = pdf_individuel(
-        etudiant, photo, carte.jeton, carte.numero_edition, base_url(),
-        recto_verso, retourner_verso=False,
-    )
-    ok, detail = _envoyer_vers(contenu, imprimante, recto_verso, copies, sens)
-    if not ok:
-        flash(request, "erreur", detail)
-        raise Redirection(retour)
-    face = "recto-verso, bord long" if recto_verso else "recto seul"
-    libelle_sens = "portrait" if sens == "portrait" else "paysage"
-    marquer_imprimee(db, carte, admin.id, f"{imprimante} · {copies} copie(s) · {face} · {libelle_sens}")
-    flash(request, "ok", f"Carte envoyée à {imprimante} ({face}, {libelle_sens}, {_format_carte()}, 100 %).")
+    ok, message = _imprimer(db, admin, etudiant, carte, imprimante, copies, duplex == "1", sens)
+    flash(request, "ok" if ok else "erreur", message)
     raise Redirection(retour)
 
 
@@ -795,16 +651,81 @@ def lancer_impression(
     carte = carte_courante(db, etudiant.id)
     if _raison_blocage(etudiant, carte):
         return JSONResponse({"envoye": False}, status_code=400)
-    photo = lire_photo(etudiant.photo_chemin)
-    contenu = pdf_individuel(
-        etudiant, photo, carte.jeton, carte.numero_edition, base_url(),
-        True, retourner_verso=False,
+    primacy = next((imp for imp in _lister_imprimantes(db) if imp["primacy"]), None)
+    if primacy is None:
+        return {"envoye": False}
+    ok, message = _imprimer(db, admin, etudiant, carte, primacy["cle"], 1, True, _orientation_modele())
+    return {"envoye": ok, "imprimante": primacy["nom"], "message": message}
+
+
+def _page_postes(request: Request, admin: Utilisateur, db: Session, nouveau: dict | None = None):
+    reponse = render(
+        request,
+        "admin_postes.html",
+        user=admin,
+        postes=relais.postes(db),
+        en_ligne=relais.en_ligne,
+        imprimantes_de=relais.imprimantes_de,
+        nouveau=nouveau,
+        adresse=base_url(),
     )
-    nom = _envoyer_primacy(contenu)
-    if nom:
-        marquer_imprimee(db, carte, admin.id, f"Envoyée à {nom}")
-        return {"envoye": True, "imprimante": nom}
-    return {"envoye": False}
+    if nouveau:
+        reponse.headers["Cache-Control"] = "no-store"
+    return reponse
+
+
+@router.get("/postes")
+def page_postes(request: Request, admin: Utilisateur = Depends(exiger_admin), db: Session = Depends(get_db)):
+    return _page_postes(request, admin, db)
+
+
+@router.get("/postes/relais.zip")
+def telecharger_relais(admin: Utilisateur = Depends(exiger_admin)):
+    racine = Path(ROOT)
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.write(racine / "relais_impression.py", "relais-africaiim/relais_impression.py")
+        archive.write(racine / "app" / "services" / "cups.py", "relais-africaiim/cups.py")
+    return Response(
+        tampon.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="relais-africaiim.zip"'},
+    )
+
+
+@router.post("/postes")
+def creer_poste_impression(
+    request: Request,
+    nom: str = Form(""),
+    csrf: str = Form(""),
+    admin: Utilisateur = Depends(exiger_admin),
+    db: Session = Depends(get_db),
+):
+    _exiger_csrf(request, csrf, "/admin/postes")
+    try:
+        poste, jeton = relais.creer_poste(db, nom)
+    except ValueError as exc:
+        flash(request, "erreur", str(exc))
+        raise Redirection("/admin/postes") from exc
+    journaliser(db, "poste_impression", utilisateur_id=admin.id, details=f"Ordinateur ajouté : {poste.nom}")
+    db.commit()
+    return _page_postes(request, admin, db, {"nom": poste.nom, "jeton": jeton})
+
+
+@router.post("/postes/{poste_id}/retirer")
+def retirer_poste_impression(
+    poste_id: int,
+    request: Request,
+    csrf: str = Form(""),
+    admin: Utilisateur = Depends(exiger_admin),
+    db: Session = Depends(get_db),
+):
+    _exiger_csrf(request, csrf, "/admin/postes")
+    relais.revoquer(db, poste_id)
+    journaliser(db, "poste_impression", utilisateur_id=admin.id, details=f"Ordinateur n° {poste_id} retiré")
+    db.commit()
+    flash(request, "ok", "Ordinateur retiré : son jeton ne fonctionne plus.")
+    raise Redirection("/admin/postes")
 
 
 def _teinte(valeur: str, defaut: str) -> str:

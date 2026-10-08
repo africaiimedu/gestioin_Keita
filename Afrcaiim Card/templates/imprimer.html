@@ -92,7 +92,7 @@
         });
         const resultat = await reponse.json();
         if (resultat.envoye) {
-          bouton.textContent = "Envoyée à " + resultat.imprimante;
+          bouton.textContent = resultat.message || ("Envoyée à " + resultat.imprimante);
           return;
         }
       } catch (e) { /* le dialogue s'ouvre quand même */ }

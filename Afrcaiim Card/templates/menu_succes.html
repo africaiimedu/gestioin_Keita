@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block titre %}Commande {{ commande.numero }}{% endblock %}
-{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=4">{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
 {% block contenu %}
 <section class="recu">
-  <p class="coche" aria-hidden="true">✓</p>
+  <p class="coche{% if commande.statut == 'a_payer' %} coche-attente{% endif %}" aria-hidden="true">{% if commande.statut == "a_payer" %}…{% else %}✓{% endif %}</p>
   <p class="enseigne">AfricaIIM Cantine</p>
   <h1>{{ commande.numero }}</h1>
   <p class="ouvert">{{ libelle }}</p>
@@ -12,10 +12,27 @@
       <li><span>{{ ligne.quantite }} × {{ ligne.nom }}</span><span>{{ (ligne.prix * ligne.quantite)|gnf }}</span></li>
     {% endfor %}
   </ul>
-  <p class="somme">Payé {{ commande.montant|gnf }}</p>
-  <p>Il reste <strong>{{ etudiant.solde_cantine|gnf }}</strong> sur votre compte.</p>
-  <p class="aide">Présentez ce numéro au comptoir.</p>
-  {% if commande.statut == "recue" %}
+  {% if commande.statut == "a_payer" %}
+    <p class="somme">À payer à la caisse : {{ commande.montant|gnf }}</p>
+    <p>Prix sans solde. Présentez ce numéro au comptoir et payez en espèces ou par Orange Money. La cuisine prépare la commande dès que le paiement est validé.</p>
+  {% elif commande.mode_paiement == "caisse" %}
+    <p class="somme">Payé à la caisse {{ commande.montant|gnf }}</p>
+  {% else %}
+    <p class="somme">Payé {{ commande.montant|gnf }}</p>
+    <p>Il reste <strong>{{ etudiant.solde_cantine|gnf }}</strong> sur votre compte.</p>
+  {% endif %}
+  {% if recu %}
+    <p><a class="bouton" href="/menu/recus/{{ recu.id }}">Voir et imprimer le reçu {{ recu.numero }}</a></p>
+  {% endif %}
+  {% if commande.statut != "a_payer" and commande.statut != "annulee" %}
+    <p class="aide">Présentez ce numéro au comptoir.</p>
+  {% endif %}
+  {% if commande.statut == "a_payer" %}
+    <form method="post" action="/menu/commande/{{ commande.id }}/annuler">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="bouton bouton-secondaire" type="submit">Annuler la commande</button>
+    </form>
+  {% elif commande.statut == "recue" and commande.mode_paiement == "solde" %}
     <form method="post" action="/menu/commande/{{ commande.id }}/annuler">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="bouton bouton-secondaire" type="submit">Annuler et être remboursé</button>

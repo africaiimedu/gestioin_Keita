@@ -4,7 +4,7 @@
 
   function buildHero() {
     const title = document.querySelector("main h1");
-    if (!title || title.closest(".pc-hero")) return null;
+    if (!title || title.closest(".pc-hero") || title.closest(".ticket-recu")) return null;
     const parent = title.parentElement;
     if (parent.matches(".impression-entete")) {
       parent.classList.add("pc-hero");

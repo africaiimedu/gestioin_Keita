@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titre %}Mes reçus{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
+{% block contenu %}
+<section class="bloc liste-recus">
+  <h1>Mes reçus cantine</h1>
+  <p class="intro">Un reçu pour chaque paiement validé : commande, repas à la carte ou recharge du compte. Touchez un reçu pour l'imprimer.</p>
+  <p>Compte cantine : <strong>{{ etudiant.solde_cantine|gnf }}</strong></p>
+  <ul class="recus">
+    {% for recu in recus %}
+      <li{% if recu.annule_le %} class="annule"{% endif %}>
+        <a href="/menu/recus/{{ recu.id }}">
+          <span><strong>{{ recu.numero }}</strong> · {{ recu.cree_le|datefr }}</span>
+          <span>{{ natures.get(recu.nature, recu.nature) }} · {{ modes.get(recu.mode, recu.mode) }}{% if recu.annule_le %} · annulé{% endif %}</span>
+          <strong>{{ recu.montant|gnf }}</strong>
+        </a>
+      </li>
+    {% else %}
+      <li>Aucun reçu pour le moment.</li>
+    {% endfor %}
+  </ul>
+  <p><a class="bouton" href="/menu">Retour au menu</a></p>
+</section>
+{% endblock %}

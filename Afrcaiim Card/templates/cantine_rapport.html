@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block titre %}Rapport de la cuisine{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
+{% block contenu %}
+<section class="bloc rapport-cuisine">
+  <img class="logo-rapport" src="/static/marque.png" alt="Université AFRICAIIM">
+  <h1>Rapport de la cuisine</h1>
+  <p class="periode">Du {{ r.du|datefr }} au {{ r.au|datefr }} · établi le {{ genere|datefr }}</p>
+  <form method="get" action="/cantine/rapport" class="filtre-jour">
+    <label>Du <input type="date" name="du" value="{{ r.du.isoformat() }}"></label>
+    <label>Au <input type="date" name="au" value="{{ r.au.isoformat() }}"></label>
+    <button type="submit" class="bouton bouton-secondaire">Afficher</button>
+    <button type="button" class="bouton" onclick="window.print()">Imprimer</button>
+  </form>
+
+  <div class="chiffres">
+    <div class="chiffre"><span>Reçu (argent entré)</span><strong>{{ r.recu|gnf }}</strong><small>Caisse {{ r.caisse|gnf }} + recharges {{ r.recharges[0]|gnf }}</small></div>
+    <div class="chiffre"><span>Dépensé par les étudiants</span><strong>{{ r.depense|gnf }}</strong><small>Repas payés à la caisse et sur les soldes</small></div>
+  </div>
+
+  <table class="tableau-rapport">
+    <thead><tr><th>Poste</th><th>Reçus</th><th>Montant</th></tr></thead>
+    <tbody>
+      <tr><td>Caisse : espèces</td><td>{{ r.especes[1] }}</td><td>{{ r.especes[0]|gnf }}</td></tr>
+      <tr><td>Caisse : Orange Money</td><td>{{ r.orange_money[1] }}</td><td>{{ r.orange_money[0]|gnf }}</td></tr>
+      <tr><td>Repas payés sur le compte cantine</td><td>{{ r.solde[1] }}</td><td>{{ r.solde[0]|gnf }}</td></tr>
+      <tr><td>dont repas validés à la carte (QR)</td><td>{{ r.repas_scannes[1] }}</td><td>{{ r.repas_scannes[0]|gnf }}</td></tr>
+      <tr><td>Recharges des comptes cantine</td><td>{{ r.recharges[1] }}</td><td>{{ r.recharges[0]|gnf }}</td></tr>
+      <tr><td>Reçus annulés sur la période</td><td>{{ r.annules }}</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Par jour</h2>
+  <table class="tableau-rapport">
+    <thead><tr><th>Jour</th><th>Caisse</th><th>Comptes cantine</th><th>Total</th></tr></thead>
+    <tbody>
+      {% for ligne in r.par_jour %}
+        <tr><td>{{ ligne.jour|datefr }}</td><td>{{ ligne.caisse|gnf }}</td><td>{{ ligne.solde|gnf }}</td><td>{{ (ligne.caisse + ligne.solde)|gnf }}</td></tr>
+      {% else %}
+        <tr><td colspan="4">Aucun paiement sur cette période.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Par plat</h2>
+  <table class="tableau-rapport">
+    <thead><tr><th>Plat</th><th>Quantité</th><th>Montant</th></tr></thead>
+    <tbody>
+      {% for plat in r.plats %}
+        <tr><td>{{ plat.nom }}</td><td>{{ plat.quantite }}</td><td>{{ plat.montant|gnf }}</td></tr>
+      {% else %}
+        <tr><td colspan="3">Aucune commande payée sur cette période.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="aide">Reçu = argent entré : paiements à la caisse (espèces, Orange Money) et recharges des comptes. Dépensé = valeur des repas payés par les étudiants, à la caisse ou sur leur solde. Les reçus annulés ne comptent pas.</p>
+</section>
+{% endblock %}

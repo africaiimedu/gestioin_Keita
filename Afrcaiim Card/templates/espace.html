@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Mon compte{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=4">
+<link rel="stylesheet" href="/static/menu.css?v=7">
 {% endblock %}
 {% block contenu %}
 <section class="dossier">
@@ -44,7 +44,7 @@
         </div>
       {% endif %}
     </dl>
-    <p><a class="bouton" href="/menu">Commander à la cantine</a></p>
+    <p><a class="bouton" href="/menu">Commander à la cantine</a> <a class="bouton bouton-secondaire" href="/menu/recus">Mes reçus cantine</a></p>
   {% endif %}
 </section>
 {% endblock %}

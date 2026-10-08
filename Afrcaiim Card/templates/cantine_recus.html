@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titre %}Reçus de la cantine{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
+{% block contenu %}
+<section class="bloc liste-recus">
+  <h1>Reçus du {{ jour|datefr }}</h1>
+  <form method="get" action="/cantine/recus" class="filtre-jour">
+    <label>Jour <input type="date" name="jour" value="{{ jour.isoformat() }}"></label>
+    <button type="submit" class="bouton bouton-secondaire">Afficher</button>
+    <a class="bouton" href="/cantine/rapport">Rapport</a>
+  </form>
+  <p>Repas payés ce jour (hors recharges et reçus annulés) : <strong>{{ total|gnf }}</strong></p>
+  <ul class="recus">
+    {% for recu in recus %}
+      <li{% if recu.annule_le %} class="annule"{% endif %}>
+        <a href="/cantine/recus/{{ recu.id }}">
+          <span><strong>{{ recu.numero }}</strong> · {{ recu.cree_le|datefr }}</span>
+          <span>{{ recu.nom_etudiant }} · {{ recu.matricule }}</span>
+          <span>{{ natures.get(recu.nature, recu.nature) }} · {{ modes.get(recu.mode, recu.mode) }}{% if recu.annule_le %} · annulé{% endif %}</span>
+          <strong>{{ recu.montant|gnf }}</strong>
+        </a>
+      </li>
+    {% else %}
+      <li>Aucun reçu ce jour.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import re
+from datetime import date, timedelta
 
 import qrcode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -28,7 +29,9 @@ from app.models import (
     LigneCommande,
     Plat,
     PointCantine,
+    RecuCantine,
     Utilisateur,
+    maintenant,
 )
 from app.security import verifier_mot_de_passe
 from app.services.comptes import doit_choisir_mot_de_passe
@@ -39,20 +42,25 @@ from app.services.menu_cantine import (
     avancer_statut,
     ajouter_plat,
     catalogue,
+    encaisser_commande,
     lire_panier,
     modifier_plat,
     passer_commande,
     point_actif,
     poser_image_plat,
     preparer_image_plat,
+    prix_sans_solde_saisi,
     prix_saisi,
+    refuser_commande,
     retirer_plat,
 )
+from app.services.recus import MODES, NATURES, lister, rapport
 from app.ui import csrf_valide, flash, render
 
 router = APIRouter()
 _PIN = re.compile(r"^\d{4}$")
 _LIBELLES = {
+    "a_payer": "À payer à la caisse",
     "recue": "Reçue",
     "preparation": "En préparation",
     "prete": "Prête",
@@ -178,6 +186,9 @@ def recu(
     if commande is None or commande.etudiant_id != etudiant.id:
         raise Redirection("/menu")
     lignes = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
+    recu_commande = db.scalar(
+        select(RecuCantine).where(RecuCantine.commande_id == commande.id).order_by(RecuCantine.id.desc())
+    )
     return render(
         request,
         "menu_succes.html",
@@ -185,7 +196,61 @@ def recu(
         etudiant=etudiant,
         commande=commande,
         lignes=lignes,
+        recu=recu_commande,
         libelle=_LIBELLES.get(commande.statut, commande.statut),
+    )
+
+
+@router.get("/menu/recus")
+def mes_recus(
+    request: Request,
+    utilisateur: Utilisateur = Depends(exiger_etudiant),
+    db: Session = Depends(get_db),
+):
+    etudiant = _etudiant_de(db, utilisateur)
+    recus = db.scalars(
+        select(RecuCantine).where(RecuCantine.etudiant_id == etudiant.id).order_by(RecuCantine.id.desc()).limit(100)
+    ).all()
+    return render(
+        request,
+        "recus_etudiant.html",
+        user=utilisateur,
+        etudiant=etudiant,
+        recus=recus,
+        natures=NATURES,
+        modes=MODES,
+    )
+
+
+@router.get("/menu/recus/{recu_id}")
+def mon_recu(
+    recu_id: int,
+    request: Request,
+    utilisateur: Utilisateur = Depends(exiger_etudiant),
+    db: Session = Depends(get_db),
+):
+    etudiant = _etudiant_de(db, utilisateur)
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None or recu_vu.etudiant_id != etudiant.id:
+        raise Redirection("/menu/recus")
+    return _page_recu(request, db, utilisateur, recu_vu, "/menu/recus")
+
+
+def _page_recu(request: Request, db: Session, utilisateur: Utilisateur, recu_vu: RecuCantine, retour: str):
+    agent = db.get(Utilisateur, recu_vu.agent_id) if recu_vu.agent_id else None
+    commande = db.get(CommandeCantine, recu_vu.commande_id) if recu_vu.commande_id else None
+    lignes = [morceau.strip() for morceau in (recu_vu.details or "").split(" ; ") if morceau.strip()]
+    return render(
+        request,
+        "recu_cantine.html",
+        user=utilisateur,
+        recu=recu_vu,
+        commande=commande,
+        lignes=lignes,
+        agent=agent,
+        natures=NATURES,
+        modes=MODES,
+        retour=retour,
     )
 
 
@@ -204,12 +269,17 @@ def annuler(
     commande = db.get(CommandeCantine, commande_id)
     if commande is None or commande.etudiant_id != etudiant.id:
         raise Redirection("/menu")
+    payee_par_solde = commande.statut == "recue" and commande.mode_paiement == "solde"
     try:
         annuler_commande(db, commande, etudiant)
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
     else:
-        flash(request, "ok", "Commande annulée. L'argent est revenu sur votre compte.")
+        flash(
+            request,
+            "ok",
+            "Commande annulée. L'argent est revenu sur votre compte." if payee_par_solde else "Commande annulée.",
+        )
     raise Redirection(f"/menu/commande/{commande_id}")
 
 
@@ -244,6 +314,9 @@ def _tableau(db: Session) -> dict:
     details = []
     for commande, etudiant in lignes:
         articles = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
+        recu_commande = db.scalar(
+            select(RecuCantine.id).where(RecuCantine.commande_id == commande.id).order_by(RecuCantine.id.desc())
+        )
         details.append(
             {
                 "id": commande.id,
@@ -253,11 +326,114 @@ def _tableau(db: Session) -> dict:
                 "statut": commande.statut,
                 "libelle": _LIBELLES.get(commande.statut, commande.statut),
                 "montant": commande.montant,
+                "mode_paiement": commande.mode_paiement,
+                "recu_id": recu_commande,
                 "articles": [f"{ligne.quantite} × {ligne.nom}" for ligne in articles],
             }
         )
     plats = db.scalars(select(Plat).order_by(Plat.nom)).all()
     return {"commandes": details, "plats": plats}
+
+
+@router.post("/cantine/commandes/{commande_id}/encaisser")
+def cuisine_encaisser(
+    commande_id: int,
+    request: Request,
+    mode: str = Form(""),
+    csrf: str = Form(""),
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    if not csrf_valide(request, csrf):
+        flash(request, "erreur", "Formulaire expiré. Rechargez la page.")
+        raise Redirection("/cantine/commandes")
+    try:
+        recu_emis = encaisser_commande(db, commande_id, mode, cuisiniere.id)
+    except RefusCommande as exc:
+        flash(request, "erreur", str(exc))
+        raise Redirection("/cantine/commandes") from exc
+    flash(request, "ok", f"Paiement reçu : {recu_emis.numero}. La commande passe en cuisine.")
+    raise Redirection(f"/cantine/recus/{recu_emis.id}")
+
+
+@router.post("/cantine/commandes/{commande_id}/refuser")
+def cuisine_refuser(
+    commande_id: int,
+    request: Request,
+    csrf: str = Form(""),
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    if not csrf_valide(request, csrf):
+        flash(request, "erreur", "Formulaire expiré. Rechargez la page.")
+        raise Redirection("/cantine/commandes")
+    try:
+        refuser_commande(db, commande_id, cuisiniere.id)
+    except RefusCommande as exc:
+        flash(request, "erreur", str(exc))
+    else:
+        flash(request, "ok", "Commande non payée retirée.")
+    raise Redirection("/cantine/commandes")
+
+
+def _jour(texte: str, defaut: date) -> date:
+    try:
+        return date.fromisoformat((texte or "").strip())
+    except ValueError:
+        return defaut
+
+
+@router.get("/cantine/recus")
+def cuisine_recus(
+    request: Request,
+    jour: str = "",
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    choisi = _jour(jour, maintenant().date())
+    recus = lister(db, choisi, choisi)
+    valides = [ligne for ligne in recus if ligne.annule_le is None]
+    return render(
+        request,
+        "cantine_recus.html",
+        user=cuisiniere,
+        jour=choisi,
+        recus=recus,
+        total=sum(ligne.montant for ligne in valides if ligne.nature != "recharge"),
+        natures=NATURES,
+        modes=MODES,
+    )
+
+
+@router.get("/cantine/recus/{recu_id}")
+def cuisine_recu(
+    recu_id: int,
+    request: Request,
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None:
+        raise Redirection("/cantine/recus")
+    return _page_recu(request, db, cuisiniere, recu_vu, f"/cantine/recus?jour={recu_vu.cree_le.date().isoformat()}")
+
+
+@router.get("/cantine/rapport")
+def cuisine_rapport(
+    request: Request,
+    du: str = "",
+    au: str = "",
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    aujourdhui = maintenant().date()
+    debut = _jour(du, aujourdhui.replace(day=1))
+    fin = _jour(au, aujourdhui)
+    if fin < debut:
+        debut, fin = fin, debut
+    if (fin - debut).days > 366:
+        debut = fin - timedelta(days=366)
+    return render(request, "cantine_rapport.html", user=cuisiniere, r=rapport(db, debut, fin), genere=maintenant())
 
 
 @router.post("/cantine/commandes/{commande_id}")
@@ -334,6 +510,7 @@ def creer_plat(
     nom: str = Form(""),
     description: str = Form(""),
     prix: str = Form(""),
+    prix_sans_solde: str = Form(""),
     categorie_id: str = Form(""),
     csrf: str = Form(""),
     image: UploadFile | None = File(None),
@@ -345,7 +522,9 @@ def creer_plat(
         raise Redirection("/cantine/menu")
     try:
         jpeg = _image_recue(image)
-        cree = ajouter_plat(db, nom, description, prix_saisi(prix), int(categorie_id))
+        cree = ajouter_plat(
+            db, nom, description, prix_saisi(prix), int(categorie_id), prix_sans_solde_saisi(prix_sans_solde),
+        )
         if jpeg:
             poser_image_plat(db, cree, jpeg)
     except (RefusCommande, ValueError) as exc:
@@ -362,6 +541,7 @@ def changer_plat(
     nom: str = Form(""),
     description: str = Form(""),
     prix: str = Form(""),
+    prix_sans_solde: str = Form(""),
     categorie_id: str = Form(""),
     disponible: str = Form(""),
     csrf: str = Form(""),
@@ -382,6 +562,7 @@ def changer_plat(
             prix_saisi(prix),
             int(categorie_id),
             disponible == "1",
+            prix_sans_solde_saisi(prix_sans_solde),
         )
         if jpeg:
             poser_image_plat(db, plat, jpeg)

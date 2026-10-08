@@ -75,7 +75,7 @@ Les données ont été transférées le 7 octobre 2026. Une copie de l'ancienne 
 
 - Répartition : **20 %** le 5 octobre, **40 %** le 5 décembre, **40 %** le 5 mars.
 - Frais d'inscription : 1 000 000 en Licence et Bachelor, 3 000 000 en Master, dus au premier versement, offerts aux boursiers.
-- Réduction de 5 % quand tous les frais annuels sont payés en une fois.
+- Remise de 1.200.000 GNF en Licence et Bachelor quand tous les frais annuels sont payés en une fois (aucune remise en Master).
 - Les fiches importées gardent leur ancien barème.
 - Le costume se suit à part, au même prix pour tous (Paramètres).
 

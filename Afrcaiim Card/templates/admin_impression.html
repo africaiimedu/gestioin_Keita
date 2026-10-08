@@ -5,7 +5,8 @@
   <header class="impression-entete">
     <p class="surtitre">Cartes étudiantes</p>
     <h1>Impression</h1>
-    <p class="intro">La carte part à taille réelle, en couleur, vers l'imprimante de ce Mac.</p>
+    <p class="intro">La carte part à taille réelle, en couleur, vers l'imprimante choisie : toutes les imprimantes installées sur les ordinateurs du bureau reliés au site apparaissent ici.</p>
+    {% if user.role == "admin" %}<p class="actions"><a class="bouton bouton-secondaire" href="/admin/postes">Ordinateurs d'impression</a></p>{% endif %}
   </header>
 
   <form method="get" class="impression-choix">
@@ -49,10 +50,14 @@
 
         <label>Imprimante
           <select name="imprimante" id="imprimante" {% if not imprimantes %}disabled{% endif %}>
-            {% for imp in imprimantes %}
-              <option value="{{ imp.nom }}" data-primacy="{{ '1' if imp.primacy else '0' }}" {% if imp.nom == preferee %}selected{% endif %}>
-                {{ imp.nom }} — {{ imp.etat }}{% if imp.primacy %} · Primacy 2{% endif %}
-              </option>
+            {% for lieu, groupe in imprimantes|groupby("lieu") %}
+              <optgroup label="{{ lieu }}">
+                {% for imp in groupe %}
+                  <option value="{{ imp.cle }}" data-primacy="{{ '1' if imp.primacy else '0' }}" {% if imp.cle == preferee %}selected{% endif %}>
+                    {{ imp.nom }} — {{ imp.etat }}{% if imp.primacy %} · Primacy 2{% endif %}
+                  </option>
+                {% endfor %}
+              </optgroup>
             {% else %}
               <option value="">Aucune imprimante</option>
             {% endfor %}
@@ -60,7 +65,9 @@
         </label>
 
         {% if not imprimantes %}
-          <p class="flash flash-avertissement">Aucune imprimante n'est installée. Dans Réglages Système, ouvrez Imprimantes et ajoutez la Primacy 2 avec le pilote Evolis. Rechargez ensuite cette page : son nom apparaîtra dans la liste, avec le recto-verso.</p>
+          <p class="flash flash-avertissement">
+            Aucune imprimante en ligne. L'ordinateur du bureau où la Primacy 2 est branchée doit être allumé, avec le relais d'impression en marche{% if postes %} ({% for poste in postes if poste.actif %}{{ poste.nom }} : {{ "en ligne" if en_ligne(poste) else "hors ligne" }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}. Rechargez ensuite cette page.
+          </p>
         {% else %}
           <p id="note-primacy" class="impression-note" {% if not preferee %}hidden{% endif %}>Pilote Evolis reconnu. Le travail part en recto-verso, bord long.</p>
         {% endif %}
@@ -99,7 +106,32 @@
       </form>
     </div>
   {% endif %}
+
+  {% if travaux %}
+    <section class="impression-suivi">
+      <h2>Dernières impressions par le relais</h2>
+      <ul id="travaux">
+        {% for travail in travaux %}
+          <li data-id="{{ travail.id }}" data-statut="{{ travail.statut }}">
+            <span>{{ travail.cree_le|datefr }} · {{ travail.libelle }} · {{ travail.imprimante }}</span>
+            <strong class="statut-travail statut-{{ travail.statut }}">{{ libelles_travaux.get(travail.statut, travail.statut) }}</strong>
+            {% if travail.message %}<small>{{ travail.message }}</small>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
 </section>
+<style>
+  .impression-suivi { margin-top: 1.4rem; }
+  .impression-suivi ul { list-style: none; padding: 0; }
+  .impression-suivi li { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #e4dfd4; }
+  .impression-suivi small { flex-basis: 100%; color: #8a3b12; }
+  .statut-travail { font-weight: 700; }
+  .statut-imprime { color: #004C22; }
+  .statut-erreur, .statut-annule { color: #C0392B; }
+  .statut-attente, .statut-envoye { color: #9a6a00; }
+</style>
 <script>
   const liste = document.getElementById("imprimante");
   const duplex = document.getElementById("duplex");
@@ -134,5 +166,33 @@
   });
   decrireDuplex();
   decrireSens();
+  (function suivre() {
+    const liste = document.getElementById("travaux");
+    if (!liste) return;
+    const enCours = () => [...liste.querySelectorAll("li")].some((li) => ["attente", "envoye"].includes(li.dataset.statut));
+    if (!enCours()) return;
+    let tours = 0;
+    const minuteur = setInterval(async () => {
+      tours += 1;
+      try {
+        const reponse = await fetch("/admin/impression/travaux.json", { credentials: "same-origin" });
+        const donnees = await reponse.json();
+        (donnees.travaux || []).forEach((travail) => {
+          const ligne = liste.querySelector(`li[data-id="${travail.id}"]`);
+          if (!ligne) return;
+          ligne.dataset.statut = travail.statut;
+          const statut = ligne.querySelector(".statut-travail");
+          statut.textContent = travail.libelle;
+          statut.className = `statut-travail statut-${travail.statut}`;
+          let note = ligne.querySelector("small");
+          if (travail.message) {
+            if (!note) { note = document.createElement("small"); ligne.appendChild(note); }
+            note.textContent = travail.message;
+          }
+        });
+      } catch (e) { /* nouvel essai au prochain tour */ }
+      if (!enCours() || tours > 60) clearInterval(minuteur);
+    }, 3000);
+  })();
 </script>
 {% endblock %}

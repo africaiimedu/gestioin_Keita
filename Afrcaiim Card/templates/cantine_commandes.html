@@ -1,23 +1,48 @@
 {% extends "base.html" %}
 {% block titre %}Cuisine{% endblock %}
-{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=4">{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=7">{% endblock %}
 {% block contenu %}
 <section class="bloc cuisine">
   <h1>Commandes</h1>
-  <p class="actions"><a class="bouton bouton-secondaire" href="/cantine/affiche">Affiche QR à imprimer</a></p>
-  <p class="intro">La liste se met à jour toute seule. Un son bref signale une nouvelle commande.</p>
+  <p class="actions">
+    <a class="bouton bouton-secondaire" href="/cantine/recus">Reçus</a>
+    <a class="bouton bouton-secondaire" href="/cantine/rapport">Rapport</a>
+    <a class="bouton bouton-secondaire" href="/cantine/affiche">Affiche QR à imprimer</a>
+  </p>
+  <p class="intro">La liste se met à jour toute seule. Un son bref signale une nouvelle commande. Une commande « À payer à la caisse » vient d'un étudiant sans solde suffisant : encaissez-la, le reçu sort et la préparation peut commencer.</p>
   <div id="file">
     {% for commande in commandes %}
-      <article class="ticket" data-id="{{ commande.id }}">
+      <article class="ticket{% if commande.statut == 'a_payer' %} ticket-a-payer{% endif %}" data-id="{{ commande.id }}">
         <header><strong>{{ commande.numero }}</strong><span>{{ commande.libelle }}</span></header>
         <p>{{ commande.nom }} · {{ commande.matricule }}</p>
         <ul>{% for article in commande.articles %}<li>{{ article }}</li>{% endfor %}</ul>
-        <form method="post" action="/cantine/commandes/{{ commande.id }}">
-          <input type="hidden" name="csrf" value="{{ csrf }}">
-          <button class="bouton" type="submit">
-            {% if commande.statut == "recue" %}Préparer{% elif commande.statut == "preparation" %}Prête{% else %}Remise{% endif %}
-          </button>
-        </form>
+        {% if commande.statut == "a_payer" %}
+          <p class="somme">À encaisser : {{ commande.montant|gnf }} <small>(prix sans solde)</small></p>
+          <div class="encaisser">
+            <form method="post" action="/cantine/commandes/{{ commande.id }}/encaisser">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="mode" value="especes">
+              <button class="bouton" type="submit">Payé en espèces</button>
+            </form>
+            <form method="post" action="/cantine/commandes/{{ commande.id }}/encaisser">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="mode" value="orange_money">
+              <button class="bouton" type="submit">Payé par Orange Money</button>
+            </form>
+            <form method="post" action="/cantine/commandes/{{ commande.id }}/refuser" onsubmit="return confirm('Retirer cette commande non payée ?');">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button class="bouton bouton-secondaire" type="submit">Retirer</button>
+            </form>
+          </div>
+        {% else %}
+          <p class="mode-paye">{% if commande.mode_paiement == "caisse" %}Payée à la caisse{% else %}Payée sur le compte cantine{% endif %} · {{ commande.montant|gnf }}{% if commande.recu_id %} · <a href="/cantine/recus/{{ commande.recu_id }}">reçu</a>{% endif %}</p>
+          <form method="post" action="/cantine/commandes/{{ commande.id }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="bouton" type="submit">
+              {% if commande.statut == "recue" %}Préparer{% elif commande.statut == "preparation" %}Prête{% else %}Remise{% endif %}
+            </button>
+          </form>
+        {% endif %}
       </article>
     {% else %}
       <p id="vide">Aucune commande en cours.</p>

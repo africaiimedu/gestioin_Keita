@@ -17,16 +17,18 @@ from app.models import (
     MouvementCantine,
     Plat,
     PointCantine,
+    RecuCantine,
     Utilisateur,
     maintenant,
 )
 from app.security import hash_mot_de_passe
 from app.services.courrier import expedier_debit, formater_francs
 from app.services.metier import carte_courante, journaliser
+from app.services.recus import MODES, MODES_CAISSE, annuler_recus_commande, details_lignes, emettre_recu
 from app.services.statut import statut_effectif
 
 _CLE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
-_STATUTS = ("recue", "preparation", "prete", "remise", "annulee")
+_STATUTS = ("a_payer", "recue", "preparation", "prete", "remise", "annulee")
 _SUIVANT = {"recue": "preparation", "preparation": "prete", "prete": "remise"}
 
 
@@ -138,61 +140,76 @@ def passer_commande(
     except RefusCommande:
         db.rollback()
         raise
-    total = sum(prix * qte for _, prix, qte, _ in prepares)
-    if int(verrouille.solde_cantine or 0) < total:
-        db.rollback()
-        raise RefusCommande(
-            f"Solde insuffisant : il reste {formater_francs(verrouille.solde_cantine or 0)}, "
-            f"la commande coûte {formater_francs(total)}. Rechargez à la caisse."
-        )
-    for plat, _, qte, _ in prepares:
+    solde = int(verrouille.solde_cantine or 0)
+    total_solde = sum(prix * qte for _, prix, _, qte, _ in prepares)
+    par_solde = solde >= total_solde
+    total = total_solde if par_solde else sum(prix * qte for _, _, prix, qte, _ in prepares)
+    for plat, _, _, qte, _ in prepares:
         if plat.stock is not None:
             plat.stock -= qte
             if plat.stock <= 0:
                 plat.stock = 0
                 plat.disponible = False
-    verrouille.solde_cantine = int(verrouille.solde_cantine) - total
     if pin_nouveau:
         utilisateur.pin_cantine_hash = hash_mot_de_passe(pin_nouveau)
-    db.add(
-        MouvementCantine(
-            etudiant_id=verrouille.id,
-            carte_id=carte.id,
-            agent_id=utilisateur.id,
-            montant=-total,
-            solde_apres=verrouille.solde_cantine,
-            cree_le=maintenant(),
+    if par_solde:
+        verrouille.solde_cantine = solde - total
+        db.add(
+            MouvementCantine(
+                etudiant_id=verrouille.id,
+                carte_id=carte.id,
+                agent_id=utilisateur.id,
+                montant=-total,
+                solde_apres=verrouille.solde_cantine,
+                cree_le=maintenant(),
+            )
         )
-    )
     commande = CommandeCantine(
         numero=f"T{cle[:10]}",
         etudiant_id=verrouille.id,
         point_id=point.id,
         montant=total,
-        statut="recue",
+        statut="recue" if par_solde else "a_payer",
+        mode_paiement="solde" if par_solde else "caisse",
         cle=cle,
         cree_le=maintenant(),
     )
     db.add(commande)
     db.flush()
     commande.numero = f"A-{commande.id:03d}"
-    for plat, prix, qte, nom in prepares:
-        db.add(
-            LigneCommande(
-                commande_id=commande.id,
-                plat_id=plat.id,
-                nom=nom,
-                prix=prix,
-                quantite=qte,
-            )
+    ajoutees = []
+    for plat, prix_solde, prix_caisse, qte, nom in prepares:
+        ligne = LigneCommande(
+            commande_id=commande.id,
+            plat_id=plat.id,
+            nom=nom,
+            prix=prix_solde if par_solde else prix_caisse,
+            quantite=qte,
         )
+        db.add(ligne)
+        ajoutees.append(ligne)
+    if par_solde:
+        emettre_recu(
+            db,
+            verrouille,
+            nature="commande",
+            mode="solde",
+            montant=total,
+            solde_apres=verrouille.solde_cantine,
+            commande=commande,
+            details=details_lignes(ajoutees),
+            agent_id=utilisateur.id,
+        )
+        suite = f"-{formater_francs(total)} · reste {formater_francs(verrouille.solde_cantine)}"
+    else:
+        suite = f"{formater_francs(total)} à payer à la caisse (prix sans solde)"
     journaliser(
         db,
         "commande_cantine",
         utilisateur_id=utilisateur.id,
         etudiant_id=verrouille.id,
         carte_id=carte.id,
-        details=f"{commande.numero} · -{formater_francs(total)} · reste {formater_francs(verrouille.solde_cantine)}",
+        details=f"{commande.numero} · {suite}",
     )
     try:
         db.commit()
@@ -202,12 +219,17 @@ def passer_commande(
         if deja is None:
             raise RefusCommande("La commande n'a pas pu être enregistrée. Réessayez.") from None
         return deja, False
-    if verrouille.email:
+    if par_solde and verrouille.email:
         expedier_debit(verrouille.email, verrouille.prenom, verrouille.nom, total, verrouille.solde_cantine)
     return commande, True
 
 
-def _reserver(db, lignes: list[tuple[int, int]]) -> list[tuple[Plat, int, int, str]]:
+def prix_caisse(plat: Plat) -> int:
+    """Prix sans solde : celui saisi par la cuisine, sinon le prix normal."""
+    return int(plat.prix_sans_solde) if plat.prix_sans_solde else int(plat.prix)
+
+
+def _reserver(db, lignes: list[tuple[int, int]]) -> list[tuple[Plat, int, int, int, str]]:
     prepares = []
     for plat_id, quantite in lignes:
         plat = db.scalar(select(Plat).where(Plat.id == plat_id).with_for_update())
@@ -215,16 +237,11 @@ def _reserver(db, lignes: list[tuple[int, int]]) -> list[tuple[Plat, int, int, s
             raise RefusCommande("Un plat du panier n'est plus servi.")
         if plat.stock is not None and plat.stock < quantite:
             raise RefusCommande(f"Il ne reste plus assez de {plat.nom}.")
-        prepares.append((plat, int(plat.prix), quantite, plat.nom))
+        prepares.append((plat, int(plat.prix), prix_caisse(plat), quantite, plat.nom))
     return prepares
 
 
-def annuler_commande(db, commande: CommandeCantine, etudiant: Etudiant) -> None:
-    if commande.statut != "recue":
-        raise RefusCommande("La cuisine a déjà commencé. Cette commande ne peut plus être annulée.")
-    if maintenant() - _conscient(commande.cree_le) > timedelta(minutes=10):
-        raise RefusCommande("Le délai de 10 minutes pour annuler est passé.")
-    verrouille = db.scalar(select(Etudiant).where(Etudiant.id == etudiant.id).with_for_update())
+def _rendre_stock(db, commande: CommandeCantine) -> None:
     lignes = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
     for ligne in lignes:
         if ligne.plat_id is None:
@@ -233,8 +250,26 @@ def annuler_commande(db, commande: CommandeCantine, etudiant: Etudiant) -> None:
         if plat is not None and plat.stock is not None:
             plat.stock += ligne.quantite
             plat.disponible = True
+
+
+def annuler_commande(db, commande: CommandeCantine, etudiant: Etudiant) -> None:
+    if commande.statut == "a_payer":
+        _rendre_stock(db, commande)
+        commande.statut = "annulee"
+        journaliser(db, "annulation_cantine", etudiant_id=etudiant.id, details=f"{commande.numero} · non payée")
+        db.commit()
+        return
+    if commande.statut != "recue":
+        raise RefusCommande("La cuisine a déjà commencé. Cette commande ne peut plus être annulée.")
+    if commande.mode_paiement != "solde":
+        raise RefusCommande("Commande payée à la caisse : demandez le remboursement au comptoir.")
+    if maintenant() - _conscient(commande.cree_le) > timedelta(minutes=10):
+        raise RefusCommande("Le délai de 10 minutes pour annuler est passé.")
+    verrouille = db.scalar(select(Etudiant).where(Etudiant.id == etudiant.id).with_for_update())
+    _rendre_stock(db, commande)
     verrouille.solde_cantine = int(verrouille.solde_cantine or 0) + commande.montant
     commande.statut = "annulee"
+    annuler_recus_commande(db, commande)
     carte = carte_courante(db, verrouille.id)
     db.add(
         MouvementCantine(
@@ -254,7 +289,64 @@ def annuler_commande(db, commande: CommandeCantine, etudiant: Etudiant) -> None:
     db.commit()
 
 
+def encaisser_commande(db, commande_id: int, mode: str, agent_id: int) -> RecuCantine:
+    """La cuisine reçoit l'argent d'une commande sans solde. Une seule fois, puis la préparation commence."""
+    if mode not in MODES_CAISSE:
+        raise RefusCommande("Choisissez Espèces ou Orange Money.")
+    commande = db.scalar(select(CommandeCantine).where(CommandeCantine.id == commande_id).with_for_update())
+    if commande is None:
+        raise RefusCommande("Cette commande n'existe plus.")
+    if commande.statut != "a_payer":
+        deja = db.scalar(
+            select(RecuCantine).where(RecuCantine.commande_id == commande.id).order_by(RecuCantine.id.desc())
+        )
+        if deja is not None and commande.statut != "annulee":
+            return deja
+        raise RefusCommande("Cette commande n'attend plus de paiement.")
+    etudiant = db.get(Etudiant, commande.etudiant_id)
+    lignes = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
+    commande.statut = "recue"
+    recu = emettre_recu(
+        db,
+        etudiant,
+        nature="commande",
+        mode=mode,
+        montant=commande.montant,
+        commande=commande,
+        details=details_lignes(lignes),
+        agent_id=agent_id,
+    )
+    journaliser(
+        db,
+        "encaissement_cantine",
+        utilisateur_id=agent_id,
+        etudiant_id=etudiant.id,
+        details=f"{commande.numero} · {formater_francs(commande.montant)} · {MODES[mode]} · {recu.numero}",
+    )
+    db.commit()
+    return recu
+
+
+def refuser_commande(db, commande_id: int, agent_id: int) -> None:
+    """La cuisine retire une commande jamais payée."""
+    commande = db.scalar(select(CommandeCantine).where(CommandeCantine.id == commande_id).with_for_update())
+    if commande is None or commande.statut != "a_payer":
+        raise RefusCommande("Seule une commande non payée peut être retirée.")
+    _rendre_stock(db, commande)
+    commande.statut = "annulee"
+    journaliser(
+        db,
+        "annulation_cantine",
+        utilisateur_id=agent_id,
+        etudiant_id=commande.etudiant_id,
+        details=f"{commande.numero} · non payée, retirée par la cuisine",
+    )
+    db.commit()
+
+
 def avancer_statut(db, commande: CommandeCantine, utilisateur_id: int) -> str:
+    if commande.statut == "a_payer":
+        raise RefusCommande("Encaissez d'abord cette commande : l'étudiant n'a pas de solde suffisant.")
     suivant = _SUIVANT.get(commande.statut)
     if suivant is None:
         raise RefusCommande("Cette commande ne change plus d'étape.")
@@ -290,7 +382,19 @@ def prix_saisi(texte: str) -> int:
     return prix
 
 
-def ajouter_plat(db, nom: str, description: str, prix: int, categorie_id: int) -> Plat:
+def prix_sans_solde_saisi(texte: str) -> int | None:
+    """Case vide : l'étudiant sans solde paie le même prix."""
+    if not re.sub(r"[^\d]", "", texte or ""):
+        return None
+    prix = prix_saisi(texte)
+    if prix < 1:
+        raise RefusCommande("Le prix sans solde doit être supérieur à 0 GNF.")
+    return prix
+
+
+def ajouter_plat(
+    db, nom: str, description: str, prix: int, categorie_id: int, prix_sans_solde: int | None = None,
+) -> Plat:
     """Ajoute un plat. Le QR code de la cantine n'est pas modifié."""
     categorie = db.get(CategoriePlat, int(categorie_id))
     if categorie is None:
@@ -301,6 +405,7 @@ def ajouter_plat(db, nom: str, description: str, prix: int, categorie_id: int) -
         nom=titre,
         description=(description or "").strip()[:180],
         prix=prix,
+        prix_sans_solde=prix_sans_solde,
         badge=None,
         visuel=_VISUELS.get(categorie.slug, "bol"),
         temps_min=15,
@@ -321,6 +426,7 @@ def modifier_plat(
     prix: int,
     categorie_id: int,
     disponible: bool,
+    prix_sans_solde: int | None = None,
 ) -> Plat:
     """Met à jour un plat. Le QR code de la cantine n'est pas modifié."""
     plat = db.get(Plat, plat_id)
@@ -330,6 +436,7 @@ def modifier_plat(
     plat.nom = _titre(nom)
     plat.description = (description or "").strip()[:180]
     plat.prix = prix
+    plat.prix_sans_solde = prix_sans_solde
     plat.categorie_id = categorie.id
     plat.visuel = _VISUELS.get(categorie.slug, plat.visuel)
     plat.disponible = disponible

@@ -13,7 +13,6 @@ import {
   computeSituation,
   officialInstallments,
   formatGnf,
-  percentOf,
   previewSituation,
   recoveryRate,
   REGISTRATION_FEES,
@@ -35,17 +34,26 @@ function isScholar(discounts) {
   return discounts.some((item) => item.label === SCHOLAR_LABEL || (item.mode === "pourcentage" && Number(item.value) === 100));
 }
 
-function reducedTuition(tuition) {
-  return tuition - percentOf(tuition, 5);
+/** Remise fixe quand toute l'année est payée en une fois. Le Master n'en a pas. */
+export const CASH_DISCOUNT = 1_200_000;
+
+export function cashDiscountFor(level) {
+  const code = String(level || "");
+  return code.startsWith("licence") || code.startsWith("bachelor") ? CASH_DISCOUNT : 0;
 }
 
 function cashOffer(current, amount) {
+  const discount = cashDiscountFor(current.student.level);
   if (isScholar(current.discounts) || current.situation.paid > 0) {
     return { discounts: current.discounts, amount, apply: false };
   }
-  const reduced = reducedTuition(current.tuition);
   const already = current.discounts.some((item) => item.label === CASH_LABEL);
-  if (already) return { discounts: current.discounts, amount: amount === current.tuition ? reduced : amount, apply: false, reduced };
+  if (already) {
+    const reduced = current.situation.due;
+    return { discounts: current.discounts, amount: amount === current.tuition ? reduced : amount, apply: false, reduced };
+  }
+  if (!discount) return { discounts: current.discounts, amount, apply: false };
+  const reduced = Math.max(0, current.tuition - discount);
   if (amount < reduced) return { discounts: current.discounts, amount, apply: false, reduced };
   return { discounts: current.discounts, amount: amount === current.tuition ? reduced : amount, apply: true, reduced };
 }
@@ -461,9 +469,9 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
     };
   }
   const discounts = offer.apply
-    ? [...current.discounts, { mode: "pourcentage", value: 5, label: CASH_LABEL }]
+    ? [...current.discounts, { mode: "fixe", value: CASH_DISCOUNT, label: CASH_LABEL }]
     : offer.discounts;
-  if (offer.apply) warnings.push("Réduction de 5 % : toute la scolarité est payée en une fois");
+  if (offer.apply) warnings.push(`Remise de ${formatGnf(CASH_DISCOUNT)} : toute la scolarité est payée en une fois`);
   const preview = previewSituation({
     tuition: current.tuition,
     discounts,
@@ -517,7 +525,7 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
   }
   const offer = cashOffer(current, asked);
   const discountsAfter = offer.apply
-    ? [...current.discounts, { mode: "pourcentage", value: 5, label: CASH_LABEL }]
+    ? [...current.discounts, { mode: "fixe", value: CASH_DISCOUNT, label: CASH_LABEL }]
     : offer.discounts;
   const priced = {
     tuition: current.tuition,
@@ -639,8 +647,8 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
     if (offer.apply) {
       await db.prepare(`
         INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
-        VALUES(?, ?, 'pourcentage', 5, ?, ?)
-      `).run(current.student.id, CASH_LABEL, "Toute la scolarité payée en une fois", user.id);
+        VALUES(?, ?, 'fixe', ?, ?, ?)
+      `).run(current.student.id, CASH_LABEL, CASH_DISCOUNT, "Toute la scolarité payée en une fois", user.id);
       current = await studentSituation(db, current.student.id, asOf);
     }
     const amount = offer.amount;
@@ -1311,11 +1319,12 @@ export async function catalog(db) {
     fees,
     agents,
     registrationFees: REGISTRATION_FEES,
+    cashDiscount: CASH_DISCOUNT,
     hypotheses: [
       `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
       "Répartition de la scolarité : 20 % le 5 octobre, 40 % le 5 décembre, 40 % le 5 mars.",
       "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. Le tarif de départ est 24 000 000, 27 000 000 et 28 000 000. Chaque école se règle dans Tarifs.",
-      "Un paiement de tous les frais annuels en une fois (scolarité et inscription) ouvre une réduction de 5 % sur ce total.",
+      `En Licence et Bachelor, un paiement de tous les frais annuels en une fois (scolarité et inscription) ouvre une remise de ${formatGnf(CASH_DISCOUNT)} sur ce total. Le Master n'a pas de remise.`,
       "Un étudiant boursier ne paie ni la scolarité ni les frais d'inscription.",
       "Les fiches déjà enregistrées gardent leur barème (Licence 25 000 000, Master 30 000 000, Tech 37 000 000).",
       "L'admin de la scolarité peut modifier ces montants. Les paiements déjà enregistrés ne changent pas.",

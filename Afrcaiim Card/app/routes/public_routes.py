@@ -135,7 +135,7 @@ def valider_repas_carte(
             f"Reste {formater_francs(resultat['solde'])}. "
             f"L'e-mail pour {resultat['email']} est prêt, mais le serveur de messagerie n'est pas encore configuré.",
         )
-    return RedirectResponse(retour, status_code=303)
+    return RedirectResponse(f"/cantine/recus/{resultat['recu_id']}", status_code=303)
 
 
 @router.get("/photo/{jeton}")

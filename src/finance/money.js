@@ -63,7 +63,7 @@ export function formatGnf(amount) {
 
 /**
  * Frais d'inscription, en plus de la scolarité, payés avec la première échéance.
- * Ils entrent dans les frais annuels : la remise de 5 % et la bourse s'y appliquent.
+ * Ils entrent dans les frais annuels : la remise pour paiement en une fois et la bourse s'y appliquent.
  */
 export const REGISTRATION_FEES = { bachelor: 1_000_000, master: 3_000_000 };
 
