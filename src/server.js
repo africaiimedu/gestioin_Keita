@@ -342,7 +342,7 @@ app.post("/api/depenses/:id/annuler", requireAction("expense.write"), async (req
   res.json(await cancelExpense(db, req.user, Number(req.params.id), req.body?.reason));
 });
 app.get("/api/depenses/:id.pdf", requireAction("expense.write"), async (req, res) => {
-  const expense = await expenseForPrint(db, Number(req.params.id));
+  const expense = await expenseForPrint(db, Number(req.params.id), { preview: req.query.apercu === "1" });
   const pdf = await renderDischargePdf({
     expense,
     school: await schoolBlock(),

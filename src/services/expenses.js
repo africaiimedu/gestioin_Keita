@@ -180,9 +180,10 @@ export async function markExpenseHanded(db, user, id) {
   });
 }
 
-export async function expenseForPrint(db, id) {
+/** Un simple aperçu ne compte pas comme une impression. */
+export async function expenseForPrint(db, id, { preview = false } = {}) {
   const row = await db.prepare(`
-    UPDATE expenses e SET print_count = e.print_count + 1
+    UPDATE expenses e SET print_count = e.print_count + ${preview ? 0 : 1}
     FROM users u WHERE u.id = e.created_by AND e.id = ?
     RETURNING e.*, u.full_name AS created_by_name,
       (SELECT h.full_name FROM users h WHERE h.id = e.handed_by) AS handed_by_name

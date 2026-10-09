@@ -2003,7 +2003,10 @@ async function showExpenses(screen) {
         <span class="tag action">${esc(item.number)}</span>
         <span class="muted">${esc(frenchDay(item.issued_on))}</span>
         ${state}
-        <strong class="exp-amount">${gnf(item.amount)}</strong>
+        <span class="exp-head-end">
+          <strong class="exp-amount">${gnf(item.amount)}</strong>
+          <button class="eye exp-eye" type="button" data-view="${item.id}" data-number="${esc(item.number)}" aria-label="Aperçu de la décharge ${esc(item.number)}" title="Aperçu de la décharge">${EYE_OPEN}</button>
+        </span>
       </div>
       <div class="exp-item-body">
         <div class="exp-who"><strong>${esc(item.receiver_name)}</strong><span class="muted">${esc(item.receiver_position)}</span></div>
@@ -2052,8 +2055,12 @@ async function showExpenses(screen) {
         <p class="exp-note">Une décharge enregistrée ne se modifie pas. En cas d'erreur, l'administrateur l'annule avec un motif, puis on en établit une nouvelle.</p>
       </aside>
     </div>
-    <dialog id="expense-dialog" class="sheet exp-sheet" closedby="none"></dialog>`;
+    <dialog id="expense-dialog" class="sheet exp-sheet" closedby="none"></dialog>
+    <dialog id="expense-preview" class="sheet exp-preview"></dialog>`;
 
+  document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
+    openExpensePreview(button.dataset.view, button.dataset.number);
+  }));
   document.querySelector("#expense-filters").addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2091,6 +2098,22 @@ async function showExpenses(screen) {
     printDocument(`/api/depenses/${expense.id}.pdf`);
     showExpenses(screen);
   }));
+}
+
+function openExpensePreview(id, number) {
+  const dialog = document.querySelector("#expense-preview");
+  const url = `/api/depenses/${encodeURIComponent(id)}.pdf`;
+  dialog.innerHTML = `<div class="dialog-head"><div><p class="mark">Aperçu</p><h2>Décharge ${esc(number)}</h2></div>
+      <div class="exp-preview-actions">
+        <button class="btn" type="button" data-preview-print>Imprimer</button>
+        <a class="btn secondary" href="${url}" target="_blank" rel="noopener">Ouvrir le PDF</a>
+        <button class="dialog-close" type="button" data-preview-close>Fermer</button>
+      </div></div>
+    <iframe class="exp-preview-frame" src="${url}?apercu=1#view=FitH" title="Aperçu de la décharge ${esc(number)}"></iframe>`;
+  dialog.querySelector("[data-preview-close]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-preview-print]").addEventListener("click", () => printDocument(url));
+  dialog.addEventListener("close", () => { dialog.innerHTML = ""; }, { once: true });
+  dialog.showModal();
 }
 
 function openExpenseForm(defaults, onCreated) {

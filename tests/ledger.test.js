@@ -533,6 +533,7 @@ test("dépenses : décharge numérotée, montant en lettres, immuable, annulable
 
   const printed = await expenses.expenseForPrint(db, expense.id);
   assert.equal(printed.print_count, 1);
+  assert.equal((await expenses.expenseForPrint(db, expense.id, { preview: true })).print_count, 1);
   const pdf = await renderDischargePdf({ expense: printed, school: {}, verifyUrl: `http://localhost/v/${printed.verify_token}` });
   assert.equal(pdf.subarray(0, 4).toString(), "%PDF");
   assert.equal((await expenses.expenseByToken(db, printed.verify_token)).number, expense.number);

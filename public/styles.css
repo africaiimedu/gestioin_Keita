@@ -1666,14 +1666,15 @@ tbody tr:last-child td { border-bottom: 0; }
 }
 .exp-item:has(.exp-state.done) { border-left-color: #128a45; }
 .exp-item.is-cancelled { border-left-color: #b9c4be; background: #fafbfa; }
-.exp-item.is-cancelled .exp-item-head, .exp-item.is-cancelled .exp-item-body { opacity: 0.6; }
+.exp-item.is-cancelled .exp-item-head > :not(.exp-head-end), .exp-item.is-cancelled .exp-amount, .exp-item.is-cancelled .exp-item-body { opacity: 0.6; }
+.exp-head-end { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; }
 .exp-item.is-cancelled .exp-amount, .exp-item.is-cancelled .exp-who strong { text-decoration: line-through; }
 .exp-item-head {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px;
   background: #f6faf8; border-bottom: 1px solid #e3efe8;
 }
 .exp-item-head .tag { margin: 0; }
-.exp-amount { margin-left: auto; font-size: 1.15rem; color: #0c3d2e; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.exp-amount { font-size: 1.15rem; color: #0c3d2e; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .exp-item-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px 20px; padding: 14px 16px; }
 .exp-who, .exp-what { display: grid; gap: 4px; align-content: start; min-width: 0; }
 .exp-who strong { font-size: 1.02rem; color: #0c3d2e; }
@@ -1712,6 +1713,17 @@ tbody tr:last-child td { border-bottom: 0; }
 .print-frame { position: fixed; width: 0; height: 0; border: 0; right: 0; bottom: 0; visibility: hidden; }
 
 dialog.sheet.exp-sheet { width: min(1120px, calc(100vw - 28px)); }
+.btn.eye.exp-eye, .eye.exp-eye { width: 40px; height: 40px; margin: 0; border-radius: 12px; box-shadow: none; }
+.eye.exp-eye svg { width: 20px; height: 20px; }
+dialog.sheet.exp-preview { width: min(920px, calc(100vw - 28px)); padding: 18px 20px 20px; display: none; flex-direction: column; gap: 10px; }
+dialog.sheet.exp-preview[open] { display: flex; }
+.exp-preview .dialog-head { flex-wrap: wrap; margin: 0; }
+.exp-preview .mark { margin: 0 0 2px; }
+.exp-preview-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.exp-preview-actions .btn { margin: 0; padding: 8px 16px; }
+.exp-preview-frame {
+  width: 100%; height: min(76vh, 1000px); border: 1px solid #d5e8dc; border-radius: 12px; background: #f3f5f4;
+}
 .exp-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .exp-fields fieldset { border: 1px solid #d5e8dc; border-radius: 16px; padding: 10px 14px 12px; margin: 0 0 12px; }
 .exp-fields legend { padding: 0 6px; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #128a45; }
@@ -1748,6 +1760,5 @@ dialog.sheet.exp-sheet { width: min(1120px, calc(100vw - 28px)); }
   .exp-kpis { grid-template-columns: 1fr; }
   .exp-filters label { min-width: 0; flex: 1 1 45%; }
   .exp-item-body { grid-template-columns: 1fr; }
-  .exp-amount { margin-left: 0; width: 100%; }
   .exp-actions { justify-content: flex-start; }
 }
