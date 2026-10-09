@@ -1127,7 +1127,7 @@ async function showStudents(screen) {
         <p id="year-row"><label id="year-label">Année de bachelor</label><select name="studyYear" required></select></p>
         <p class="muted" id="fee-hint"></p>
         <label class="check"><input type="checkbox" name="scholarship"> Boursier — aucun frais de scolarité</label>
-        <label class="check" id="pay-in-full-row"><input type="checkbox" name="payInFull"> Paiement de toute la scolarité en une fois (−${gnf(state.catalog.cashDiscount || 0)})</label>
+        ${discountField()}
         <div class="duo" id="payment-fields"><p><label>Versement du jour (GNF)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
           <p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p></div>
         ${costumeField("Costume versé à l'inscription (GNF)")}
@@ -1161,28 +1161,26 @@ async function showStudents(screen) {
       if (options.some(([code]) => code === previous)) form.studyYear.value = previous;
       document.querySelector("#year-label").textContent = track === "master" ? "Année de master" : "Année de bachelor";
       const tuition = tuitionOf();
-      const cash = cashOf(tuition);
       const scholar = form.scholarship.checked;
+      const discountRow = form.querySelector(".discount-row");
+      discountRow.hidden = scholar || isMaster();
+      if (discountRow.hidden) form.cashDiscount.value = "non";
+      const withDiscount = discountChosen(form);
       document.querySelector("#fee-hint").textContent = scholar
         ? "Boursier : les frais de scolarité sont à 0 GNF."
-        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + inscription ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : ` En une fois : ${gnf(cash)} (−${gnf(state.catalog.cashDiscount || 0)}).`}`;
+        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + inscription ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : (withDiscount ? ` Avec la remise : ${gnf(cashOf(tuition))} à payer.` : " Sans remise.")}`;
       document.querySelector("#payment-fields").hidden = scholar;
-      document.querySelector("#pay-in-full-row").hidden = isMaster();
-      if (isMaster()) form.payInFull.checked = false;
-      form.payInFull.disabled = scholar || isMaster();
       const amount = form.paymentAmount;
       amount.required = !scholar;
       form.method.required = !scholar;
       if (scholar) amount.value = "0";
-      else if (form.payInFull.checked) amount.value = grouped(cash);
     };
     form.level.addEventListener("change", syncFee);
     form.studyYear.addEventListener("change", syncFee);
     form.programId.addEventListener("change", syncFee);
     form.scholarship.addEventListener("change", syncFee);
-    form.payInFull.addEventListener("change", syncFee);
+    form.cashDiscount.addEventListener("change", syncFee);
     form.paymentAmount.addEventListener("input", (event) => {
-      if (form.payInFull.checked) return;
       const digits = event.target.value.replace(/[^\d]/g, "");
       event.target.value = digits ? grouped(Number(digits)) : "";
     });
@@ -1225,9 +1223,9 @@ async function showStudents(screen) {
       if (!form.scholarship.checked) {
         const typed = Number(form.paymentAmount.value.replace(/\D/g, "") || 0);
         const tuition = tuitionOf();
-        const limit = cashOf(tuition);
+        const limit = discountChosen(form) ? cashOf(tuition) : tuition;
         if (typed > limit) {
-          const discount = limit < tuition ? `, remise de ${gnf(state.catalog.cashDiscount || 0)} comprise pour un paiement en une fois` : "";
+          const discount = limit < tuition ? `, remise de ${gnf(state.catalog.cashDiscount || 0)} déduite` : "";
           notifyOverpay(`Le versement du jour (${gnf(typed)}) est supérieur au montant à payer (${gnf(limit)}${discount}). La fiche n'a pas été enregistrée.`);
           return;
         }
@@ -1242,6 +1240,7 @@ async function showStudents(screen) {
           programId: Number(form.programId.value),
           level,
           scholarship: form.scholarship.checked,
+          cashDiscount: discountChosen(form),
           paymentAmount: form.scholarship.checked ? 0 : form.paymentAmount.value.replace(/\D/g, ""),
           costumeAmount: moneyOf(form.costumeAmount),
           costumeQuantity: Number(form.costumeQuantity?.value) || null,
@@ -1489,6 +1488,7 @@ function openPaymentUpdate(record, onDone) {
         <p class="muted">Il s'ajoute à l'historique, rien n'est effacé. Le nouveau reçu reprend tous les versements précédents : c'est lui qui fait foi.</p>
         <div class="duo"><p><label>Montant versé ce jour (GNF)</label><input name="amount" inputmode="numeric" required placeholder="${record.reste ? `Reste ${esc(grouped(record.reste))}` : "Montant"}"></p>
         <p><label>Date</label><input name="paidOn" type="date" required value="${new Date().toISOString().slice(0, 10)}"></p></div>
+        ${discountField()}
         <div id="update-preview" class="receipt-preview" hidden></div>
         ${costumeField()}
         <div class="duo"><p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p>
@@ -1515,7 +1515,7 @@ function openPaymentUpdate(record, onDone) {
       <p class="reste"><span>Reste à payer après ce versement</span><strong>${gnf(data.reste)}</strong></p>
       <p class="seal"><span>Mention du reçu</span><strong>${esc(data.seal)}</strong></p>
       ${data.limitedMessage ? `<p class="limited">${esc(data.limitedMessage)}</p>` : ""}
-      ${data.cashDiscount ? `<p class="muted">Remise de ${gnf(state.catalog.cashDiscount || 0)} : toute l'année est payée en une fois.</p>` : ""}`;
+      ${data.cashDiscount ? `<p class="muted">Remise de ${gnf(state.catalog.cashDiscount || 0)} déduite du montant dû.</p>` : ""}`;
   };
   const refreshUpdatePreview = async () => {
     const amountValue = Number(form.amount.value.replace(/\D/g, ""));
@@ -1527,6 +1527,7 @@ function openPaymentUpdate(record, onDone) {
       const data = await api(`/api/paiements/${payment.id}/apercu`, { method: "POST", body: JSON.stringify({
         amount: amountValue,
         paidOn: form.paidOn.value,
+        cashDiscount: discountChosen(form),
       }) });
       paintPreview(data);
     } catch (caught) {
@@ -1540,6 +1541,8 @@ function openPaymentUpdate(record, onDone) {
     refreshUpdatePreview();
   });
   form.paidOn.addEventListener("change", refreshUpdatePreview);
+  form.cashDiscount.addEventListener("change", refreshUpdatePreview);
+  showDiscountFor(form, record.level);
   wireCostume(form);
   refreshUpdatePreview();
   form.addEventListener("submit", async (event) => {
@@ -1562,6 +1565,7 @@ function openPaymentUpdate(record, onDone) {
       amount: amountValue,
       costumeAmount: moneyOf(form.costumeAmount),
       costumeQuantity: Number(form.costumeQuantity?.value) || null,
+      cashDiscount: discountChosen(form),
       paidOn: form.paidOn.value,
       method: form.method.value,
       reference: form.reference.value.trim(),
@@ -1651,6 +1655,7 @@ async function showPayment(screen) {
         <div id="current"></div>
         <div class="duo"><p><label>Montant (GNF, sans virgule)</label><input name="amount" inputmode="numeric" required></p>
         <p><label>Date</label><input name="paidOn" type="date" required></p></div>
+        ${discountField()}
         ${costumeField()}
         <label>Moyen de paiement</label><select name="method" required>${state.catalog.methods.map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
         <label>Référence de transaction <span class="muted">(facultatif)</span></label><input name="reference" placeholder="Numéro de transaction, chèque ou bordereau">
@@ -1689,11 +1694,19 @@ async function showPayment(screen) {
     refreshPreview();
   });
   wireCostume(document.querySelector("#pay-form"), refreshPreview);
-  ["paidOn", "method", "reference"].forEach((name) => document.querySelector(`[name=${name}]`).addEventListener("change", refreshPreview));
+  ["paidOn", "method", "reference", "cashDiscount"].forEach((name) => document.querySelector(`#pay-form [name=${name}]`).addEventListener("change", refreshPreview));
   document.querySelector("#pay-form").addEventListener("submit", submitPayment);
 }
 
+function showDiscountFor(form, level) {
+  const row = form?.querySelector(".discount-row");
+  if (!row) return;
+  row.hidden = String(level || "").startsWith("master");
+  if (row.hidden) form.cashDiscount.value = "non";
+}
+
 function showCurrent(student) {
+  showDiscountFor(document.querySelector("#pay-form"), student.level);
   const situation = student.situation;
   if (!situation) {
     document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)}</p></div>`;
@@ -1713,6 +1726,7 @@ async function refreshPreview() {
   try {
     const data = await api("/api/paiements/apercu", { method: "POST", body: JSON.stringify({
       studentId: Number(studentId), amount, costumeAmount, costumeQuantity, paidOn: document.querySelector("[name=paidOn]").value,
+      cashDiscount: discountChosen(document.querySelector("#pay-form")),
       reference: document.querySelector("[name=reference]").value,
     }) });
     const costume = data.costume;
@@ -1755,6 +1769,7 @@ async function submitPayment(event) {
     amount,
     costumeAmount: moneyOf(document.querySelector("#pay-form [name=costumeAmount]")),
     costumeQuantity: Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null,
+    cashDiscount: discountChosen(document.querySelector("#pay-form")),
     paidOn: document.querySelector("[name=paidOn]").value,
     method: document.querySelector("[name=method]").value,
     reference: document.querySelector("[name=reference]").value.trim(),
@@ -1780,6 +1795,8 @@ async function submitPayment(event) {
     }
     const costumeInput = document.querySelector("#pay-form [name=costumeAmount]");
     if (costumeInput) costumeInput.value = "";
+    const discountInput = document.querySelector("#pay-form [name=cashDiscount]");
+    if (discountInput) discountInput.value = "non";
     state.idempotencyKey = newKey();
     await loadCashPayments();
   } catch (caught) {
@@ -1806,6 +1823,18 @@ function studentAddress(firstName, lastName) {
 
 function costumePriceSetting() {
   return Number(state.catalog?.settings?.costume_price || 0);
+}
+
+function discountField() {
+  return `<p class="discount-row"><label>Remise de ${gnf(state.catalog.cashDiscount || 0)}</label><select name="cashDiscount">
+      <option value="non">Non, pas de remise</option>
+      <option value="oui">Oui, déduire ${gnf(state.catalog.cashDiscount || 0)}</option>
+    </select></p>`;
+}
+
+function discountChosen(form) {
+  const select = form?.querySelector("[name=cashDiscount]");
+  return Boolean(select && !select.closest("[hidden]") && select.value === "oui");
 }
 
 function costumeField(label = "Costume versé ce jour (GNF)") {

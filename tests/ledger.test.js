@@ -199,19 +199,19 @@ test("une nouvelle fiche ne produit aucun reçu d'inscription, et l'e-mail du pe
   assert.equal((await db.prepare("SELECT active FROM users WHERE id = ?").get(account.id)).active, 0);
 });
 
-test("bachelor, masters, remise de 1.200.000 en une fois et boursier", async () => {
+test("bachelor, masters, remise de 1.200.000 au choix et boursier", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   await assert.rejects(
     () => domain.createStudent(db, agent, {
       lastName: "BARRY", firstName: "Comptant", programId: program.id, level: "bachelor",
-      paymentAmount: 25_000_000, method: "marchand",
+      paymentAmount: 25_000_000, method: "marchand", cashDiscount: true,
     }),
-    (error) => error.details?.code === "AMOUNT_TOO_HIGH" && /23\.800\.000 GNF, remise de 1\.200\.000 GNF comprise/.test(error.message),
+    (error) => error.details?.code === "AMOUNT_TOO_HIGH" && /23\.800\.000 GNF, remise de 1\.200\.000 GNF déduite/.test(error.message),
   );
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM students WHERE last_name = 'BARRY' AND first_name = 'Comptant'").get()).n, 0);
   const comptant = await domain.createStudent(db, agent, {
     lastName: "BARRY", firstName: "Comptant", programId: program.id, level: "bachelor",
-    paymentAmount: 23_800_000, method: "marchand",
+    paymentAmount: 23_800_000, method: "marchand", cashDiscount: true,
   });
   assert.equal(comptant.situation.due, 23_800_000);
   assert.equal(comptant.situation.paid, 23_800_000);
@@ -219,6 +219,41 @@ test("bachelor, masters, remise de 1.200.000 en une fois et boursier", async () 
   assert.equal((await db.prepare("SELECT method FROM payments WHERE student_id = ?").get(comptant.student.id)).method, "marchand");
   const remise = await db.prepare("SELECT mode, value FROM discounts WHERE student_id = ?").get(comptant.student.id);
   assert.deepEqual([remise.mode, Number(remise.value)], ["fixe", 1_200_000]);
+
+  const sansRemise = await domain.createStudent(db, agent, {
+    lastName: "BARRY", firstName: "Sansremise", programId: program.id, level: "bachelor",
+    paymentAmount: 25_000_000, method: "especes", cashDiscount: false,
+  });
+  assert.equal(sansRemise.situation.due, 25_000_000);
+  assert.equal(sansRemise.situation.paid, 25_000_000);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM discounts WHERE student_id = ?").get(sansRemise.student.id)).n, 0);
+
+  const remiseSansVersement = await domain.createStudent(db, agent, {
+    lastName: "BARRY", firstName: "Remiseseule", programId: program.id, level: "bachelor",
+    paymentAmount: 0, cashDiscount: true,
+  });
+  assert.equal(remiseSansVersement.situation.due, 23_800_000);
+  assert.equal(remiseSansVersement.situation.paid, 0);
+
+  const partielRemise = await domain.createStudent(db, agent, {
+    lastName: "BARRY", firstName: "Partielremise", programId: program.id, level: "bachelor",
+    paymentAmount: 5_000_000, method: "especes", cashDiscount: false,
+  });
+  assert.equal(partielRemise.situation.due, 25_000_000);
+  const avecRemise = await domain.createPayment(db, agent, {
+    studentId: partielRemise.student.id, amount: 1_000_000, paidOn: "2026-10-06", method: "especes",
+    idempotencyKey: "remise-choisie-0001", cashDiscount: true,
+  }, "2026-10-06");
+  assert.equal(avecRemise.after.due, 23_800_000);
+  assert.equal(avecRemise.after.reste, 17_800_000);
+
+  await assert.rejects(
+    () => domain.createStudent(db, agent, {
+      lastName: "BAH", firstName: "Masterremise", programId: program.id, level: "master_1",
+      paymentAmount: 1_000_000, method: "especes", cashDiscount: true,
+    }),
+    /pas de remise en Master/,
+  );
 
   const masterComptant = await domain.createStudent(db, agent, {
     lastName: "BAH", firstName: "Toutpaye", programId: program.id, level: "master_2",

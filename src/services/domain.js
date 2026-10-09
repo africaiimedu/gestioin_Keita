@@ -42,17 +42,15 @@ export function cashDiscountFor(level) {
   return code.startsWith("licence") || code.startsWith("bachelor") ? CASH_DISCOUNT : 0;
 }
 
-function cashOffer(current, amount) {
+/** La remise n'est jamais déduite d'office : l'agent choisit « Remise : oui » ou « non » à l'encaissement. */
+function cashOffer(current, amount, wanted = false) {
+  const none = { discounts: current.discounts, amount, apply: false };
+  if (!wanted) return none;
+  if (current.discounts.some((item) => item.label === CASH_LABEL)) return { ...none, notice: "La remise de 1.200.000 GNF est déjà appliquée pour cet étudiant." };
+  if (isScholar(current.discounts)) return { ...none, refusal: "Cet étudiant est boursier : pas de remise à appliquer." };
   const discount = cashDiscountFor(current.student.level);
-  if (isScholar(current.discounts) || current.situation.paid > 0) {
-    return { discounts: current.discounts, amount, apply: false };
-  }
-  const already = current.discounts.some((item) => item.label === CASH_LABEL);
-  if (already) return { discounts: current.discounts, amount, apply: false, reduced: current.situation.due };
-  if (!discount) return { discounts: current.discounts, amount, apply: false };
-  const reduced = Math.max(0, current.tuition - discount);
-  if (amount < reduced) return { discounts: current.discounts, amount, apply: false, reduced };
-  return { discounts: current.discounts, amount, apply: true, reduced };
+  if (!discount) return { ...none, refusal: "La remise de 1.200.000 GNF est réservée au Bachelor : pas de remise en Master." };
+  return { ...none, apply: true, reduced: Math.max(0, current.situation.due - discount) };
 }
 
 function payableRoom(current, offer) {
@@ -60,10 +58,17 @@ function payableRoom(current, offer) {
   return Math.max(0, current.situation.reste);
 }
 
+async function addCashDiscount(db, user, studentId) {
+  await db.prepare(`
+    INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
+    VALUES(?, ?, 'fixe', ?, ?, ?)
+  `).run(studentId, CASH_LABEL, CASH_DISCOUNT, "Remise de 1.200.000 GNF choisie à l'encaissement", user.id);
+}
+
 /** Le montant saisi est enregistré tel quel : jamais réduit en silence, refusé s'il dépasse le reste à payer. */
 function overpayMessage(typed, room, offer = {}) {
   if (room <= 0) return "Cet étudiant n'a plus rien à payer. Le versement n'a pas été enregistré.";
-  const discount = offer.apply ? `, remise de ${formatGnf(CASH_DISCOUNT)} comprise pour un paiement en une fois` : "";
+  const discount = offer.apply ? `, remise de ${formatGnf(CASH_DISCOUNT)} déduite` : "";
   return `Le montant saisi (${formatGnf(typed)}) est supérieur au montant à payer (${formatGnf(room)}${discount}). Le versement n'a pas été enregistré.`;
 }
 
@@ -489,7 +494,8 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
     `).get(input.reference.trim());
     if (duplicate) warnings.push("Cette référence a déjà été utilisée");
   }
-  const offer = cashOffer(current, input.amount);
+  const offer = cashOffer(current, input.amount, truthy(input.cashDiscount));
+  if (offer.refusal || offer.notice) warnings.push(offer.refusal || offer.notice);
   const room = payableRoom(current, offer);
   if (offer.amount > room) {
     warnings.push(overpayMessage(input.amount, room, offer));
@@ -507,7 +513,7 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
   const discounts = offer.apply
     ? [...current.discounts, { mode: "fixe", value: CASH_DISCOUNT, label: CASH_LABEL }]
     : offer.discounts;
-  if (offer.apply) warnings.push(`Remise de ${formatGnf(CASH_DISCOUNT)} : toute la scolarité est payée en une fois`);
+  if (offer.apply) warnings.push(`Remise de ${formatGnf(CASH_DISCOUNT)} déduite du montant dû`);
   const preview = previewSituation({
     tuition: current.tuition,
     discounts,
@@ -559,7 +565,7 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
       seal: current.situation.reste <= 0 ? "PAYÉ" : "ACOMPTE REÇU",
     };
   }
-  const offer = cashOffer(current, asked);
+  const offer = cashOffer(current, asked, truthy(input.cashDiscount));
   const discountsAfter = offer.apply
     ? [...current.discounts, { mode: "fixe", value: CASH_DISCOUNT, label: CASH_LABEL }]
     : offer.discounts;
@@ -601,7 +607,7 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
     cashDiscount: Boolean(offer.apply),
     limited: false,
     refused: false,
-    limitedMessage: "",
+    limitedMessage: offer.refusal || offer.notice || "",
   };
 }
 
@@ -672,7 +678,8 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
     if (isScholar(current.discounts)) {
       throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
     }
-    const offer = cashOffer(current, input.amount);
+    const offer = cashOffer(current, input.amount, truthy(input.cashDiscount));
+    if (offer.refusal) throw new HttpError(400, offer.refusal);
     const room = payableRoom(current, offer);
     if (offer.amount > room && !input.acceptCredit) {
       throw new HttpError(400, overpayMessage(input.amount, room, offer), { code: "AMOUNT_TOO_HIGH", reste: room });
@@ -681,10 +688,7 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
     const costumeBefore = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity, { write: true });
     assertCostumeRoom(costumeBefore, costumeAmount);
     if (offer.apply) {
-      await db.prepare(`
-        INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
-        VALUES(?, ?, 'fixe', ?, ?, ?)
-      `).run(current.student.id, CASH_LABEL, CASH_DISCOUNT, "Toute la scolarité payée en une fois", user.id);
+      await addCashDiscount(db, user, current.student.id);
       current = await studentSituation(db, current.student.id, asOf);
     }
     const amount = offer.amount;
@@ -839,6 +843,7 @@ export async function updatePayment(db, user, paymentId, input, asOf = todayInCo
       reference: input.reference,
       costumeAmount: input.costumeAmount,
       costumeQuantity: input.costumeQuantity,
+      cashDiscount: input.cashDiscount,
       note,
       idempotencyKey: key,
       acceptCredit: input.acceptCredit,
@@ -1066,6 +1071,8 @@ export async function createStudent(db, user, input) {
     throw new HttpError(400, "Indiquez le versement du jour. Mettez 0 s'il n'y a aucun versement.");
   }
   if (scholarship && paymentAmount > 0) throw new HttpError(400, "Un boursier ne verse aucun frais de scolarité");
+  const cashDiscount = !scholarship && truthy(input.cashDiscount);
+  if (cashDiscount && !cashDiscountFor(input.level)) throw new HttpError(400, "La remise de 1.200.000 GNF est réservée au Bachelor : pas de remise en Master.");
   const costumeAmount = costumeAmountOf(input.costumeAmount);
   const costumeQuantity = costumeQuantityOf(input.costumeQuantity);
   if ((paymentAmount > 0 || costumeAmount > 0) && !METHODS.has(input.method)) throw new HttpError(400, "Choisissez le moyen de paiement");
@@ -1091,6 +1098,7 @@ export async function createStudent(db, user, input) {
         VALUES(?, ?, 'pourcentage', 100, ?, ?)
       `).run(studentId, SCHOLAR_LABEL, "Étudiant boursier : aucun frais de scolarité", user.id);
     }
+    if (cashDiscount && paymentAmount <= 0) await addCashDiscount(db, user, studentId);
     if (paymentAmount > 0) {
       await createPayment(db, user, {
         studentId,
@@ -1101,6 +1109,7 @@ export async function createStudent(db, user, input) {
         note: "Versement du jour à l'inscription",
         costumeAmount,
         costumeQuantity,
+        cashDiscount,
       }, paidOn);
     } else if (costumeAmount > 0) {
       await recordCostume(db, user, studentId, { amount: costumeAmount, quantity: costumeQuantity, paidOn, method: input.method, note: "Versé à l'inscription" }, paidOn);
@@ -1460,7 +1469,7 @@ export async function catalog(db) {
       `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
       "Répartition de la scolarité : 20 % le 5 octobre, 40 % le 5 décembre, 40 % le 5 mars.",
       "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. Le tarif de départ est 24 000 000, 27 000 000 et 28 000 000. Chaque école se règle dans Tarifs.",
-      `En Licence et Bachelor, un paiement de tous les frais annuels en une fois (scolarité et inscription) ouvre une remise de ${formatGnf(CASH_DISCOUNT)} sur ce total. Le Master n'a pas de remise.`,
+      `En Licence et Bachelor, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,
       "Un étudiant boursier ne paie ni la scolarité ni les frais d'inscription.",
       "Les fiches déjà enregistrées gardent leur barème (Licence 25 000 000, Master 30 000 000, Tech 37 000 000).",
       "L'admin de la scolarité peut modifier ces montants. Les paiements déjà enregistrés ne changent pas.",
