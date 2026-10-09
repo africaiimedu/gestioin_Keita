@@ -416,3 +416,55 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
     assert _candidats("Diallo") == []
     assert _destination("etudiant", "/portail/cartes/m/" + "x" * 20) == "/m/" + "x" * 20
     assert _destination("etudiant", "https://ailleurs.example/verif/abc?t=" + "y" * 30) == "/espace"
+
+
+def test_matricule_modifiable_depuis_la_fiche_carte():
+    bureau = "test.menu.bureau"
+    _nettoyer()
+    try:
+        with TestClient(app) as client:
+            with SessionLocal() as db:
+                _assurer_menu(db)
+                etudiant, _, _, _ = _compte(db, 0)
+                etudiant_id = etudiant.id
+                db.add(
+                    Utilisateur(
+                        identifiant=bureau,
+                        mot_de_passe_hash=hash_mot_de_passe(_MOT),
+                        role="scolarite",
+                        actif=True,
+                        doit_changer_mot_de_passe=False,
+                        cree_le=maintenant(),
+                    )
+                )
+                db.commit()
+            page = client.get("/login")
+            csrf = page.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+            client.post("/login", data={"identifiant": bureau, "mot_de_passe": _MOT, "csrf": csrf}, follow_redirects=False)
+            fiche = client.get(f"/admin/etudiants/{etudiant_id}")
+            assert 'action="/admin/etudiants/%d/matricule"' % etudiant_id in fiche.text
+            csrf = fiche.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+
+            def changer(valeur: str):
+                return client.post(
+                    f"/admin/etudiants/{etudiant_id}/matricule",
+                    data={"csrf": csrf, "ancien": _MATRICULE, "matricule": valeur},
+                    follow_redirects=False,
+                )
+
+            assert changer("x").headers["location"].endswith("?matricule=format")
+            assert changer(" ua26at0999 ").headers["location"].endswith("?matricule=ok")
+            assert "Matricule modifié" in client.get(f"/admin/etudiants/{etudiant_id}?matricule=ok").text
+            ancien_qr = client.get(f"/verif/{_MATRICULE}?t=jeton-menu-test-qui-ne-sert-pas")
+            assert ancien_qr.status_code == 200 and "pas valide" not in ancien_qr.text
+            assert changer(_MATRICULE).headers["location"].endswith("?matricule=ok")
+            with SessionLocal() as db:
+                assert db.get(Etudiant, etudiant_id).matricule == _MATRICULE
+    finally:
+        with SessionLocal() as db:
+            uid = db.scalar(select(Utilisateur.id).where(Utilisateur.identifiant == bureau))
+            if uid:
+                db.execute(delete(Journal).where(Journal.utilisateur_id == uid))
+                db.execute(delete(Utilisateur).where(Utilisateur.id == uid))
+                db.commit()
+        _nettoyer()

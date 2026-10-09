@@ -229,10 +229,49 @@ async def ajouter(
     raise Redirection("/admin/etudiants")
 
 
+_MATRICULE_MESSAGES = {
+    "ok": ("ok", "Matricule modifié. La carte porte le nouveau matricule."),
+    "synchro": ("ok", "Matricule modifié dans les cartes et dans la fiche Scolarité."),
+    "carte": ("erreur", "Matricule modifié dans la fiche Scolarité, mais la carte n'a pas suivi. Réessayez avec le même matricule."),
+    "pris": ("erreur", "Ce matricule est déjà attribué à un autre étudiant."),
+    "format": ("erreur", "Le matricule doit compter de 3 à 31 caractères : lettres, chiffres et tirets (ex. UA26AT0001)."),
+    "droit": ("erreur", "Votre compte n'a pas le droit de modifier le matricule."),
+    "erreur": ("erreur", "Le matricule n'a pas pu être modifié. Réessayez."),
+}
+
+
+@router.post("/etudiants/{etudiant_id}/matricule")
+def changer_matricule(
+    etudiant_id: int,
+    request: Request,
+    matricule: str = Form(""),
+    csrf: str = Form(""),
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    """Renomme une fiche connue seulement des cartes. Les fiches de la scolarité passent par celle-ci."""
+    etudiant = _etudiant(db, etudiant_id)
+    retour = f"/admin/etudiants/{etudiant_id}"
+    _exiger_csrf(request, csrf, retour)
+    nouveau = re.sub(r"\s+", "", matricule or "").upper()
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{2,30}", nouveau):
+        raise Redirection(f"{retour}?matricule=format")
+    if nouveau == etudiant.matricule:
+        raise Redirection(retour)
+    if db.scalar(select(Etudiant.id).where(Etudiant.matricule == nouveau, Etudiant.id != etudiant.id)):
+        raise Redirection(f"{retour}?matricule=pris")
+    ancien = etudiant.matricule
+    etudiant.matricule = nouveau
+    journaliser(db, "matricule_modifie", utilisateur_id=admin.id, etudiant_id=etudiant.id, details=f"{ancien} → {nouveau}")
+    db.commit()
+    raise Redirection(f"{retour}?matricule=ok")
+
+
 @router.get("/etudiants/{etudiant_id}")
 def detail(
     etudiant_id: int,
     request: Request,
+    matricule: str = "",
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
@@ -262,6 +301,7 @@ def detail(
         prix_repas=formater_francs(prix_repas()),
         solde=formater_francs(etudiant.solde_cantine or 0),
         compte=_adresse_etudiant(db, etudiant),
+        message_matricule=_MATRICULE_MESSAGES.get(matricule),
     )
 
 

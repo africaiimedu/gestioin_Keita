@@ -5,6 +5,18 @@
   <p class="retour"><a href="/admin/etudiants">← Liste</a></p>
   <h1>{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
   <p class="matricule">{{ etudiant.matricule }}</p>
+  {% if message_matricule %}
+    <p class="resultat {{ 'resultat-bon' if message_matricule[0] == 'ok' else 'resultat-mauvais' }}">{{ message_matricule[1] }}</p>
+  {% endif %}
+  <form method="post" action="/admin/etudiants/{{ etudiant.id }}/matricule" class="panneau etroit matricule-edition">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="ancien" value="{{ etudiant.matricule }}">
+    <label>Matricule
+      <input name="matricule" value="{{ etudiant.matricule }}" required maxlength="31" autocomplete="off" style="text-transform:uppercase">
+    </label>
+    <button type="submit">Modifier le matricule</button>
+    <p class="aide">Par défaut : UA + année + code de l'école + numéro (UA26AT0001 pour le premier inscrit d'AFRICAIIM Tech). La fiche Scolarité suit. Une carte déjà imprimée reste valable au scan ; réimprimez-la pour que le nouveau matricule y figure.</p>
+  </form>
 
   <div class="fiche">
     <div>
@@ -25,7 +37,6 @@
 
     <form method="post" action="/admin/etudiants/{{ etudiant.id }}" class="panneau" id="fiche-etudiant">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <p class="aide">Matricule : <strong>{{ etudiant.matricule }}</strong>. Il se change dans la fiche Scolarité (bouton « Modifier le matricule ») ; la carte suit automatiquement.</p>
       <label>Prénom <input name="prenom" value="{{ etudiant.prenom }}" required maxlength="80"></label>
       <label>Nom <input name="nom" value="{{ etudiant.nom }}" required maxlength="80"></label>
       <label>Sexe

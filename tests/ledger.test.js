@@ -426,8 +426,20 @@ test("costumes : 1.600.000 versés = 2 costumes payés, rien à payer en plus", 
 
 test("matricule : saisi à l'inscription, unique, modifiable ensuite", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
-  const suggested = await domain.suggestMatricule(db);
-  assert.match(suggested, /^AIM-\d{4}-\d{4}$/);
+  const tech = await db.prepare("SELECT id FROM programs WHERE code = 'TECH'").get();
+  const year = (await db.prepare("SELECT label FROM academic_years WHERE active = 1").get()).label.slice(2, 4);
+  assert.equal(await domain.suggestMatricule(db, tech.id), `UA${year}AT0001`);
+  const nextAbs = await domain.suggestMatricule(db, program.id);
+  assert.match(nextAbs, new RegExp(`^UA${year}ABS\\d{4}$`));
+  const first = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Premier", programId: tech.id, level: "bachelor_1" });
+  assert.equal(first.student.matricule, `UA${year}AT0001`);
+  const second = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Second", programId: tech.id, level: "bachelor_1" });
+  assert.equal(second.student.matricule, `UA${year}AT0002`);
+  assert.equal(await domain.suggestMatricule(db, program.id), nextAbs);
+  assert.equal(domain.matriculePrefix("2026-2027", { code: "DROIT" }), "UA26ADSP");
+  assert.equal(domain.matriculePrefix("2027-2028", { code: "SUP" }), "UA27ASC");
+  assert.equal(domain.matriculePrefix("2026-2027", { code: "EXPERTISE" }), "UA26AEC");
+  assert.equal(domain.matriculePrefix("2026-2027", { code: "CARRIERE" }), "UA26ACB");
   const created = await domain.createStudent(db, agent, {
     lastName: "MATRICULE", firstName: "Choisi", programId: program.id, level: "bachelor_1", matricule: " aim-2026-0500 ",
   });

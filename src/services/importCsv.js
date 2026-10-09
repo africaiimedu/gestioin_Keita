@@ -1,7 +1,7 @@
 import { METHOD_LABELS } from "../finance/index.js";
 import { HttpError } from "../httpError.js";
 import { transaction } from "../db/index.js";
-import { audit, createPayment, todayInConakry } from "./domain.js";
+import { audit, createPayment, nextMatricule, todayInConakry } from "./domain.js";
 import { assignAccountEmail, findSamePerson, personKey } from "./identity.js";
 
 const METHOD_ALIASES = {
@@ -148,7 +148,7 @@ export async function commitImport(db, user, batchId, decisions) {
         if (twin) student = await db.prepare("SELECT * FROM students WHERE id = ?").get(twin.id);
       }
       if (!student) {
-        const matricule = row.matricule || await nextFreeMatricule(db, year.label);
+        const matricule = row.matricule || await nextMatricule(db, year.label, { code: row.school });
         const inserted = await db.prepare(`
           INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, source)
           VALUES(?, ?, ?, ?, ?, ?, 'saisie') RETURNING id
@@ -180,17 +180,6 @@ export async function commitImport(db, user, batchId, decisions) {
     await audit(db, user.id, "import.csv", "import_batches", batchId, null, { created, payments, skipped });
     return { created, payments, skipped };
   });
-}
-
-async function nextFreeMatricule(db, label) {
-  const year = label.slice(0, 4);
-  const rows = await db.prepare("SELECT matricule FROM students WHERE matricule LIKE ?").all(`AIM-${year}-%`);
-  let max = 100;
-  for (const row of rows) {
-    const value = Number(row.matricule.split("-").pop());
-    if (value > max) max = value;
-  }
-  return `AIM-${year}-${String(max + 1).padStart(4, "0")}`;
 }
 
 export function csvTemplate() {

@@ -1079,7 +1079,7 @@ export async function createStudent(db, user, input) {
   const paidOn = todayInConakry();
   const created = await transaction(db, async () => {
     await refuseSamePerson(db, last, first);
-    const matricule = typedMatricule || await nextMatricule(db, year.label);
+    const matricule = typedMatricule || await nextMatricule(db, year.label, program);
     await refuseTakenMatricule(db, matricule);
     const result = await db.prepare(`
       INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source, costume_quantity)
@@ -1122,7 +1122,7 @@ function matriculeOf(value, { optional = false } = {}) {
   const matricule = String(value ?? "").replace(/\s+/g, "").toUpperCase();
   if (!matricule && optional) return null;
   if (!MATRICULE_FORMAT.test(matricule)) {
-    throw new HttpError(400, "Le matricule doit compter de 3 à 31 caractères : lettres, chiffres et tirets (ex. AIM-2026-0001).");
+    throw new HttpError(400, "Le matricule doit compter de 3 à 31 caractères : lettres, chiffres et tirets (ex. UA26AT0001).");
   }
   return matricule;
 }
@@ -1135,9 +1135,13 @@ async function refuseTakenMatricule(db, matricule, exceptId = null) {
 }
 
 /** Matricule proposé pour une nouvelle fiche : la scolarité peut le remplacer. */
-export async function suggestMatricule(db) {
+export async function suggestMatricule(db, programId) {
   const year = await activeYear(db);
-  return nextMatricule(db, year.label);
+  const program = programId
+    ? await db.prepare("SELECT * FROM programs WHERE id = ?").get(Number(programId))
+    : await db.prepare("SELECT * FROM programs ORDER BY id LIMIT 1").get();
+  if (!program) throw new HttpError(400, "École inconnue");
+  return nextMatricule(db, year.label, program);
 }
 
 export async function changeMatricule(db, user, studentId, value) {
@@ -1173,15 +1177,24 @@ export async function setCostumeQuantity(db, user, studentId, value) {
   });
 }
 
-async function nextMatricule(db, label) {
-  const year = label.slice(0, 4);
-  const rows = await db.prepare("SELECT matricule FROM students WHERE matricule LIKE ?").all(`AIM-${year}-%`);
+const MATRICULE_SCHOOL_CODES = { ABS: "ABS", TECH: "AT", DROIT: "ADSP", SUP: "ASC", EXPERTISE: "AEC", CARRIERE: "ACB" };
+
+export function matriculePrefix(yearLabel, program) {
+  const school = MATRICULE_SCHOOL_CODES[String(program?.code || "").toUpperCase()]
+    || String(program?.code || "AIM").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return `UA${String(yearLabel || "").slice(2, 4)}${school}`;
+}
+
+/** UA + deux chiffres de l'année + code de l'école + numéro à 4 chiffres, propre à chaque école et chaque année. */
+export async function nextMatricule(db, yearLabel, program) {
+  const prefix = matriculePrefix(yearLabel, program);
+  const rows = await db.prepare("SELECT matricule FROM students WHERE upper(matricule) LIKE ?").all(`${prefix}%`);
   let max = 0;
   for (const row of rows) {
-    const value = Number(row.matricule.split("-").pop());
-    if (value > max && value < 9000) max = value;
+    const rest = String(row.matricule).toUpperCase().slice(prefix.length);
+    if (/^\d{4,6}$/.test(rest)) max = Math.max(max, Number(rest));
   }
-  return `AIM-${year}-${String(max + 1).padStart(4, "0")}`;
+  return `${prefix}${String(max + 1).padStart(4, "0")}`;
 }
 
 function clean(value) {

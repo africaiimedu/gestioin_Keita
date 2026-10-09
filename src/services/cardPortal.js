@@ -102,7 +102,7 @@ function unavailable(_req, res) {
     <p style="font-family:Georgia,serif;color:#0c3d2e;padding:28px 24px;line-height:1.5">L'application des cartes démarre ou ne répond pas. Rechargez cette page dans quelques secondes.</p>`);
 }
 
-async function forward(req, res, targetPath, rewrite) {
+async function forward(req, res, targetPath, rewrite, body = null) {
   if (!(await cardReady())) return unavailable(req, res);
   const { transport, options, host } = cardTarget();
   const headers = { ...req.headers, host };
@@ -148,10 +148,72 @@ async function forward(req, res, targetPath, rewrite) {
   proxyReq.on("error", () => {
     if (!res.headersSent) unavailable(req, res);
   });
-  req.pipe(proxyReq);
+  if (body) proxyReq.end(body);
+  else req.pipe(proxyReq);
 }
 
-export function attachCardPortal(app, resolveUser = () => null) {
+const MATRICULE_EDIT = /^\/admin\/etudiants\/(\d+)\/matricule$/;
+
+function readBody(req, limit = 8192) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("Formulaire trop long"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+function sameOrigin(req) {
+  const origin = req.get("origin");
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.get("host");
+  } catch {
+    return false;
+  }
+}
+
+function matriculeOutcome(error) {
+  if (error?.status === 409) return "pris";
+  if (error?.status === 400) return "format";
+  if (error?.status === 403) return "droit";
+  return "erreur";
+}
+
+/** Un matricule changé depuis la fiche carte part de la scolarité, qui renomme ensuite la carte. */
+async function interceptMatricule(req, res, user, pathOnly, renameMatricule) {
+  const match = pathOnly.match(MATRICULE_EDIT);
+  if (!match || req.method !== "POST" || !user || !renameMatricule) return null;
+  const back = `${PREFIX}/admin/etudiants/${match[1]}`;
+  if (!sameOrigin(req)) {
+    res.status(403).type("text").send("Origine refusée");
+    return true;
+  }
+  const body = await readBody(req);
+  const form = new URLSearchParams(body.toString("utf8"));
+  let outcome;
+  try {
+    outcome = await renameMatricule(user, form.get("ancien") || "", form.get("matricule") || "");
+  } catch (error) {
+    outcome = matriculeOutcome(error);
+  }
+  if (outcome) {
+    res.redirect(303, `${back}?matricule=${outcome}`);
+    return true;
+  }
+  return body;
+}
+
+export function attachCardPortal(app, resolveUser = () => null, { renameMatricule = null } = {}) {
   app.use("/static", (req, res) => forward(req, res, req.originalUrl, true));
   app.use("/fonts", (req, res) => forward(req, res, req.originalUrl, false));
   app.use("/photo", (req, res) => forward(req, res, req.originalUrl, false));
@@ -172,12 +234,21 @@ export function attachCardPortal(app, resolveUser = () => null) {
       res.status(403).type("html").send(`<!doctype html><meta charset="utf-8"><p style="font-family:Georgia,serif;color:#0c3d2e;padding:28px 24px">Cette partie n'est pas autorisée pour votre compte.</p>`);
       return;
     }
+    let body = null;
+    try {
+      const intercepted = await interceptMatricule(req, res, user, pathOnly, renameMatricule);
+      if (intercepted === true) return;
+      if (Buffer.isBuffer(intercepted)) body = intercepted;
+    } catch {
+      if (!res.headersSent) res.status(400).type("text").send("Formulaire illisible");
+      return;
+    }
     if (!(await cardReady())) return unavailable(req, res);
     ensureCardSession(req, user).then(() => {
       if (user && (tail === "/login" || tail.startsWith("/login?"))) {
         tail = can(user, "kitchen.manage") && !can(user, "cards.manage") ? "/cantine" : "/admin/etudiants";
       }
-      forward(req, res, tail, true);
+      forward(req, res, tail, true, body);
     });
   });
 }

@@ -1094,7 +1094,7 @@ async function showStudents(screen) {
     dialog.innerHTML = `<form id="create-student" novalidate>
         <div class="dialog-head"><h2>Nouvelle fiche</h2><button class="dialog-close" type="button" id="close-fiche">Fermer</button></div>
         <div class="duo"><p><label>Nom</label><input name="lastName" required autocomplete="off"></p><p><label>Prénom</label><input name="firstName" required autocomplete="off"></p></div>
-        <div class="duo"><p><label>Matricule <span class="muted">(proposé, modifiable)</span></label><input name="matricule" autocomplete="off" placeholder="AIM-2026-0001" maxlength="31"></p>
+        <div class="duo"><p><label>Matricule <span class="muted">(proposé, modifiable)</span></label><input name="matricule" autocomplete="off" placeholder="UA26AT0001" maxlength="31"></p>
           <p><label>E-mail étudiant <span class="muted">(automatique)</span></label><input name="accountPreview" readonly tabindex="-1" placeholder="prenom.nom@univ-africaiim.com"></p></div>
         <div class="duo"><p><label>École</label><select name="programId" required>${state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("")}</select></p>
           <p><label>Niveau</label><select name="level" required><option value="bachelor">Bachelor</option><option value="master">Master</option></select></p></div>
@@ -1167,9 +1167,17 @@ async function showStudents(screen) {
     form.matricule.addEventListener("input", () => {
       form.matricule.value = form.matricule.value.toUpperCase().replace(/\s+/g, "");
     });
-    api("/api/etudiants/prochain-matricule").then((data) => {
-      if (!form.matricule.value) form.matricule.value = data.matricule;
-    }).catch(() => {});
+    let proposed = "";
+    const proposeMatricule = () => {
+      const school = form.programId.value;
+      api(`/api/etudiants/prochain-matricule?ecole=${encodeURIComponent(school)}`).then((data) => {
+        if (form.programId.value !== school) return;
+        if (!form.matricule.value || form.matricule.value === proposed) form.matricule.value = data.matricule;
+        proposed = data.matricule;
+      }).catch(() => {});
+    };
+    form.programId.addEventListener("change", proposeMatricule);
+    proposeMatricule();
     syncFee();
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -1351,7 +1359,7 @@ function openMatriculeEdit(student, onDone) {
       <p class="muted">Le matricule actuel est <strong>${esc(student.matricule)}</strong>. Le nouveau numéro s'applique à la scolarité, à la carte et à la cantine. Les reçus déjà émis gardent l'ancien numéro.</p>
       <label>Nouveau matricule</label>
       <input name="matricule" value="${esc(student.matricule)}" maxlength="31" autocomplete="off" required>
-      <p class="muted">Lettres, chiffres et tirets, de 3 à 31 caractères (ex. AIM-2026-0001).</p>
+      <p class="muted">Lettres, chiffres et tirets, de 3 à 31 caractères (ex. UA26AT0001).</p>
       <p class="error" data-error hidden></p>
       <div class="row-actions"><button class="btn secondary" type="button" data-close>Annuler</button><button class="btn" type="submit">Enregistrer le matricule</button></div>
     </form>`;

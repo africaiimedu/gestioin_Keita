@@ -48,8 +48,9 @@ def verifier(
     if not t:
         return _sans_cache(render(request, "verif.html", mode="scan"))
 
+    # Seul le jeton secret compte : une carte imprimée avant un changement de matricule reste lisible.
     carte = db.scalar(select(Carte).where(Carte.jeton == t))
-    if carte is None or carte.etudiant.matricule != matricule:
+    if carte is None:
         return _sans_cache(render(request, "verif.html", mode="invalide"))
 
     statut = statut_effectif(carte.statut, carte.date_validite)
@@ -104,7 +105,7 @@ def valider_repas_carte(
         flash(request, "erreur", "Trop de validations. Réessayez dans une minute.")
         return RedirectResponse(retour, status_code=303)
     carte = db.scalar(select(Carte).where(Carte.jeton == t))
-    if carte is None or carte.etudiant.matricule != matricule:
+    if carte is None:
         flash(request, "erreur", "Ce QR code n'est pas valide.")
         return RedirectResponse(f"/verif/{quote(matricule)}", status_code=303)
     if statut_effectif(carte.statut, carte.date_validite) != "active":

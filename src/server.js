@@ -109,7 +109,15 @@ app.get("/api/sante", async (_req, res) => {
     res.status(503).json({ ok: false });
   }
 });
-attachCardPortal(app, loadUser);
+attachCardPortal(app, loadUser, {
+  renameMatricule: async (user, previous, next) => {
+    const student = await db.prepare("SELECT id FROM students WHERE upper(matricule) = ?")
+      .get(String(previous).replace(/\s+/g, "").toUpperCase());
+    if (!student) return null;
+    const result = await changeMatricule(db, user, student.id, next);
+    return result.card && result.card.ok === false ? "carte" : "synchro";
+  },
+});
 app.use(express.json({ limit: "8mb" }));
 
 app.use(async (req, res, next) => {
@@ -207,8 +215,8 @@ app.get("/api/etudiants", requireAction("student.read"), async (req, res) => {
     students: rows.map((row) => ({ ...publicStudent(row.student), situation: row.situation })),
   });
 });
-app.get("/api/etudiants/prochain-matricule", requireAction("student.write"), async (_req, res) => {
-  res.json({ matricule: await suggestMatricule(db) });
+app.get("/api/etudiants/prochain-matricule", requireAction("student.write"), async (req, res) => {
+  res.json({ matricule: await suggestMatricule(db, req.query.ecole) });
 });
 app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) => {
   const current = await studentSituation(db, Number(req.params.id));

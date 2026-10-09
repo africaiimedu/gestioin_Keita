@@ -38,7 +38,7 @@ def _adresse_du_compte(db: Session, etudiant: Etudiant) -> str:
 def _retirer_matricule(db: Session, matricule: str):
     propre = _matricule_propre(matricule)
     if not _MATRICULE.match(propre):
-        return JSONResponse({"message": "le matricule doit ressembler à AIIM-2026-0142 (lettres, chiffres, tirets)."}, status_code=400)
+        return JSONResponse({"message": "le matricule doit ressembler à UA26AT0001 (lettres, chiffres, tirets)."}, status_code=400)
     etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == propre))
     if etudiant is None:
         return {"matricule": propre, "supprime": False}

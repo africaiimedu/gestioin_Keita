@@ -132,7 +132,7 @@ def controler_fiche(
     if not _NOM.match(nom):
         raise ValueError("le nom est vide ou contient un caractère non autorisé.")
     if not _MATRICULE.match(matricule):
-        raise ValueError("le matricule doit ressembler à AIIM-2026-0142 (lettres, chiffres, tirets).")
+        raise ValueError("le matricule doit ressembler à UA26AT0001 (lettres, chiffres, tirets).")
     try:
         filiere = ecole_officielle(filiere)
     except ValueError as exc:
