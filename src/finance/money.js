@@ -65,10 +65,14 @@ export function formatGnf(amount) {
  * Frais d'inscription, en plus de la scolarité, payés avec la première échéance.
  * Ils entrent dans les frais annuels : la remise pour paiement en une fois et la bourse s'y appliquent.
  */
-export const REGISTRATION_FEES = { bachelor: 1_000_000, master: 3_000_000 };
+export const REGISTRATION_FEES = { bachelor: 1_000_000, master: 3_000_000, techBachelor: 2_000_000 };
 
-export function registrationFee(level) {
-  return String(level || "").startsWith("master") ? REGISTRATION_FEES.master : REGISTRATION_FEES.bachelor;
+/** Africaiim Tech (code TECH) : 2.000.000 d'inscription en Bachelor 1, 2 et 3 ; son Master et les anciennes fiches importées suivent le tarif commun. */
+export function registrationFee(level, programCode = "") {
+  const code = String(level || "");
+  if (code.startsWith("master")) return REGISTRATION_FEES.master;
+  const techBachelor = String(programCode || "").toUpperCase() === "TECH" && code.startsWith("bachelor");
+  return techBachelor ? REGISTRATION_FEES.techBachelor : REGISTRATION_FEES.bachelor;
 }
 
 /**

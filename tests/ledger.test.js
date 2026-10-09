@@ -497,6 +497,10 @@ test("matricule : saisi à l'inscription, unique, modifiable ensuite", async () 
   assert.equal(first.student.matricule, `UA${year}AT0001`);
   const second = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Second", programId: tech.id, level: "bachelor_1" });
   assert.equal(second.student.matricule, `UA${year}AT0002`);
+  assert.equal(first.situation.due, 35_000_000 + 2_000_000);
+  assert.equal(first.situation.plan.find((item) => item.code === "inscription").amount, 7_000_000 + 2_000_000);
+  const techMaster = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Master", programId: tech.id, level: "master_1" });
+  assert.equal(techMaster.situation.due, 45_000_000 + 3_000_000);
   assert.equal(await domain.suggestMatricule(db, program.id), nextAbs);
   assert.equal(domain.matriculePrefix("2026-2027", { code: "DROIT" }), "UA26ADSP");
   assert.equal(domain.matriculePrefix("2027-2028", { code: "SUP" }), "UA27ASC");

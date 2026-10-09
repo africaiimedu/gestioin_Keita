@@ -268,7 +268,7 @@ function planFrom(student, ledger) {
     tranche_2: fee.installment_2,
     tranche_3: fee.installment_3,
   };
-  const registration = registrationFee(student.level);
+  const registration = registrationFee(student.level, student.program_code);
   const installments = INSTALLMENTS.map((code) => ({
     code,
     label: INSTALLMENT_LABELS[code],
@@ -1509,7 +1509,7 @@ export async function catalog(db) {
     registrationFees: REGISTRATION_FEES,
     cashDiscount: CASH_DISCOUNT,
     hypotheses: [
-      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
+      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor (${formatGnf(REGISTRATION_FEES.techBachelor)} en Bachelor à Africaiim Tech), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
       "Répartition de la scolarité : 20 % le 5 octobre, 40 % le 5 décembre, 40 % le 5 mars.",
       "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. Le tarif de départ est 24 000 000, 27 000 000 et 28 000 000. Chaque école se règle dans Tarifs.",
       `En Licence et Bachelor, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,

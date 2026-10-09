@@ -829,6 +829,17 @@ function bindDashboard(screen) {
   screen.querySelectorAll("[data-student]").forEach((button) => button.addEventListener("click", () => openStudent(button.dataset.student)));
 }
 
+/** Toutes les écoles, même sans étudiant, avec leur nombre d'inscrits. */
+function schoolCounts(data) {
+  const counts = new Map(data.byProgram.map((item) => [item.program, item.students || 0]));
+  return sortSchools((state.catalog?.programs || []).map((item) => ({ program: item.name, students: counts.get(item.name) || 0 })));
+}
+
+function shortSchool(name) {
+  const short = String(name || "").replace(/^AFRICAIIM\s+/i, "").trim();
+  return !short || short.toLowerCase() === "tech" ? String(name || "").replace(/^AFRICAIIM/i, "Africaiim") : short;
+}
+
 function dashSignature(data) {
   return JSON.stringify({
     programs: sortSchools(data.byProgram).map((item) => item.program),
@@ -894,6 +905,10 @@ function patchDashboard(root, data, control) {
   if (count) count.textContent = String(data.students);
   const plural = root.querySelector(".dash-plural");
   if (plural) plural.textContent = data.students > 1 ? "s" : "";
+  for (const item of schoolCounts(data)) {
+    const chip = root.querySelector(`[data-school-count="${CSS.escape(item.program)}"] strong`);
+    if (chip) chip.textContent = String(item.students);
+  }
   for (const item of sortSchools(data.byProgram)) {
     const block = root.querySelector(`[data-program="${CSS.escape(item.program)}"]`);
     if (!block) continue;
@@ -963,6 +978,7 @@ function dashboardHtml(data, control) {
           </time>
           <span>Conakry · <span class="dash-count">${data.students}</span> étudiant<span class="dash-plural">${data.students > 1 ? "s" : ""}</span></span>
         </p>
+        <ul class="dash-schools" aria-label="Étudiants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><strong>${item.students}</strong><span>${esc(shortSchool(item.program))}</span></li>`).join("")}</ul>
       </div>
       <div class="dash-hero-side">
         <div class="donut-wrap">
@@ -1071,7 +1087,8 @@ function kpi(label, value, raw = false) {
 
 async function showStudents(screen) {
   const program = state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("");
-  screen.innerHTML = `    <div class="top"><div><p class="mark">Registre</p><h1>Étudiants</h1></div>
+  screen.innerHTML = `    <div class="top"><div><p class="mark">Registre</p><h1>Étudiants</h1>
+      <p class="top-total"><strong id="student-total">…</strong> <span id="student-total-label">étudiants inscrits</span></p></div>
       <div class="row-actions">${allowed("student.write") ? `<button class="btn secondary" id="link-cards" type="button">Lier les cartes</button>` : ""}<button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
     <div class="filters"><input id="q" placeholder="Nom ou matricule" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
@@ -1079,6 +1096,13 @@ async function showStudents(screen) {
       <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}</select></div>
     <div id="student-table"></div>
     <dialog id="fiche-dialog" class="sheet" closedby="none"></dialog>`;
+  api("/api/etudiants").then((all) => {
+    const total = all.students.length;
+    const value = document.querySelector("#student-total");
+    if (!value) return;
+    value.textContent = String(total);
+    document.querySelector("#student-total-label").textContent = total > 1 ? "étudiants inscrits" : "étudiant inscrit";
+  }).catch(() => {});
   const load = async () => {
     const params = new URLSearchParams({
       q: document.querySelector("#q").value,
@@ -1148,7 +1172,9 @@ async function showStudents(screen) {
     };
     const registrationOf = () => {
       const fees = state.catalog.registrationFees || { bachelor: 0, master: 0 };
-      return form.studyYear.value.startsWith("master") ? fees.master : fees.bachelor;
+      if (form.studyYear.value.startsWith("master")) return fees.master;
+      const program = state.catalog.programs.find((item) => item.id === Number(form.programId.value));
+      return String(program?.code || "").toUpperCase() === "TECH" ? (fees.techBachelor ?? fees.bachelor) : fees.bachelor;
     };
     const tuitionOf = () => (schoolingOf() ? schoolingOf() + registrationOf() : 0);
     const isMaster = () => form.studyYear.value.startsWith("master") || form.level.value === "master";
@@ -2740,6 +2766,7 @@ function showSettings(screen) {
       <p class="lead">Scolarité annuelle en francs guinéens, répartie en 20 % le 5 octobre, 40 % le 5 décembre et 40 % le 5 mars. Les fiches Bachelor et Master déjà créées suivent le nouveau tarif.</p></div></div>
     <div class="stat-row">
       <div class="stat-tile"><span>Inscription Licence et Bachelor</span><strong>${gnf(state.catalog.registrationFees?.bachelor || 0)}</strong></div>
+      <div class="stat-tile"><span>Inscription Bachelor Africaiim Tech</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
       <div class="stat-tile"><span>Inscription Master</span><strong>${gnf(state.catalog.registrationFees?.master || 0)}</strong></div>
       <div class="stat-tile alert"><span>Inscription due en entier le</span><strong>5 octobre</strong></div>
       <div class="stat-tile"><span>Costume (prix unique)</span><strong>${Number(settings.costume_price) ? gnf(Number(settings.costume_price)) : "Non fixé"}</strong></div>
