@@ -1128,7 +1128,7 @@ async function showStudents(screen) {
         <p class="muted" id="fee-hint"></p>
         <label class="check"><input type="checkbox" name="scholarship"> Boursier — aucun frais de scolarité</label>
         ${discountField()}
-        <div class="duo" id="payment-fields"><p><label>Versement du jour (GNF)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
+        <div class="duo" id="payment-fields"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
           <p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p></div>
         ${costumeField("Costume versé à l'inscription (GNF)")}
         <p id="create-error" class="error" hidden></p>
@@ -1226,7 +1226,7 @@ async function showStudents(screen) {
         const limit = discountChosen(form) ? cashOf(tuition) : tuition;
         if (typed > limit) {
           const discount = limit < tuition ? `, remise de ${gnf(state.catalog.cashDiscount || 0)} déduite` : "";
-          notifyOverpay(`Le versement du jour (${gnf(typed)}) est supérieur au montant à payer (${gnf(limit)}${discount}). La fiche n'a pas été enregistrée.`);
+          notifyOverpay(`La scolarité versée ce jour (${gnf(typed)}) est supérieure aux frais de scolarité à payer (${gnf(limit)}${discount}). Le costume est compté à part, il n'entre pas dans ce montant. La fiche n'a pas été enregistrée.`);
           return;
         }
       }
@@ -1486,7 +1486,7 @@ function openPaymentUpdate(record, onDone) {
       <section class="update-new">
         <h3>Nouveau versement</h3>
         <p class="muted">Il s'ajoute à l'historique, rien n'est effacé. Le nouveau reçu reprend tous les versements précédents : c'est lui qui fait foi.</p>
-        <div class="duo"><p><label>Montant versé ce jour (GNF)</label><input name="amount" inputmode="numeric" required placeholder="${record.reste ? `Reste ${esc(grouped(record.reste))}` : "Montant"}"></p>
+        <div class="duo"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="amount" inputmode="numeric" required placeholder="${record.reste ? `Reste ${esc(grouped(record.reste))}` : "Montant"}"></p>
         <p><label>Date</label><input name="paidOn" type="date" required value="${new Date().toISOString().slice(0, 10)}"></p></div>
         ${discountField()}
         <div id="update-preview" class="receipt-preview" hidden></div>
@@ -1653,7 +1653,7 @@ async function showPayment(screen) {
         <label>Étudiant</label><input id="search" placeholder="Nom ou matricule" autocomplete="off" value="${esc(state.prefillStudent?.name || "")}" required>
         <div id="results"></div><input type="hidden" name="studentId" value="${esc(state.prefillStudent?.id || "")}">
         <div id="current"></div>
-        <div class="duo"><p><label>Montant (GNF, sans virgule)</label><input name="amount" inputmode="numeric" required></p>
+        <div class="duo"><p><label>Scolarité versée (GNF, sans le costume)</label><input name="amount" inputmode="numeric" required></p>
         <p><label>Date</label><input name="paidOn" type="date" required></p></div>
         ${discountField()}
         ${costumeField()}

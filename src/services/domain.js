@@ -67,9 +67,9 @@ async function addCashDiscount(db, user, studentId) {
 
 /** Le montant saisi est enregistré tel quel : jamais réduit en silence, refusé s'il dépasse le reste à payer. */
 function overpayMessage(typed, room, offer = {}) {
-  if (room <= 0) return "Cet étudiant n'a plus rien à payer. Le versement n'a pas été enregistré.";
+  if (room <= 0) return "Cet étudiant n'a plus de scolarité à payer. Le versement n'a pas été enregistré.";
   const discount = offer.apply ? `, remise de ${formatGnf(CASH_DISCOUNT)} déduite` : "";
-  return `Le montant saisi (${formatGnf(typed)}) est supérieur au montant à payer (${formatGnf(room)}${discount}). Le versement n'a pas été enregistré.`;
+  return `La scolarité saisie (${formatGnf(typed)}) est supérieure à la scolarité restant à payer (${formatGnf(room)}${discount}). Le costume est compté à part, il n'entre pas dans ce montant. Le versement n'a pas été enregistré.`;
 }
 
 export function todayInConakry(now = new Date()) {
