@@ -1655,25 +1655,44 @@ tbody tr:last-child td { border-bottom: 0; }
 .exp-filters .btn { white-space: nowrap; }
 .exp-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 .exp-list h2 .muted { font-weight: 500; font-size: 0.9rem; }
-.exp-list td { vertical-align: top; }
-.exp-list tr.is-cancelled td { opacity: 0.6; }
-.exp-list tr.is-cancelled td strong { text-decoration: line-through; }
-.exp-reason { display: inline-block; max-width: 300px; white-space: normal; line-height: 1.35; }
-.exp-handover { white-space: nowrap; }
-.exp-handover .muted { font-size: 0.78rem; }
+.exp-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.exp-item {
+  border: 1px solid #d5e8dc; border-left: 5px solid #e2a31a; border-radius: 14px; background: #fff;
+  box-shadow: 0 4px 14px rgba(12, 61, 46, 0.05); overflow: hidden;
+}
+.exp-item:has(.exp-state.done) { border-left-color: #128a45; }
+.exp-item.is-cancelled { border-left-color: #b9c4be; background: #fafbfa; }
+.exp-item.is-cancelled .exp-item-head, .exp-item.is-cancelled .exp-item-body { opacity: 0.6; }
+.exp-item.is-cancelled .exp-amount, .exp-item.is-cancelled .exp-who strong { text-decoration: line-through; }
+.exp-item-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px;
+  background: #f6faf8; border-bottom: 1px solid #e3efe8;
+}
+.exp-item-head .tag { margin: 0; }
+.exp-amount { margin-left: auto; font-size: 1.15rem; color: #0c3d2e; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.exp-item-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px 20px; padding: 14px 16px; }
+.exp-who, .exp-what { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.exp-who strong { font-size: 1.02rem; color: #0c3d2e; }
+.exp-what .exp-cat { justify-self: start; margin: 0; }
+.exp-reason { color: #1b1f1d; line-height: 1.4; overflow-wrap: anywhere; }
+.exp-item-foot {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 10px 16px; border-top: 1px dashed #e3efe8;
+}
+.exp-item-foot p { margin: 0; font-size: 0.84rem; }
 .exp-state {
   display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px;
-  font-size: 0.76rem; font-weight: 700; margin-bottom: 4px;
+  font-size: 0.76rem; font-weight: 700; white-space: nowrap;
 }
 .exp-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .exp-state.wait { background: #fdf3da; color: #8a5f07; border: 1px solid #f1d999; }
 .exp-state.done { background: #eef7f2; color: #128a45; border: 1px solid #cfe5d8; }
-.btn.exp-hand { padding: 5px 12px; font-size: 0.8rem; margin: 2px 0 0; }
-.exp-actions { white-space: nowrap; text-align: right; }
-.exp-actions .btn { padding: 6px 12px; font-size: 0.82rem; margin: 0 0 0 4px; }
+.exp-state.off { background: #f1f3f2; color: #5e6b64; border: 1px solid #d9dfdc; }
+.exp-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.exp-actions .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 6px 14px; font-size: 0.84rem; margin: 0; }
 .exp-cat {
   display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.76rem; font-weight: 700;
-  background: #eef6f1; color: #0c3d2e; border: 1px solid #cfe5d8; margin-bottom: 4px;
+  background: #eef6f1; color: #0c3d2e; border: 1px solid #cfe5d8;
 }
 .exp-cat-salaires, .exp-track i.exp-cat-salaires { background: #fdf3da; border-color: #f1d999; color: #6f4b05; }
 .exp-cat-transport { background: #e9f2fb; border-color: #c9ddf2; color: #1d4f7a; }
@@ -1724,5 +1743,7 @@ dialog.sheet.exp-sheet { width: min(1120px, calc(100vw - 28px)); }
 @media (max-width: 560px) {
   .exp-kpis { grid-template-columns: 1fr; }
   .exp-filters label { min-width: 0; flex: 1 1 45%; }
-  .exp-actions { white-space: normal; }
+  .exp-item-body { grid-template-columns: 1fr; }
+  .exp-amount { margin-left: 0; width: 100%; }
+  .exp-actions { justify-content: flex-start; }
 }

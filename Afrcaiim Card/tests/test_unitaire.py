@@ -379,9 +379,10 @@ def test_impression_recto_verso_et_couleurs():
     assert "FColorBrightness=VAL10" in paysage
     assert "BColorBrightness=VAL10" in paysage
     assert "GDuplexType=DUPLEX_CC" in paysage
-    assert "FHalftoning=DITHERING" in paysage
-    assert "BHalftoning=DITHERING" in paysage
-    assert "FBlackManagement=TEXTINBLACK" in paysage
+    assert "FHalftoning=THRESHOLD" in paysage
+    assert "BHalftoning=THRESHOLD" in paysage
+    assert "FBlackManagement=ALLBLACKPOINT" in paysage
+    assert "BBlackManagement=ALLBLACKPOINT" in paysage
     assert "IFColorProfileMode=DRIVERPROFILE" in paysage
     assert "IBColorProfileMode=DRIVERPROFILE" in paysage
     assert "IFColorProfile=STDPROFILE" in paysage

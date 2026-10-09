@@ -157,10 +157,12 @@ def commande_lp(
     for cle in ("FColorBrightness", "BColorBrightness"):
         _poser_option(commande, choix, cle, "VAL10")
     _poser_option(commande, choix, "GDuplexType", "DUPLEX_CC")
+    # Le noir pur (#000000) part sur le panneau K en résine : petits textes, QR et code-barres nets.
+    # Le tramage le transformerait en points épars, d'où le seuil.
     for cle in ("FHalftoning", "BHalftoning"):
-        _poser_option(commande, choix, cle, "DITHERING")
+        _poser_option(commande, choix, cle, "THRESHOLD")
     for cle in ("FBlackManagement", "BBlackManagement"):
-        _poser_option(commande, choix, cle, "TEXTINBLACK")
+        _poser_option(commande, choix, cle, "ALLBLACKPOINT")
     for cle in ("IFColorProfileMode", "IBColorProfileMode"):
         _poser_option(commande, choix, cle, "DRIVERPROFILE")
     for cle in ("IFColorProfile", "IBColorProfile"):

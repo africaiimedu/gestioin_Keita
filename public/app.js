@@ -1963,20 +1963,36 @@ async function showExpenses(screen) {
   const categories = defaults.categories;
   const canCancel = allowed("payment.cancel");
   const top = data.byCategory[0]?.amount || 1;
-  const row = (item) => `<tr class="${item.status === "annule" ? "is-cancelled" : ""}">
-      <td><span class="tag action">${esc(item.number)}</span><br><span class="muted">${esc(frenchDay(item.issued_on))}</span></td>
-      <td class="name"><strong>${esc(item.receiver_name)}</strong><br><span class="muted">${esc(item.receiver_position)}</span></td>
-      <td><span class="exp-cat exp-cat-${esc(item.category)}">${esc(item.categoryLabel)}</span><br><span class="muted exp-reason">${esc(item.reason)}</span></td>
-      <td class="num"><strong>${gnf(item.amount)}</strong><br><span class="muted">remis par ${esc(item.giver_name)}</span></td>
-      <td class="exp-handover">${item.status === "annule" ? `<span class="muted">—</span>` : item.handed_at
-        ? `<span class="exp-state done">Remis</span><br><span class="muted">${esc(frenchMoment(item.handed_at))}${item.handed_by_name ? ` · ${esc(item.handed_by_name)}` : ""}</span>`
-        : `<span class="exp-state wait">À remettre</span><br><button class="btn exp-hand" type="button" data-hand="${item.id}" data-number="${esc(item.number)}" data-amount="${esc(gnf(item.amount))}" data-receiver="${esc(item.receiver_name)}">Marquer remis</button>`}</td>
-      <td class="exp-actions">${item.status === "annule"
-        ? `<span class="tag trop_percu">Annulée</span><br><span class="muted">${esc(item.cancel_reason || "")}</span>`
-        : `<button class="btn" type="button" data-print="${item.id}">Imprimer</button>
-           <a class="btn secondary" href="/api/depenses/${item.id}.pdf" target="_blank">PDF</a>
-           ${canCancel ? `<button class="btn ghost" type="button" data-cancel-expense="${item.id}" data-number="${esc(item.number)}">Annuler</button>` : ""}`}</td>
-    </tr>`;
+  const row = (item) => {
+    const cancelled = item.status === "annule";
+    const state = cancelled ? `<span class="exp-state off">Annulée</span>`
+      : item.handed_at ? `<span class="exp-state done">Remis</span>` : `<span class="exp-state wait">À remettre</span>`;
+    const handover = cancelled ? `Motif d'annulation : ${esc(item.cancel_reason || "—")}`
+      : `Donné par ${esc(item.giver_name)} · ${item.handed_at
+        ? `remis le ${esc(frenchMoment(item.handed_at))}${item.handed_by_name ? ` (noté par ${esc(item.handed_by_name)})` : ""}`
+        : "argent pas encore remis"}`;
+    return `<li class="exp-item ${cancelled ? "is-cancelled" : ""}">
+      <div class="exp-item-head">
+        <span class="tag action">${esc(item.number)}</span>
+        <span class="muted">${esc(frenchDay(item.issued_on))}</span>
+        ${state}
+        <strong class="exp-amount">${gnf(item.amount)}</strong>
+      </div>
+      <div class="exp-item-body">
+        <div class="exp-who"><strong>${esc(item.receiver_name)}</strong><span class="muted">${esc(item.receiver_position)}</span></div>
+        <div class="exp-what"><span class="exp-cat exp-cat-${esc(item.category)}">${esc(item.categoryLabel)}</span><span class="exp-reason">${esc(item.reason)}</span></div>
+      </div>
+      <div class="exp-item-foot">
+        <p class="muted">${handover}</p>
+        ${cancelled ? "" : `<div class="exp-actions">
+          ${item.handed_at ? "" : `<button class="btn exp-hand" type="button" data-hand="${item.id}" data-number="${esc(item.number)}" data-amount="${esc(gnf(item.amount))}" data-receiver="${esc(item.receiver_name)}">Marquer remis</button>`}
+          <button class="btn secondary" type="button" data-print="${item.id}">Imprimer</button>
+          <a class="btn secondary" href="/api/depenses/${item.id}.pdf" target="_blank">PDF</a>
+          ${canCancel ? `<button class="btn ghost" type="button" data-cancel-expense="${item.id}" data-number="${esc(item.number)}">Annuler</button>` : ""}
+        </div>`}
+      </div>
+    </li>`;
+  };
   screen.innerHTML = `<div class="top"><div><p class="mark">Trésorerie</p><h1>Dépenses</h1>
       <p class="lead">Chaque sortie d'argent fait l'objet d'une décharge de responsabilité financière numérotée, signée par les deux parties et imprimable tout de suite.</p></div>
       <button class="btn" id="new-expense" type="button">Nouvelle décharge</button></div>
@@ -1997,8 +2013,7 @@ async function showExpenses(screen) {
     </form>
     <div class="exp-layout">
       <article class="card exp-list"><h2>Décharges <span class="muted">· ${plural(data.expenses.length, "document")}</span></h2>
-        ${data.expenses.length ? `<div class="table-scroll"><table><thead><tr><th>N° et date</th><th>Bénéficiaire</th><th>Nature et motif</th><th class="num">Montant</th><th>Remise</th><th></th></tr></thead>
-          <tbody>${data.expenses.map(row).join("")}</tbody></table></div>`
+        ${data.expenses.length ? `<ul class="exp-items">${data.expenses.map(row).join("")}</ul>`
         : `<div class="empty"><span class="empty-icon" aria-hidden="true">GNF</span><p><strong>Aucune dépense sur cette période.</strong></p><p class="muted">« Nouvelle décharge » enregistre une sortie d'argent et imprime le document à signer.</p></div>`}
       </article>
       <aside class="card exp-side"><h2>Répartition</h2>

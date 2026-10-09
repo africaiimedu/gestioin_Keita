@@ -160,7 +160,7 @@ def _dessiner_qr(c, url: str, x, y, largeur, hauteur, encre="#111111") -> None:
                 (colonne - debut) * pas,
                 pas + 2 * chevauche,
             )
-    c.setFillColor(_hex(encre, "#111111"))
+    c.setFillColor(_encre(_hex(encre, "#111111")))
     c.drawPath(chemin, stroke=0, fill=1, fillMode=FILL_NON_ZERO)
 
 
@@ -250,12 +250,11 @@ def _ecrire_ligne(c, texte, x, baseline, police, taille, approche, souligne, cou
     return fin - x
 
 
-def _paragraphe(c, texte, x, y, police, taille, largeur, interligne, couleur, centre=False, align="left", approche=0, souligne=False):
-    mots = texte.split()
+def _couper(c, texte, police, taille, largeur, approche=0) -> list[str]:
     lignes: list[str] = []
     courante = ""
     limite = max(largeur, 4)
-    for mot in mots:
+    for mot in texte.split():
         essai = mot if not courante else f"{courante} {mot}"
         if _largeur_texte(c, essai, police, taille, approche) <= limite:
             courante = essai
@@ -265,6 +264,11 @@ def _paragraphe(c, texte, x, y, police, taille, largeur, interligne, couleur, ce
             courante = mot
     if courante:
         lignes.append(courante)
+    return lignes
+
+
+def _paragraphe(c, texte, x, y, police, taille, largeur, interligne, couleur, centre=False, align="left", approche=0, souligne=False):
+    lignes = _couper(c, texte, police, taille, largeur, approche)
     for index, ligne in enumerate(lignes):
         yy = y - index * interligne
         if centre or align == "center":
@@ -499,6 +503,27 @@ def _hex(valeur, defaut="#000000"):
         return HexColor(str(valeur or defaut))
     except (ValueError, AttributeError):
         return HexColor(defaut)
+
+
+# La Primacy 2 ne pose en résine (panneau K, trait net) que le noir pur. Les autres couleurs
+# passent en sublimation : sous 7 pt, un texte gris ou vert foncé y sort flou.
+NOIR_RESINE = HexColor("#000000")
+PETIT_TEXTE = 7.0
+TEXTE_GRAS_SOUS = 6.0
+POINT_IMPRIMANTE = 72 / 300
+
+
+def _luminance(couleur) -> float:
+    return 0.2126 * couleur.red + 0.7152 * couleur.green + 0.0722 * couleur.blue
+
+
+def _encre(couleur, taille: float | None = None):
+    """Noir résine pour le quasi-noir, et pour tout texte foncé de petite taille."""
+    if max(couleur.red, couleur.green, couleur.blue) < 0.15:
+        return NOIR_RESINE
+    if taille is not None and taille < PETIT_TEXTE and _luminance(couleur) < 0.4:
+        return NOIR_RESINE
+    return couleur
 
 
 def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
@@ -736,6 +761,8 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
     if image.width > cible[0]:
         image = image.resize(cible, Image.Resampling.LANCZOS)
         image = image.filter(ImageFilter.UnsharpMask(radius=1.2, percent=55, threshold=2))
+    # Aucun pixel noir pur : il partirait en résine et ferait des taches mates sur le visage.
+    image = image.point(lambda valeur: max(valeur, 6))
     tampon = io.BytesIO()
     image.save(tampon, format="JPEG", quality=97, subsampling=0, optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
@@ -785,11 +812,21 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     decoupe = c.beginPath()
     decoupe.rect(x, y, largeur, max(hauteur, 1))
     c.clipPath(decoupe, stroke=0, fill=0)
-    police = _nom_police(obj)
-    couleur = _hex(obj.get("couleur"), "#1A1A1A")
     taille = float(obj.get("taille", 9))
     align = obj.get("align") or "left"
     approche = float(obj.get("approche") or 0)
+    police = _nom_police(obj)
+    if taille < TEXTE_GRAS_SOUS:
+        grasse = _nom_police({**obj, "gras": True})
+        en_paragraphe = obj.get("retour") or align == "justify"
+        tient = (
+            len(_couper(c, texte, grasse, taille, largeur, approche)) <= len(_couper(c, texte, police, taille, largeur, approche))
+            if en_paragraphe
+            else _largeur_texte(c, texte, grasse, taille, approche) <= largeur
+        )
+        if tient:
+            police = grasse
+    couleur = _encre(_hex(obj.get("couleur"), "#1A1A1A"), taille)
     coef = float(obj.get("interligne") or 1.15)
     interligne = taille * coef
     souligne = bool(obj.get("souligne"))
@@ -929,26 +966,35 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
             reserve = mm(2.6) if lisible else 0
             sonde = Code128(propre, barWidth=1, barHeight=10, quiet=0, humanReadable=0)
             facteur = zone_w / sonde.width if sonde.width else 1
+            # Chaque barre fait un nombre entier de points de tête (300 ppp), au moins deux :
+            # sinon les barres fines s'élargissent au hasard et le lecteur hésite.
+            points = max(2, math.floor(facteur / POINT_IMPRIMANTE + 0.05))
+            module = points * POINT_IMPRIMANTE
+            encre = _encre(_hex(obj.get("couleur"), "#111111"), 0)
             barre = Code128(
                 propre,
-                barWidth=max(0.15, facteur),
+                barWidth=module,
                 barHeight=max(mm(2), zone_h - reserve),
                 quiet=0,
                 humanReadable=1 if lisible else 0,
-                fontName="DejaVu",
+                fontName="DejaVu-Bold",
                 fontSize=6,
+                barFillColor=encre,
+                textColor=encre,
             )
+            decalage = (zone_w - barre.width) / 2
             c.setFillColor(_hex(obj.get("fond"), "#FFFFFF"))
             c.rect(x, y, largeur, hauteur, fill=1, stroke=0)
-            c.setFillColor(_hex(obj.get("couleur"), "#111111"))
+            c.setFillColor(encre)
             if vertical:
                 c.saveState()
                 c.translate(x + largeur / 2, y + hauteur / 2)
                 c.rotate(90)
-                barre.drawOn(c, -zone_w / 2, -zone_h / 2 + reserve)
+                barre.drawOn(c, -zone_w / 2 + decalage, -zone_h / 2 + reserve)
                 c.restoreState()
             else:
-                barre.drawOn(c, x, y + reserve)
+                depart = round((x + decalage) / POINT_IMPRIMANTE) * POINT_IMPRIMANTE
+                barre.drawOn(c, depart, y + reserve)
         elif type_objet in ("champ", "texte"):
             _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur)
     c.restoreState()
