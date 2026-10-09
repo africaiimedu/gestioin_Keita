@@ -184,14 +184,25 @@ p.resultat-mauvais { background: #fdf3da; border: 1px solid #f1d999; border-left
 .journal-court time { color: #5f8170 !important; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.88rem; }
 
 /* Menu de la cantine */
-.liste-jour { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px !important; }
+.liste-jour { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); gap: 12px !important; }
 .ligne-jour {
   background: #fff !important; border: 1px solid #d5e8dc !important; border-radius: 18px !important; padding: 10px 12px !important;
   box-shadow: 0 8px 22px rgba(12, 61, 46, 0.05); transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 .ligne-jour:hover { transform: translateY(-3px); box-shadow: 0 16px 30px rgba(12, 61, 46, 0.1); border-color: #b9d9c6 !important; }
 .ligne-jour.choisi { outline: 2px solid #128a45 !important; }
-.ligne-jour a { color: #0c3d2e; text-decoration: none; }
+.ligne-jour a {
+  display: grid !important; grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: auto auto;
+  column-gap: 12px !important; row-gap: 3px; align-content: center; color: #0c3d2e; text-decoration: none;
+}
+.ligne-jour a img { grid-row: 1 / span 2; align-self: center; }
+.ligne-jour a strong {
+  align-self: end; font-size: 1rem; line-height: 1.25;
+  overflow-wrap: normal !important; word-break: normal; hyphens: none;
+}
+.ligne-jour .prix-double { display: flex !important; flex-direction: column; align-self: start; gap: 1px; line-height: 1.3; }
+.ligne-jour .prix-double span { white-space: nowrap; }
+.ligne-jour .prix-double span + span { color: #6f7d74; font-weight: 500; font-size: 0.76rem; }
 .ligne-jour img { width: 64px !important; height: 64px !important; border-radius: 14px !important; transition: transform 0.25s ease; }
 .ligne-jour:hover img { transform: scale(1.06) rotate(-2deg); }
 .ligne-jour .bouton-danger { min-height: 0 !important; padding: 8px 14px !important; font-size: 0.85rem; }

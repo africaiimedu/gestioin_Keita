@@ -10,6 +10,9 @@ from app.models import Utilisateur
 from app.services.comptes import doit_choisir_mot_de_passe
 
 
+PERSONNEL = frozenset({"admin", "scolarite", "cuisiniere", "securite"})
+
+
 class Redirection(Exception):
     def __init__(self, url: str):
         self.url = url

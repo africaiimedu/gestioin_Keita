@@ -177,6 +177,8 @@ const tables = () => ({
     cancelled_at: stamp(),
     verify_token: text(false),
     print_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    handed_at: stamp(),
+    handed_by: ref(true),
     created_by: ref(),
     created_at: stamp(),
   }],

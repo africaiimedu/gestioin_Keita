@@ -6,7 +6,7 @@
   <h1>Vérification de carte</h1>
 
   {% if mode == "scan" %}
-    <p class="resultat">Scannez le QR code imprimé sur la carte. L'adresse seule ne suffit pas.</p>
+    <p class="resultat">Scannez le QR code ou le code-barres imprimé sur la carte. L'adresse seule ne suffit pas.</p>
   {% elif mode == "invalide" %}
     <p class="resultat resultat-mauvais">Ce lien de vérification n'est pas valide.</p>
   {% elif mode == "limite" %}
@@ -31,8 +31,6 @@
           </form>
         {% elif autorise and role in ["cuisiniere", "admin"] %}
           <p class="resultat resultat-mauvais">{{ raison }}</p>
-        {% elif not agent %}
-          <p><a href="/login?suivant={{ suivant | urlencode }}">Connexion pour valider ce QR code</a></p>
         {% elif not autorise %}
           <p class="resultat resultat-mauvais">Ce compte n'est pas autorisé à valider les QR codes.</p>
         {% endif %}

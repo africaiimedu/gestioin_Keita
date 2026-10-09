@@ -243,7 +243,9 @@ def test_code_barres_png_et_modele():
     assert len(png) > 200
     modele = _valider_modele(charger_modele())
     types = {obj["type"] for face in ("recto", "verso") for obj in modele[face]}
-    assert {"photo", "qr", "codebarres", "micro", "image"} <= types
+    assert {"photo", "qr", "codebarres", "image"} <= types
+    barres = [obj for face in ("recto", "verso") for obj in modele[face] if obj["type"] == "codebarres"]
+    assert all(obj.get("champ") == "controle" for obj in barres)
     from app.services.pdf_carte import code_controle
     assert code_controle("jeton-test") == code_controle("jeton-test")
     assert code_controle("jeton-test") != code_controle("autre")

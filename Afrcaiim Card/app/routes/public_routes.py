@@ -1,4 +1,4 @@
-"""Page ouverte par le QR code : validité de la carte et compte cantine."""
+"""Page ouverte par le QR code : le personnel voit la validité de la carte, l'étudiant arrive sur le menu."""
 
 from urllib.parse import quote
 
@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.deps import get_db, utilisateur_courant
+from app.deps import PERSONNEL, Redirection, get_db, utilisateur_courant
 from app.models import Carte
 from app.services.cantine import decision_repas, prix_repas, valider_repas
 from app.services.metier import journaliser
@@ -33,6 +33,14 @@ def verifier(
     t: str = "",
     db: Session = Depends(get_db),
 ):
+    agent = utilisateur_courant(request, db)
+    if agent is not None and agent.role not in PERSONNEL:
+        raise Redirection("/menu")
+    if agent is None:
+        if t:
+            raise Redirection(f"/login?suivant={quote(f'/verif/{matricule}?t={t}', safe='')}")
+        raise Redirection("/menu")
+
     adresse = request.client.host if request.client else "0"
     if not autoriser(f"verif:{adresse}", 60, 60):
         return _sans_cache(render(request, "verif.html", mode="limite"))
@@ -46,7 +54,6 @@ def verifier(
 
     statut = statut_effectif(carte.statut, carte.date_validite)
     etudiant = carte.etudiant
-    agent = utilisateur_courant(request, db)
     prix = prix_repas()
     solde = int(etudiant.solde_cantine or 0)
     decision = decision_repas(solde, prix, etudiant.email or "", statut == "active")

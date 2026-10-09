@@ -335,7 +335,7 @@
     {
       "id": "barre",
       "type": "codebarres",
-      "champ": "matricule",
+      "champ": "controle",
       "x": 3.4,
       "y": 35.2,
       "w": 22.4,

@@ -51,7 +51,7 @@ import {
   setCostumeQuantity,
   suggestMatricule,
 } from "./services/domain.js";
-import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseForPrint, listExpenses } from "./services/expenses.js";
+import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseForPrint, listExpenses, markExpenseHanded } from "./services/expenses.js";
 import { renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { syncStudentsToCard } from "./services/cardSync.js";
@@ -327,6 +327,9 @@ app.get("/api/depenses", requireAction("expense.write"), async (req, res) => {
 app.post("/api/depenses", requireAction("expense.write"), async (req, res) => {
   res.status(201).json(await createExpense(db, req.user, req.body || {}));
 });
+app.post("/api/depenses/:id/remis", requireAction("expense.write"), async (req, res) => {
+  res.json(await markExpenseHanded(db, req.user, Number(req.params.id)));
+});
 app.post("/api/depenses/:id/annuler", requireAction("expense.write"), async (req, res) => {
   res.json(await cancelExpense(db, req.user, Number(req.params.id), req.body?.reason));
 });
@@ -506,6 +509,7 @@ app.get("/v/:token", async (req, res) => {
       <p>Montant : <strong>${escapeHtml(formatGnf(expense.amount))}</strong></p>
       <p>Date : ${escapeHtml(expense.issued_on)}</p>
       <p>Reçu par : ${escapeHtml(expense.receiver_name)}</p>
+      ${cancelled ? "" : `<p>Argent : <strong>${expense.handed_at ? "remis" : "pas encore remis"}</strong></p>`}
       <p class="muted">Aucune autre donnée n'est affichée sur cette page.</p></main></html>`);
     return;
   }

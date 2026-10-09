@@ -778,6 +778,15 @@ function frenchDay(iso) {
   });
 }
 
+function frenchMoment(stamp) {
+  const text = String(stamp || "").replace(" ", "T");
+  const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text}Z`);
+  if (Number.isNaN(date.getTime())) return String(stamp || "");
+  return date.toLocaleString("fr-FR", {
+    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Conakry",
+  });
+}
+
 function bindDashboard(screen) {
   screen.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => {
     state.status = "";
@@ -1951,6 +1960,9 @@ async function showExpenses(screen) {
       <td class="name"><strong>${esc(item.receiver_name)}</strong><br><span class="muted">${esc(item.receiver_position)}</span></td>
       <td><span class="exp-cat exp-cat-${esc(item.category)}">${esc(item.categoryLabel)}</span><br><span class="muted exp-reason">${esc(item.reason)}</span></td>
       <td class="num"><strong>${gnf(item.amount)}</strong><br><span class="muted">remis par ${esc(item.giver_name)}</span></td>
+      <td class="exp-handover">${item.status === "annule" ? `<span class="muted">—</span>` : item.handed_at
+        ? `<span class="exp-state done">Remis</span><br><span class="muted">${esc(frenchMoment(item.handed_at))}${item.handed_by_name ? ` · ${esc(item.handed_by_name)}` : ""}</span>`
+        : `<span class="exp-state wait">À remettre</span><br><button class="btn exp-hand" type="button" data-hand="${item.id}" data-number="${esc(item.number)}" data-amount="${esc(gnf(item.amount))}" data-receiver="${esc(item.receiver_name)}">Marquer remis</button>`}</td>
       <td class="exp-actions">${item.status === "annule"
         ? `<span class="tag trop_percu">Annulée</span><br><span class="muted">${esc(item.cancel_reason || "")}</span>`
         : `<button class="btn" type="button" data-print="${item.id}">Imprimer</button>
@@ -1964,19 +1976,20 @@ async function showExpenses(screen) {
       <article class="exp-kpi main"><span>Dépensé aujourd'hui</span><strong>${gnf(summary.today)}</strong><small>${plural(summary.todayCount, "décharge")}</small></article>
       <article class="exp-kpi"><span>Ce mois-ci</span><strong>${gnf(summary.month)}</strong><small>${plural(summary.monthCount, "décharge")}</small></article>
       <article class="exp-kpi"><span>Sur la période affichée</span><strong>${gnf(summary.period)}</strong><small>du ${esc(frenchDay(data.from))} au ${esc(frenchDay(data.to))}</small></article>
+      <article class="exp-kpi ${summary.pendingCount ? "warn" : ""}"><span>Argent à remettre</span><strong>${gnf(summary.pending)}</strong><small>${summary.pendingCount ? `${plural(summary.pendingCount, "décharge")} pas encore remise${summary.pendingCount > 1 ? "s" : ""}` : "tout a été remis"}</small></article>
       <article class="exp-kpi ${summary.cancelledCount ? "warn" : ""}"><span>Annulées</span><strong>${summary.cancelledCount}</strong><small>non comptées dans les totaux</small></article>
     </section>
     <form class="exp-filters card" id="expense-filters">
       <label>Du<input type="date" name="du" value="${esc(data.from)}"></label>
       <label>Au<input type="date" name="au" value="${esc(data.to)}"></label>
       <label>Nature<select name="categorie"><option value="">Toutes</option>${categories.map((item) => `<option value="${item.code}" ${filters.categorie === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}</select></label>
-      <label>État<select name="statut"><option value="">Toutes</option><option value="valide" ${filters.statut === "valide" ? "selected" : ""}>Valides</option><option value="annule" ${filters.statut === "annule" ? "selected" : ""}>Annulées</option></select></label>
+      <label>État<select name="statut"><option value="">Toutes</option><option value="valide" ${filters.statut === "valide" ? "selected" : ""}>Valides</option><option value="a_remettre" ${filters.statut === "a_remettre" ? "selected" : ""}>À remettre</option><option value="remis" ${filters.statut === "remis" ? "selected" : ""}>Remises</option><option value="annule" ${filters.statut === "annule" ? "selected" : ""}>Annulées</option></select></label>
       <label class="grow">Recherche<input type="search" name="q" value="${esc(filters.q || "")}" placeholder="N°, bénéficiaire, motif…"></label>
       <button class="btn secondary" type="submit">Filtrer</button>
     </form>
     <div class="exp-layout">
       <article class="card exp-list"><h2>Décharges <span class="muted">· ${plural(data.expenses.length, "document")}</span></h2>
-        ${data.expenses.length ? `<div class="table-scroll"><table><thead><tr><th>N° et date</th><th>Bénéficiaire</th><th>Nature et motif</th><th class="num">Montant</th><th></th></tr></thead>
+        ${data.expenses.length ? `<div class="table-scroll"><table><thead><tr><th>N° et date</th><th>Bénéficiaire</th><th>Nature et motif</th><th class="num">Montant</th><th>Remise</th><th></th></tr></thead>
           <tbody>${data.expenses.map(row).join("")}</tbody></table></div>`
         : `<div class="empty"><span class="empty-icon" aria-hidden="true">GNF</span><p><strong>Aucune dépense sur cette période.</strong></p><p class="muted">« Nouvelle décharge » enregistre une sortie d'argent et imprime le document à signer.</p></div>`}
       </article>
@@ -1999,6 +2012,19 @@ async function showExpenses(screen) {
   });
   document.querySelectorAll("[data-print]").forEach((button) => button.addEventListener("click", () => {
     printDocument(`/api/depenses/${button.dataset.print}.pdf`);
+  }));
+  document.querySelectorAll("[data-hand]").forEach((button) => button.addEventListener("click", async () => {
+    const { number, amount, receiver } = button.dataset;
+    if (!window.confirm(`Confirmer que ${amount} ont bien été remis à ${receiver} (décharge ${number}) ?\nCette action ne peut pas être annulée.`)) return;
+    button.disabled = true;
+    try {
+      await api(`/api/depenses/${button.dataset.hand}/remis`, { method: "POST" });
+      saved(`Décharge ${number} : argent remis`);
+      showExpenses(screen);
+    } catch (caught) {
+      button.disabled = false;
+      saved(caught.message);
+    }
   }));
   document.querySelectorAll("[data-cancel-expense]").forEach((button) => button.addEventListener("click", async () => {
     const reason = window.prompt(`Motif de l'annulation de la décharge ${button.dataset.number} (au moins 5 caractères) :`);

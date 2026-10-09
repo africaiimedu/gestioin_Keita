@@ -62,6 +62,10 @@ export async function listExpenses(db, filters = {}) {
   if (["valide", "annule"].includes(filters.status)) {
     where.push("e.status = ?");
     params.push(filters.status);
+  } else if (filters.status === "a_remettre") {
+    where.push("e.status = 'valide' AND e.handed_at IS NULL");
+  } else if (filters.status === "remis") {
+    where.push("e.status = 'valide' AND e.handed_at IS NOT NULL");
   }
   const q = String(filters.q || "").trim().toLowerCase();
   if (q) {
@@ -70,8 +74,8 @@ export async function listExpenses(db, filters = {}) {
   }
   const [rows, totals] = await Promise.all([
     db.prepare(`
-      SELECT e.*, u.full_name AS created_by_name
-      FROM expenses e LEFT JOIN users u ON u.id = e.created_by
+      SELECT e.*, u.full_name AS created_by_name, h.full_name AS handed_by_name
+      FROM expenses e LEFT JOIN users u ON u.id = e.created_by LEFT JOIN users h ON h.id = e.handed_by
       WHERE ${where.join(" AND ")}
       ORDER BY e.issued_on DESC, e.id DESC
       LIMIT 500
@@ -81,7 +85,9 @@ export async function listExpenses(db, filters = {}) {
         COALESCE(SUM(amount) FILTER (WHERE status = 'valide' AND issued_on = ?), 0) AS today,
         COUNT(*) FILTER (WHERE status = 'valide' AND issued_on = ?) AS today_count,
         COALESCE(SUM(amount) FILTER (WHERE status = 'valide' AND issued_on >= ?), 0) AS month,
-        COUNT(*) FILTER (WHERE status = 'valide' AND issued_on >= ?) AS month_count
+        COUNT(*) FILTER (WHERE status = 'valide' AND issued_on >= ?) AS month_count,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'valide' AND handed_at IS NULL), 0) AS pending,
+        COUNT(*) FILTER (WHERE status = 'valide' AND handed_at IS NULL) AS pending_count
       FROM expenses WHERE issued_on <= ?
     `).get(today, today, monthStart, monthStart, today),
   ]);
@@ -103,6 +109,8 @@ export async function listExpenses(db, filters = {}) {
       todayCount: Number(totals.today_count),
       month: Number(totals.month),
       monthCount: Number(totals.month_count),
+      pending: Number(totals.pending),
+      pendingCount: Number(totals.pending_count),
       period: valid.reduce((sum, row) => sum + row.amount, 0),
       periodCount: valid.length,
       cancelledCount: expenses.length - valid.length,
@@ -156,11 +164,28 @@ export async function cancelExpense(db, user, id, reason) {
   });
 }
 
+export async function markExpenseHanded(db, user, id) {
+  if (!can(user, "expense.write")) throw new HttpError(403, "Vous n'avez pas le droit de modifier une dépense");
+  return transaction(db, async () => {
+    const before = await db.prepare("SELECT * FROM expenses WHERE id = ? FOR UPDATE").get(id);
+    if (!before) throw new HttpError(404, "Décharge introuvable");
+    if (before.status === "annule") throw new HttpError(409, "Cette décharge est annulée : l'argent ne peut pas être marqué remis");
+    if (before.handed_at) throw new HttpError(409, "L'argent de cette décharge est déjà marqué remis");
+    const row = await db.prepare(`
+      UPDATE expenses SET handed_at = (now() AT TIME ZONE 'UTC'), handed_by = ?
+      WHERE id = ? RETURNING *
+    `).get(user.id, id);
+    await audit(db, user.id, "depense.remise", "expenses", id, { handed_at: null }, { handed_at: row.handed_at, number: row.number });
+    return { expense: present({ ...row, handed_by_name: user.full_name }) };
+  });
+}
+
 export async function expenseForPrint(db, id) {
   const row = await db.prepare(`
     UPDATE expenses e SET print_count = e.print_count + 1
     FROM users u WHERE u.id = e.created_by AND e.id = ?
-    RETURNING e.*, u.full_name AS created_by_name
+    RETURNING e.*, u.full_name AS created_by_name,
+      (SELECT h.full_name FROM users h WHERE h.id = e.handed_by) AS handed_by_name
   `).get(id);
   if (!row) throw new HttpError(404, "Décharge introuvable");
   return present(row);

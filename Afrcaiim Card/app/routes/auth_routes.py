@@ -25,9 +25,15 @@ _SUIVANT = re.compile(
 )
 
 
+_PORTAIL = "/portail/cartes"
+
+
 def _destination(role: str, suivant: str = "") -> str:
-    if _SUIVANT.match(suivant or ""):
-        return suivant
+    chemin = suivant or ""
+    if chemin.startswith(_PORTAIL + "/"):
+        chemin = chemin[len(_PORTAIL):]
+    if _SUIVANT.match(chemin):
+        return chemin
     return maison(role)
 
 

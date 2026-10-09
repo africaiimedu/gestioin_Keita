@@ -1630,7 +1630,7 @@ tbody tr:last-child td { border-bottom: 0; }
 /* Dépenses */
 .btn.ghost { background: transparent; color: #6f4b05; border: 1px solid #f1d999; box-shadow: none; }
 .btn.ghost:hover { background: #fdf8ea; }
-.exp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.exp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .exp-kpi {
   display: grid; gap: 4px; padding: 16px 18px; border-radius: 18px; background: #fff;
   border: 1px solid #d5e8dc; border-top: 4px solid #128a45; box-shadow: 0 10px 26px rgba(12, 61, 46, 0.05);
@@ -1647,6 +1647,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .exp-kpi:nth-child(2) { animation-delay: 50ms; }
 .exp-kpi:nth-child(3) { animation-delay: 100ms; }
 .exp-kpi:nth-child(4) { animation-delay: 150ms; }
+.exp-kpi:nth-child(5) { animation-delay: 200ms; }
 .exp-filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; padding: 14px 16px; margin-bottom: 16px; }
 .exp-filters label { display: grid; gap: 4px; margin: 0; font-size: 0.82rem; color: #3d6b52; min-width: 140px; }
 .exp-filters label.grow { flex: 1 1 220px; }
@@ -1658,6 +1659,16 @@ tbody tr:last-child td { border-bottom: 0; }
 .exp-list tr.is-cancelled td { opacity: 0.6; }
 .exp-list tr.is-cancelled td strong { text-decoration: line-through; }
 .exp-reason { display: inline-block; max-width: 300px; white-space: normal; line-height: 1.35; }
+.exp-handover { white-space: nowrap; }
+.exp-handover .muted { font-size: 0.78rem; }
+.exp-state {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px;
+  font-size: 0.76rem; font-weight: 700; margin-bottom: 4px;
+}
+.exp-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.exp-state.wait { background: #fdf3da; color: #8a5f07; border: 1px solid #f1d999; }
+.exp-state.done { background: #eef7f2; color: #128a45; border: 1px solid #cfe5d8; }
+.btn.exp-hand { padding: 5px 12px; font-size: 0.8rem; margin: 2px 0 0; }
 .exp-actions { white-space: nowrap; text-align: right; }
 .exp-actions .btn { padding: 6px 12px; font-size: 0.82rem; margin: 0 0 0 4px; }
 .exp-cat {

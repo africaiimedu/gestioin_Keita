@@ -343,3 +343,76 @@ def test_etudiant_compte_cuisiniere_menu_qr_stable():
             assert not (ROOT / "static" / "plats" / "perso" / f"{plat_id}.jpg").is_file()
     finally:
         _nettoyer()
+
+
+def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel():
+    from urllib.parse import quote
+
+    from app.routes.auth_routes import _destination
+    from app.routes.securite_routes import _candidats
+    from app.services.pdf_carte import code_controle
+
+    _nettoyer()
+    try:
+        with TestClient(app) as client:
+            with SessionLocal() as db:
+                _assurer_menu(db)
+                _, _, point, _ = _compte(db, 40000)
+                carte = db.scalar(select(Carte).where(Carte.jeton == "jeton-menu-test-qui-ne-sert-pas"))
+                jeton = carte.jeton
+                db.add(
+                    Utilisateur(
+                        identifiant=_CUISINIERE,
+                        mot_de_passe_hash=hash_mot_de_passe(_MOT),
+                        role="cuisiniere",
+                        actif=True,
+                        doit_changer_mot_de_passe=False,
+                        peut_valider_qr=True,
+                        cree_le=maintenant(),
+                    )
+                )
+                db.commit()
+                point_jeton = point.jeton
+            verif = f"/verif/{_MATRICULE}?t={jeton}"
+
+            def connecter(identifiant: str, suivant: str = ""):
+                page = client.get("/login")
+                csrf = page.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+                return client.post(
+                    "/login",
+                    data={"identifiant": identifiant, "mot_de_passe": _MOT, "csrf": csrf, "suivant": suivant},
+                    follow_redirects=False,
+                )
+
+            anonyme = client.get(verif, follow_redirects=False)
+            assert anonyme.status_code == 303
+            assert anonyme.headers["location"] == f"/login?suivant={quote(verif, safe='')}"
+
+            entre = connecter(_IDENTIFIANT, "/portail/cartes" + verif)
+            assert entre.headers["location"] == verif
+            etudiant_scan = client.get(verif, follow_redirects=False)
+            assert etudiant_scan.headers["location"] == "/menu"
+            assert client.get("/menu", follow_redirects=False).headers["location"] == f"/m/{point_jeton}"
+            assert client.get(f"/scan?code={code_controle(jeton)}", follow_redirects=False).headers["location"] == "/menu"
+
+            client.cookies.clear()
+            connecter(_CUISINIERE)
+            page = client.get(verif)
+            assert page.status_code == 200
+            assert code_controle(jeton) in page.text
+            assert "Valider le repas" in page.text
+
+            code = code_controle(jeton)
+            vers_carte = f"/verif/{quote(_MATRICULE)}?t={quote(jeton)}"
+            for saisie in (code, code.replace("-", "").lower(), f"  {code}  "):
+                assert client.get(f"/scan?code={quote(saisie)}", follow_redirects=False).headers["location"] == vers_carte
+            inconnu = client.get("/scan?code=0000-0000", follow_redirects=False)
+            assert inconnu.headers["location"] == "/cantine"
+    finally:
+        _nettoyer()
+
+    assert _candidats("&é\"'(-è_") == ["12345678"]
+    assert _candidats("QB&é)CD\"'") == ["AB12CD34"]
+    assert _candidats("Diallo") == []
+    assert _destination("etudiant", "/portail/cartes/m/" + "x" * 20) == "/m/" + "x" * 20
+    assert _destination("etudiant", "https://ailleurs.example/verif/abc?t=" + "y" * 30) == "/espace"

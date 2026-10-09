@@ -477,6 +477,20 @@ test("dépenses : décharge numérotée, montant en lettres, immuable, annulable
   assert.equal(list.summary.period, 1_500_000);
   assert.equal(list.summary.cancelledCount, 1);
   assert.deepEqual(list.byCategory.map((item) => item.code), ["fournitures"]);
+  assert.equal(list.summary.pending, 1_500_000);
+  assert.equal(list.summary.pendingCount, 1);
+
+  await assert.rejects(() => expenses.markExpenseHanded(db, comptable, expense.id), (error) => error.status === 403);
+  await assert.rejects(() => expenses.markExpenseHanded(db, agent, second.expense.id), (error) => error.status === 409);
+  const handed = await expenses.markExpenseHanded(db, agent, expense.id);
+  assert.ok(handed.expense.handed_at);
+  assert.equal(handed.expense.handed_by, agent.id);
+  await assert.rejects(() => expenses.markExpenseHanded(db, agent, expense.id), (error) => error.status === 409);
+  await assert.rejects(() => db.prepare("UPDATE expenses SET handed_at = NULL, handed_by = NULL WHERE id = ?").run(expense.id), /ne peut pas être modifiée/);
+  const after = await expenses.listExpenses(db, { status: "remis" });
+  assert.deepEqual(after.expenses.map((item) => item.number), [expense.number]);
+  assert.equal(after.expenses[0].handed_by_name, agent.full_name);
+  assert.equal(after.summary.pendingCount, 0);
 
   const printed = await expenses.expenseForPrint(db, expense.id);
   assert.equal(printed.print_count, 1);

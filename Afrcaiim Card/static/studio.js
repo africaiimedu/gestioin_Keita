@@ -54,7 +54,7 @@ const GABARITS = {
   champ: { type: "champ", champ: "nom", w: 40, h: 6, taille: 10, gras: true, couleur: "#FFFFFF", majuscules: true },
   photo: { type: "photo", w: 22, h: 26, rayon: 1.6, couleur: "#C5F0DC", couleur_texte: "#0C4630", initiales: true },
   qr: { type: "qr", w: 18, h: 18, contenu: "securise", couleur: "#111111", fond: "#FFFFFF", cadre: true },
-  codebarres: { type: "codebarres", champ: "matricule", w: 46, h: 8, lisible: false, couleur: "#111111", fond: "#FFFFFF" },
+  codebarres: { type: "codebarres", champ: "controle", w: 46, h: 8, lisible: false, couleur: "#111111", fond: "#FFFFFF" },
   rect: { type: "rect", w: 24, h: 8, couleur: "#146042", rayon: 0.8 },
   cercle: { type: "cercle", w: 10, h: 10, couleur: "#F0A020" },
   ligne: { type: "ligne", w: 36, h: 1.2, couleur: "#1A1A1A", epaisseur: 0.35 },
