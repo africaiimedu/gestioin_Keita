@@ -98,7 +98,8 @@
       · émise le {{ carte.date_emission|datefr }}
     </p>
     <div class="actions">
-      <a class="bouton" href="/admin/etudiants/{{ etudiant.id }}/pdf">Télécharger le PDF</a>
+      <button type="button" class="bouton" data-imprimer-pdf="/admin/etudiants/{{ etudiant.id }}/pdf?inline=1" data-note="note-impression">Imprimer depuis cet ordinateur</button>
+      <a class="bouton bouton-secondaire" href="/admin/etudiants/{{ etudiant.id }}/pdf">Télécharger le PDF</a>
       <form method="post" action="/admin/etudiants/{{ etudiant.id }}/imprimee">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button type="submit" class="bouton-secondaire">Marquer comme imprimée</button>
@@ -130,7 +131,8 @@
         <button type="submit" class="bouton-secondaire">Nouveau mot de passe étudiant</button>
       </form>
     </div>
-    <p class="aide">Le PDF fait exactement la taille d'une carte bancaire (85,6 × 54 mm). À l'impression, choisissez 100 %, sans « ajuster à la page ».</p>
+    <p id="note-impression" class="aide" hidden></p>
+    <p class="aide">Le PDF fait exactement la taille d'une carte bancaire (85,6 × 54 mm). À l'impression, sous Windows comme sur Mac, choisissez l'imprimante de cartes, recto-verso bord long, 100 %, sans « ajuster à la page ».</p>
     {% if cfg.nfc %}
       <form method="post" action="/admin/etudiants/{{ etudiant.id }}/nfc" class="panneau etroit">
         <input type="hidden" name="csrf" value="{{ csrf }}">

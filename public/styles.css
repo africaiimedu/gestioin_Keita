@@ -1718,7 +1718,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .exp-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #128a45, #3caa6a); transform-origin: left; animation: grow 0.9s cubic-bezier(.2, .8, .2, 1) both; }
 .exp-track i.exp-cat-salaires { background: linear-gradient(90deg, #e2a31a, #f0c14b); }
 .exp-note { margin: 14px 0 0; padding: 12px; border-radius: 14px; background: #f8fbf9; border: 1px dashed #d5e8dc; font-size: 0.84rem; color: #3d6b52; line-height: 1.45; }
-.print-frame { position: fixed; width: 0; height: 0; border: 0; right: 0; bottom: 0; visibility: hidden; }
+.print-link {
+  margin: 0 0 0 6px; padding: 2px 9px; border-radius: 999px; border: 1px solid #b9cbbf;
+  background: #fff; color: #0c3d2e; font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer; vertical-align: baseline;
+}
+.print-link:hover { background: #e6efe9; }
 
 dialog.sheet.exp-sheet { width: min(1120px, calc(100vw - 28px)); }
 .exp-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }

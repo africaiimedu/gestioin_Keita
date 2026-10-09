@@ -18,6 +18,7 @@
       <span id="zoom-valeur">100 %</span>
       <button type="button" id="zoom-plus" aria-label="Agrandir">+</button>
     </div>
+    <button class="bouton" id="imprimer" type="button" data-note="message">Imprimer</button>
     <a class="bouton" id="pdf" href="#">Télécharger le PDF</a>
   </header>
   <p id="message" class="message" hidden></p>
@@ -31,6 +32,7 @@
   </div>
   <script id="donnees" type="application/json">{{ donnees | tojson }}</script>
   <script src="/static/rendu-carte.js?v=30"></script>
-  <script src="/static/lot-apercu.js?v=4"></script>
+  <script src="/static/impression-locale.js?v=1"></script>
+  <script src="/static/lot-apercu.js?v=5"></script>
 </body>
 </html>

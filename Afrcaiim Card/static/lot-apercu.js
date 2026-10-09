@@ -149,10 +149,13 @@ window.addEventListener("resize", dessinerRegles);
 document.getElementById("titre").textContent = data.filiere;
 document.getElementById("compte").textContent = `${data.annee} · ${data.cartes.length} carte(s) · règle en millimètres, non imprimée`;
 const pdf = document.getElementById("pdf");
+const imprimer = document.getElementById("imprimer");
 if (data.cartes.length) {
   pdf.href = `/admin/lot.pdf?filiere=${encodeURIComponent(data.filiere)}&annee=${encodeURIComponent(data.annee)}`;
+  imprimer.dataset.imprimerPdf = `${pdf.href}&inline=1`;
 } else {
   pdf.hidden = true;
+  imprimer.hidden = true;
   const message = document.getElementById("message");
   message.hidden = false;
   message.textContent = data.exclus.length

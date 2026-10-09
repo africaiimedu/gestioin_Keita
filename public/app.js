@@ -1305,12 +1305,12 @@ async function showStudent(screen, id) {
         <button class="btn" id="pay-this" type="button">Encaisser</button>
         ${allowed("student.write") ? `<button class="btn secondary" id="edit-matricule" type="button">Modifier le matricule</button>` : ""}
       </div></div>
-    ${state.paymentReceipt ? `<div class="banner">Paiement mis à jour. Nouveau reçu <a href="/api/recus/${state.paymentReceipt.id}.pdf" target="_blank">${esc(state.paymentReceipt.number)}</a>. L'ancien reçu est annulé.</div>` : ""}
+    ${state.paymentReceipt ? `<div class="banner">Paiement mis à jour. Nouveau reçu <a href="/api/recus/${state.paymentReceipt.id}.pdf" target="_blank">${esc(state.paymentReceipt.number)}</a>${printButton(`/api/recus/${state.paymentReceipt.id}.pdf`)}. L'ancien reçu est annulé.</div>` : ""}
     <section class="kpis">${kpi("Frais dus", situation.due)}${kpi("Total payé", situation.paid)}${kpi("Reste", situation.reste)}${kpi("Statut", situation.statusLabel, true)}</section>
     ${data.discounts?.length ? `<p class="banner">${data.discounts.map((item) => esc(item.reason || item.label)).join(" · ")}</p>` : ""}
     <article class="card" style="margin-top:14px"><h2>Paiements</h2>
       <div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th><th></th></tr></thead><tbody>
-      ${data.payments.map((payment) => `<tr><td>${esc(frenchDay(payment.paid_on))}${payment.date_unconfirmed ? "<br><span class='muted'>Date à confirmer</span>" : ""}</td><td class="num"><strong>${gnf(payment.amount)}</strong></td><td>${esc(state.catalog.methods.find((item) => item.code === payment.method)?.label || payment.method)}${payment.status === "annule" ? `<br><span class="tag trop_percu">Annulé</span>` : ""}</td><td>${payment.receipt_number ? `<a href="/api/recus/${payment.receipt_id}.pdf" target="_blank">${esc(payment.receipt_number)}</a>` : ""}</td><td>${payment.status === "annule" ? esc(payment.cancel_reason || "Annulé") : (allowed("payment.cancel") ? `<button class="btn secondary" type="button" data-correct="${payment.id}">Corriger</button>` : "")}</td></tr>`).join("")}
+      ${data.payments.map((payment) => `<tr><td>${esc(frenchDay(payment.paid_on))}${payment.date_unconfirmed ? "<br><span class='muted'>Date à confirmer</span>" : ""}</td><td class="num"><strong>${gnf(payment.amount)}</strong></td><td>${esc(state.catalog.methods.find((item) => item.code === payment.method)?.label || payment.method)}${payment.status === "annule" ? `<br><span class="tag trop_percu">Annulé</span>` : ""}</td><td>${payment.receipt_number ? `<a href="/api/recus/${payment.receipt_id}.pdf" target="_blank">${esc(payment.receipt_number)}</a>${payment.status === "valide" ? printButton(`/api/recus/${payment.receipt_id}.pdf`) : ""}` : ""}</td><td>${payment.status === "annule" ? esc(payment.cancel_reason || "Annulé") : (allowed("payment.cancel") ? `<button class="btn secondary" type="button" data-correct="${payment.id}">Corriger</button>` : "")}</td></tr>`).join("")}
       </tbody></table></div></article>
     ${costumeCard(data.costume)}
     <article class="card" style="margin-top:14px"><h2>Échéances couvertes</h2>
@@ -1718,7 +1718,7 @@ async function loadCashPayments() {
       <td><div class="who-cell"><strong>${esc(row.name)}</strong><span class="muted">${esc(row.matricule)}</span></div></td>
       <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">Costume à part : ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
       <td class="num">${row.reste ? gnf(row.reste) : `<span class="tag solde">Soldé</span>`}</td>
-      <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>` : `<span class="muted">Avant l'application</span>`}</td>
+      <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>${printButton(`/api/recus/${row.receiptId}.pdf`)}` : `<span class="muted">Avant l'application</span>`}</td>
       <td class="actions"><div class="row-actions">${row.lastPaymentId && allowed("payment.create") ? `<button data-update="${row.studentId}" class="btn secondary" type="button">Mettre à jour</button>` : ""}</div></td>
     </tr>`).join("")}
   </tbody></table></div>`;
@@ -1737,7 +1737,7 @@ async function loadCashPayments() {
     openPaymentUpdate(record, async (result) => {
       const success = document.querySelector("#pay-success");
       if (success && result?.receiptNumber) {
-        success.innerHTML = `<div class="banner">Versement ajouté à l'historique de ${esc(record.name)}. Nouveau reçu <a href="/api/recus/${result.receiptId}.pdf" target="_blank">${esc(result.receiptNumber)}</a> : il reprend tous les versements précédents.</div>`;
+        success.innerHTML = `<div class="banner">Versement ajouté à l'historique de ${esc(record.name)}. Nouveau reçu <a href="/api/recus/${result.receiptId}.pdf" target="_blank">${esc(result.receiptNumber)}</a>${printButton(`/api/recus/${result.receiptId}.pdf`)} : il reprend tous les versements précédents.</div>`;
       }
       await loadCashPayments();
     });
@@ -1894,7 +1894,7 @@ async function submitPayment(event) {
     const success = document.querySelector("#pay-success");
     if (success) {
       const costumeNote = result.costume?.today ? ` Costume versé : ${gnf(result.costume.today)}, reste costume ${gnf(result.costume.reste)}.` : "";
-      success.innerHTML = `<div class="banner">Paiement enregistré. Reçu <a href="/api/recus/${result.receiptId}.pdf" target="_blank">${esc(result.receiptNumber)}</a>. Reste après paiement : ${gnf(result.after.reste)}. ${result.after.reste <= 0 ? "Mention du reçu : PAYÉ." : "Mention du reçu : ACOMPTE REÇU."}${costumeNote}</div>`;
+      success.innerHTML = `<div class="banner">Paiement enregistré. Reçu <a href="/api/recus/${result.receiptId}.pdf" target="_blank">${esc(result.receiptNumber)}</a>${printButton(`/api/recus/${result.receiptId}.pdf`)}. Reste après paiement : ${gnf(result.after.reste)}. ${result.after.reste <= 0 ? "Mention du reçu : PAYÉ." : "Mention du reçu : ACOMPTE REÇU."}${costumeNote}</div>`;
     }
     const costumeInput = document.querySelector("#pay-form [name=costumeAmount]");
     if (costumeInput) costumeInput.value = "";
@@ -2082,24 +2082,60 @@ function longFrenchDate(iso) {
   return `${day === 1 ? "1er" : day} ${months[month - 1].toLowerCase()} ${year}`;
 }
 
-function printDocument(url) {
-  document.querySelector("#print-frame")?.remove();
-  const frame = document.createElement("iframe");
-  frame.id = "print-frame";
-  frame.className = "print-frame";
-  frame.title = "Impression";
-  frame.src = url;
-  frame.addEventListener("load", () => {
+function printButton(url) {
+  return ` <button class="print-link" type="button" data-print-url="${esc(url)}">Imprimer</button>`;
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-print-url]");
+  if (!button) return;
+  event.preventDefault();
+  printDocument(button.dataset.printUrl);
+});
+
+/** Onglet ouvert pendant le clic : un onglet ouvert après une réponse du serveur serait bloqué par le navigateur. */
+function openPrintTab() {
+  const tab = window.open("", "_blank");
+  if (tab) tab.document.title = "Impression…";
+  return tab;
+}
+
+/**
+ * Le PDF s'ouvre dans un onglet puis le dialogue d'impression du système s'affiche, avec les imprimantes
+ * installées sur ce poste, sous Windows comme sous macOS. Un cadre caché ne marche pas : Edge, Chrome
+ * et Firefox sous Windows n'y impriment pas un PDF.
+ */
+function printDocument(url, tab = null) {
+  const win = tab && !tab.closed ? tab : window.open(url, "_blank");
+  if (!win) {
+    saved("Le navigateur a bloqué l'onglet d'impression. Autorisez les fenêtres pour ce site, puis recommencez.");
+    return;
+  }
+  if (win === tab) win.location.href = url;
+  let tries = 0;
+  const timer = setInterval(() => {
+    tries += 1;
+    if (win.closed || tries > 80) {
+      clearInterval(timer);
+      return;
+    }
+    let ready = false;
+    try {
+      ready = win.location.href !== "about:blank" && win.document.readyState === "complete";
+    } catch {
+      clearInterval(timer);
+      return;
+    }
+    if (!ready) return;
+    clearInterval(timer);
     setTimeout(() => {
       try {
-        frame.contentWindow.focus();
-        frame.contentWindow.print();
-      } catch {
-        window.open(url, "_blank");
-      }
-    }, 400);
-  }, { once: true });
-  document.body.appendChild(frame);
+        win.focus();
+        win.print();
+      } catch { /* le bouton Imprimer du lecteur PDF reste disponible */ }
+    }, 1200);
+  }, 250);
+  saved("Document ouvert dans un nouvel onglet. Si le dialogue d'impression ne s'affiche pas, utilisez l'icône d'imprimante du lecteur PDF (Ctrl+P sous Windows, Cmd+P sur Mac).");
 }
 
 function dischargeText(values) {
@@ -2219,8 +2255,8 @@ async function showExpenses(screen) {
       saved(caught.message);
     }
   }));
-  document.querySelector("#new-expense").addEventListener("click", () => openExpenseForm(defaults, (expense) => {
-    printDocument(`/api/depenses/${expense.id}.pdf`);
+  document.querySelector("#new-expense").addEventListener("click", () => openExpenseForm(defaults, (expense, tab) => {
+    printDocument(`/api/depenses/${expense.id}.pdf`, tab);
     showExpenses(screen);
   }));
 }
@@ -2313,12 +2349,14 @@ function openExpenseForm(defaults, onCreated) {
     }
     const button = form.querySelector("[type=submit]");
     button.disabled = true;
+    const tab = openPrintTab();
     try {
       const result = await api("/api/depenses", { method: "POST", body: JSON.stringify(current) });
       dialog.close();
       saved(`Décharge ${result.expense.number} enregistrée`);
-      onCreated(result.expense);
+      onCreated(result.expense, tab);
     } catch (caught) {
+      tab?.close();
       error.hidden = false;
       error.textContent = caught.message;
       button.disabled = false;

@@ -586,6 +586,10 @@ code { font-size: 0.95rem; }
   font-size: 1.05rem;
 }
 .impression-lancer:disabled { background: #c9c4b8; cursor: not-allowed; }
+.impression-locale { display: grid; gap: 0.55rem; margin-top: 1.1rem; padding-top: 1rem; border-top: 1px dashed #d9d1c3; }
+.impression-locale form { margin: 0; }
+.impression-locale .bouton-secondaire { width: 100%; }
+.note-locale { color: #0d5c32; font-weight: 600; }
 
 @media (max-width: 800px) {
   .fiche, .impression-scene, .impression-ligne { grid-template-columns: 1fr; }

@@ -3,7 +3,7 @@
 {% block contenu %}
 <section class="bloc">
   <h1>Lot d'impression</h1>
-  <p class="intro">Chaque carte sort déjà imprimée des deux côtés. Le fichier envoie le recto (la photo), puis le verso, à la taille exacte 85,6 × 54 mm. Dans le pilote Evolis : couleur, recto-verso, 100 %, sans ajuster à la page.</p>
+  <p class="intro">Chaque carte sort déjà imprimée des deux côtés. Le fichier envoie le recto (la photo), puis le verso, à la taille exacte 85,6 × 54 mm. Dans le pilote Evolis : couleur, recto-verso, 100 %, sans ajuster à la page. « Imprimer depuis cet ordinateur » marche sous Windows comme sur Mac, avec les imprimantes installées sur le poste.</p>
   <form method="get" class="filtres">
     <select name="filiere" required>
       <option value="">École</option>
@@ -39,8 +39,9 @@
     {% endif %}
     {% if inclus %}
       <div class="actions">
+        <button type="button" class="bouton" data-imprimer-pdf="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}&inline=1" data-note="note-lot">Imprimer depuis cet ordinateur</button>
         <a class="bouton" href="/admin/lot/apercu?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">Voir le lot avec la règle</a>
-        <a class="bouton" href="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">Télécharger le PDF du lot</a>
+        <a class="bouton bouton-secondaire" href="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">Télécharger le PDF du lot</a>
         <form method="post" action="/admin/lot/imprime">
           <input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="filiere" value="{{ filiere }}">
@@ -48,6 +49,7 @@
           <button type="submit" class="bouton-secondaire">Marquer ce lot comme imprimé</button>
         </form>
       </div>
+      <p id="note-lot" class="aide" hidden></p>
     {% endif %}
   {% endif %}
 </section>

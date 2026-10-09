@@ -851,18 +851,20 @@ def imprimee(
     etudiant_id: int,
     request: Request,
     csrf: str = Form(""),
+    retour: str = Form(""),
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
     etudiant = _etudiant(db, etudiant_id)
-    _exiger_csrf(request, csrf, f"/admin/etudiants/{etudiant_id}")
+    destination = f"/admin/impression?etudiant={etudiant_id}" if retour == "impression" else f"/admin/etudiants/{etudiant_id}"
+    _exiger_csrf(request, csrf, destination)
     carte = carte_courante(db, etudiant.id)
     if carte is None:
         flash(request, "erreur", "Aucune carte à marquer.")
-        raise Redirection(f"/admin/etudiants/{etudiant_id}")
+        raise Redirection(destination)
     marquer_imprimee(db, carte, admin.id, "Marquée imprimée une par une")
     flash(request, "ok", "Carte marquée comme imprimée dans le journal.")
-    raise Redirection(f"/admin/etudiants/{etudiant_id}")
+    raise Redirection(destination)
 
 
 @router.get("/etudiants/{etudiant_id}/photo")
@@ -993,7 +995,10 @@ def lot_pdf(
         contenu,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="lot-{_slug(filiere)}-{annee}.pdf"',
+            "Content-Disposition": (
+                f'{"inline" if request.query_params.get("inline") else "attachment"}; '
+                f'filename="lot-{_slug(filiere)}-{annee}.pdf"'
+            ),
             "Cache-Control": "no-store",
         },
     )

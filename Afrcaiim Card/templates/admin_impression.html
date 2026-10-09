@@ -5,7 +5,7 @@
   <header class="impression-entete">
     <p class="surtitre">Cartes étudiantes</p>
     <h1>Impression</h1>
-    <p class="intro">La carte part à taille réelle, en couleur, vers l'imprimante choisie : toutes les imprimantes installées sur les ordinateurs du bureau reliés au site apparaissent ici.</p>
+    <p class="intro">La carte part à taille réelle, en couleur. Depuis n'importe quel ordinateur, Windows ou Mac, « Imprimer depuis cet ordinateur » ouvre le dialogue d'impression avec les imprimantes installées sur ce poste. Le relais du bureau reste disponible à droite.</p>
     {% if user.role == "admin" %}<p class="actions"><a class="bouton bouton-secondaire" href="/admin/postes">Ordinateurs d'impression</a></p>{% endif %}
   </header>
 
@@ -38,6 +38,18 @@
           <li>Échelle 100 %</li>
           <li>Couleurs RVB</li>
         </ul>
+        {% if not raison %}
+          <div class="impression-locale">
+            <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1" data-note="note-locale">Imprimer depuis cet ordinateur</button>
+            <p class="impression-note">Windows ou Mac : choisissez l'imprimante installée sur ce poste (Primacy 2 pour les cartes), couleur, recto-verso bord long, taille réelle 100 %, sans « ajuster à la page ».</p>
+            <p id="note-locale" class="impression-note note-locale" hidden></p>
+            <form method="post" action="/admin/etudiants/{{ choisi.id }}/imprimee">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="retour" value="impression">
+              <button type="submit" class="bouton-secondaire">Marquer comme imprimée</button>
+            </form>
+          </div>
+        {% endif %}
       </article>
 
       <form method="post" action="/admin/impression" class="panneau impression-reglages">
@@ -66,7 +78,7 @@
 
         {% if not imprimantes %}
           <p class="flash flash-avertissement">
-            Aucune imprimante en ligne. L'ordinateur du bureau où la Primacy 2 est branchée doit être allumé, avec le relais d'impression en marche{% if postes %} ({% for poste in postes if poste.actif %}{{ poste.nom }} : {{ "en ligne" if en_ligne(poste) else "hors ligne" }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}. Rechargez ensuite cette page.
+            Aucun relais en ligne : utilisez « Imprimer depuis cet ordinateur », à gauche. Pour passer par le relais, l'ordinateur du bureau où la Primacy 2 est branchée doit être allumé, avec le relais d'impression en marche{% if postes %} ({% for poste in postes if poste.actif %}{{ poste.nom }} : {{ "en ligne" if en_ligne(poste) else "hors ligne" }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}. Rechargez ensuite cette page.
           </p>
         {% else %}
           <p id="note-primacy" class="impression-note" {% if not preferee %}hidden{% endif %}>Pilote Evolis reconnu. Le travail part en recto-verso, bord long.</p>
@@ -102,7 +114,7 @@
         </div>
         <p id="detail-duplex" class="impression-note"></p>
 
-        <button type="submit" class="impression-lancer" {% if raison or not imprimantes %}disabled{% endif %}>Imprimer la carte</button>
+        <button type="submit" class="impression-lancer" {% if raison or not imprimantes %}disabled{% endif %}>Imprimer par le relais du bureau</button>
       </form>
     </div>
   {% endif %}
