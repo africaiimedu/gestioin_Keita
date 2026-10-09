@@ -290,6 +290,15 @@ button, .bouton {
   align-items: end;
 }
 .grille-form > .aide { grid-column: 1 / -1; margin: 0; }
+.mot-de-passe { display: flex; gap: 0.45rem; align-items: stretch; width: 100%; }
+.mot-de-passe input { flex: 1; min-width: 0; }
+button.oeil, .login button.oeil {
+  flex: none; width: 44px; min-height: 42px; padding: 0 !important; border-radius: 10px !important;
+  background: #f08a1a; color: #fff; box-shadow: none; transform: none;
+}
+button.oeil:hover, .login button.oeil:hover { background: #d97810; transform: none; box-shadow: none; }
+button.oeil:focus-visible { outline: 3px solid rgba(240, 138, 26, 0.35); outline-offset: 2px; }
+button.oeil svg { width: 22px; height: 22px; }
 .grille-form > button {
   grid-column: 1 / -1;
   justify-self: start;

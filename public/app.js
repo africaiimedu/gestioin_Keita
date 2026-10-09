@@ -353,6 +353,41 @@ function render() {
   rememberPlace();
 }
 
+const EYE_OPEN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
+const EYE_SHUT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20 20 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+
+/** Chaque champ mot de passe reçoit un œil pour l'afficher ou le masquer. */
+function addPasswordEye(input) {
+  if (input.dataset.eye || input.closest(".acc-pass")) return;
+  input.dataset.eye = "1";
+  const row = document.createElement("span");
+  row.className = "password-row";
+  input.replaceWith(row);
+  row.append(input);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "eye";
+  row.append(button);
+  const paint = () => {
+    const shown = input.type === "text";
+    const label = shown ? "Masquer le mot de passe" : "Afficher le mot de passe";
+    button.innerHTML = shown ? EYE_SHUT : EYE_OPEN;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-pressed", String(shown));
+    button.title = label;
+  };
+  button.addEventListener("click", () => {
+    input.type = input.type === "password" ? "text" : "password";
+    paint();
+    input.focus();
+  });
+  paint();
+}
+
+const eyeAllPasswords = () => document.querySelectorAll('input[type="password"]:not([data-eye])').forEach(addPasswordEye);
+new MutationObserver(eyeAllPasswords).observe(document.body, { childList: true, subtree: true });
+eyeAllPasswords();
+
 function passwordGate() {
   return `<div class="login-photo"><div class="login-stack">
       <section class="login-card">
@@ -387,12 +422,7 @@ function loginHtml() {
               <label>Nom d'utilisateur ou e-mail</label>
               <input name="email" type="text" autocomplete="username" required>
               <label>Mot de passe</label>
-              <div class="password-row">
-                <input name="password" type="password" autocomplete="current-password" placeholder="Saisissez votre mot de passe" required>
-                <button class="eye" id="toggle-password" type="button" aria-label="Afficher le mot de passe">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-                </button>
-              </div>
+              <input name="password" type="password" autocomplete="current-password" placeholder="Saisissez votre mot de passe" required>
               <p class="forgot"><button type="button" id="forgot">Mot de passe oublié ?</button></p>
               <p id="forgot-note" class="muted" hidden>Contactez la scolarité pour recevoir un nouveau mot de passe.</p>
               <p id="login-error" class="error" hidden></p>
@@ -643,10 +673,6 @@ function bind() {
     const glass = document.querySelector(".login-glass");
     const open = glass.classList.toggle("is-open");
     document.querySelector("#welcome-toggle").setAttribute("aria-expanded", open ? "true" : "false");
-  });
-  document.querySelector("#toggle-password")?.addEventListener("click", () => {
-    const input = document.querySelector("[name=password]");
-    input.type = input.type === "password" ? "text" : "password";
   });
   document.querySelector("#forgot")?.addEventListener("click", () => {
     const note = document.querySelector("#forgot-note");

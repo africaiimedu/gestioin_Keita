@@ -102,7 +102,11 @@ p, li, label, td, th, button, span, a { overflow-wrap: normal; word-break: norma
 .login-card form { text-align: left; }
 .login-card .btn { width: 100%; margin-top: 8px; background: #0e5c43; }
 .password-row { display: flex; gap: 8px; align-items: center; }
-.password-row input { flex: 1; background: rgba(255, 255, 255, 0.72); }
+.password-row input { flex: 1; min-width: 0; margin: 0 !important; }
+.login-card .password-row input { background: rgba(255, 255, 255, 0.72); }
+.acc-me-form .password-row, .acc-dialog .password-row { margin-top: 6px; }
+.eye:hover { background: #d97810; }
+.eye:focus-visible { outline: 3px solid rgba(240, 138, 26, 0.35); outline-offset: 2px; }
 .login-glass input { background: rgba(255, 255, 255, 0.72); border-color: rgba(255, 255, 255, 0.8); }
 .eye {
   width: 46px;
