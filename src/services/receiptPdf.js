@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
+import { amountInWords } from "../finance/index.js";
 function money(amount) {
   const value = Math.trunc(Number(amount) || 0);
   const sign = value < 0 ? "-" : "";
@@ -289,7 +290,7 @@ function drawCostume(doc, y, costume) {
   const quantity = Math.max(1, Number(costume.quantity || 1));
   const unit = Number(costume.unitPrice || costume.price);
   doc.roundedRect(LEFT, y, WIDTH, 50, 8).lineWidth(0.9).strokeColor("#cfdcd4").stroke();
-  write(doc, quantity > 1 ? `COSTUMES (${quantity})` : "COSTUME", LEFT + 12, y + 8, 7.5, "Helvetica-Bold", LEAF, 120);
+  write(doc, `${quantity > 1 ? `COSTUMES (${quantity})` : "COSTUME"} — HORS SCOLARITÉ`, LEFT + 12, y + 8, 7.5, "Helvetica-Bold", LEAF, 260);
   write(doc, settled ? "Payé" : (costume.paidAfter > 0 ? "Partiellement payé" : "Non payé"), RIGHT - 132, y + 8, 7.5, "Helvetica-Bold", settled ? LEAF : GOLD_TEXT, 120, "right");
   const cells = [
     [quantity > 1 ? `${quantity} × ${money(unit)}` : "Prix du costume", money(costume.price), INK],
@@ -335,8 +336,7 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
   const costume = snapshot.costume || null;
   const history = !costume && Array.isArray(snapshot.history) ? snapshot.history : [];
   const compact = Boolean(costume) || history.length > 0;
-  const costumeToday = Number(costume?.today || 0);
-  const total = Number(snapshot.totalAmount ?? snapshot.amount ?? 0);
+  const tuitionToday = Number(snapshot.amount || 0);
   const paidBefore = Math.max(0, Number(snapshot.paidAfter || 0) - Number(snapshot.amount || 0));
   const settled = Number(snapshot.resteAfter || 0) <= 0 && !cancelled;
   const sealTitle = cancelled ? "ANNULÉ" : (settled ? "PAYÉ" : "ACOMPTE REÇU");
@@ -349,11 +349,10 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
     number: receipt.number,
     dateIso: snapshot.paidOn,
     title: "REÇU DE PAIEMENT",
-    subtitle: costumeToday > 0 ? "Frais de scolarité et costume" : "Frais de scolarité",
+    subtitle: costume ? "Frais de scolarité — le costume est compté à part" : "Frais de scolarité",
   });
   let y = drawIdentity(doc, snapshot, 181);
-  const split = costumeToday > 0 ? [["Scolarité", money(snapshot.amount)], ["Costume", money(costumeToday)]] : [];
-  y = drawHero(doc, y, "VERSÉ CE JOUR", total, split) + (compact ? 18 : 22);
+  y = drawHero(doc, y, costume ? "SCOLARITÉ VERSÉE CE JOUR" : "VERSÉ CE JOUR", tuitionToday) + (compact ? 18 : 22);
 
   const step = compact ? 23 : 26.5;
   const rows = [
@@ -377,9 +376,9 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
 
   if (costume) y = drawCostume(doc, y, costume) + 14;
 
-  write(doc, "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE À", LEFT, y, 7.5, "Helvetica-Bold", GREEN, WIDTH);
+  write(doc, costume ? "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE POUR LA SCOLARITÉ À" : "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE À", LEFT, y, 7.5, "Helvetica-Bold", GREEN, WIDTH);
   doc.fillColor(INK).font("Times-Italic").fontSize(compact ? 12 : 13);
-  doc.text(filled(snapshot.amountInWords, "Montant en lettres non disponible"), LEFT, y + 16, { width: WIDTH, height: 30 });
+  doc.text(tuitionToday > 0 ? amountInWords(tuitionToday) : filled(snapshot.amountInWords, "Montant en lettres non disponible"), LEFT, y + 16, { width: WIDTH, height: 30 });
   y += compact ? 44 : 52;
 
   write(doc, "Mode de paiement", LEFT, y, 10, "Helvetica", MUTED, 250);

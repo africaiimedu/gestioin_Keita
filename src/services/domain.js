@@ -751,8 +751,7 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
       level: current.student.level,
       year: current.student.year_label,
       amount,
-      amountInWords: amountInWords(amount + costumeAmount),
-      totalAmount: amount + costumeAmount,
+      amountInWords: amountInWords(amount),
       costume: costumeBefore.price > 0 ? {
         unitPrice: costumeBefore.unitPrice,
         quantity: costumeBefore.quantity,
@@ -975,7 +974,6 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
     tuition: rows.reduce((sum, row) => sum + row.tuitionPaid, 0),
     costume: rows.reduce((sum, row) => sum + row.costumePaid, 0),
   };
-  totals.amount = totals.tuition + totals.costume;
   return { students: rows, totals };
 }
 

@@ -1478,7 +1478,7 @@ function openPaymentUpdate(record, onDone) {
         <div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th></tr></thead><tbody>
           ${history.map((item) => `<tr class="${item.status === "annule" ? "is-cancelled" : ""}">
             <td class="when-cell">${esc(frenchDay(item.paid_on))}</td>
-            <td class="num"><strong>${gnf(item.amount)}</strong>${item.costume_amount ? `<br><span class="muted">+ costume ${gnf(item.costume_amount)}</span>` : ""}</td>
+            <td class="num"><strong>${gnf(item.amount)}</strong>${item.costume_amount ? `<br><span class="muted">Costume à part : ${gnf(item.costume_amount)}</span>` : ""}</td>
             <td>${esc(methodLabel(item.method))}${item.status === "annule" ? ` <span class="tag trop_percu">Annulé</span>` : ""}</td>
             <td>${item.receipt_number ? `<a href="/api/recus/${item.receipt_id}.pdf" target="_blank">${esc(item.receipt_number)}</a>` : `<span class="muted">Avant l'application</span>`}</td>
           </tr>`).join("")}
@@ -1599,17 +1599,17 @@ async function loadCashPayments() {
   }
   const { totals } = data;
   const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
-  const summary = `${plural(totals.students, "étudiant")} · ${plural(totals.payments, "versement")} · ${gnf(totals.amount)} encaissés`;
+  const summary = `${plural(totals.students, "étudiant")} · ${plural(totals.payments, "versement")} · ${gnf(totals.tuition)} de scolarité${totals.costume ? ` · ${gnf(totals.costume)} de costumes à part` : ""}`;
   box.innerHTML = `<div class="cash-tools">
       <input id="cash-search" type="search" placeholder="Nom, matricule ou numéro de reçu" aria-label="Rechercher un étudiant">
       <p class="cash-count" id="cash-count">${summary}</p>
     </div>
-    <p class="muted cash-legend">Total des versements validés, toutes dates confondues : scolarité ${gnf(totals.tuition)}${totals.costume ? ` + costume ${gnf(totals.costume)}` : ""}. Les versements saisis à l'import comptent aussi.${totals.cancelled ? ` ${plural(totals.cancelled, "versement annulé")} non compté${totals.cancelled > 1 ? "s" : ""}.` : ""}</p>
+    <p class="muted cash-legend">Total des versements validés, toutes dates confondues : scolarité ${gnf(totals.tuition)}${totals.costume ? ` ; costumes, comptés à part : ${gnf(totals.costume)}` : ""}. Les versements saisis à l'import comptent aussi.${totals.cancelled ? ` ${plural(totals.cancelled, "versement annulé")} non compté${totals.cancelled > 1 ? "s" : ""}.` : ""}</p>
     <div class="table-scroll"><table class="cash-table"><thead><tr><th>Dernier versement</th><th>Étudiant</th><th class="num">Total versé</th><th class="num">Reste à payer</th><th>Dernier reçu</th><th class="actions">Action</th></tr></thead><tbody>
     ${data.students.map((row) => `<tr data-find="${esc(`${row.name} ${row.matricule} ${row.history.map((item) => item.receipt_number || "").join(" ")}`.toLowerCase())}">
       <td class="when-cell">${esc(frenchDay(row.lastPaidOn))}</td>
       <td><div class="who-cell"><strong>${esc(row.name)}</strong><span class="muted">${esc(row.matricule)}</span></div></td>
-      <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">+ costume ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
+      <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">Costume à part : ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
       <td class="num">${row.reste ? gnf(row.reste) : `<span class="tag solde">Soldé</span>`}</td>
       <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>` : `<span class="muted">Avant l'application</span>`}</td>
       <td class="actions"><div class="row-actions">${row.lastPaymentId && allowed("payment.create") ? `<button data-update="${row.studentId}" class="btn secondary" type="button">Mettre à jour</button>` : ""}</div></td>
@@ -1716,12 +1716,12 @@ async function refreshPreview() {
       reference: document.querySelector("[name=reference]").value,
     }) });
     const costume = data.costume;
-    document.querySelector("#preview").innerHTML = `<p>Montant dû : <strong>${gnf(data.after.due)}</strong></p>
+    document.querySelector("#preview").innerHTML = `<p>Scolarité versée ce jour : <strong>${gnf(amount)}</strong></p>
+      <p>Montant dû : <strong>${gnf(data.after.due)}</strong></p>
       <p>Cumul versé : <strong>${gnf(data.after.paid)}</strong></p>
       <p>Reste après ce paiement : <strong>${gnf(data.after.reste)}</strong></p>
       <p>Statut après : ${esc(data.after.statusLabel)}</p>
-      ${costume?.price ? `<p>Costume${costume.quantity > 1 ? `s : ${costume.quantity} × ${gnf(costume.unitPrice)} = ${gnf(costume.price)}` : ` : prix ${gnf(costume.price)}`} · déjà versé ${gnf(costume.paid)} · reste après ${gnf(costume.resteAfter)}</p>` : ""}
-      ${costume?.today ? `<p>Total encaissé ce jour : <strong>${gnf(amount + costume.today)}</strong></p>` : ""}
+      ${costume?.price ? `<p>Costume (à part, hors scolarité)${costume.quantity > 1 ? ` : ${costume.quantity} × ${gnf(costume.unitPrice)} = ${gnf(costume.price)}` : ` : prix ${gnf(costume.price)}`} · versé ce jour ${gnf(costume.today || 0)} · déjà versé ${gnf(costume.paid)} · reste après ${gnf(costume.resteAfter)}</p>` : ""}
       ${data.warnings.map((warning) => `<p class="limited">${esc(warning)}</p>`).join("")}`;
   } catch (error) {
     document.querySelector("#preview").innerHTML = `<p class="error">${esc(error.message)}</p>`;
