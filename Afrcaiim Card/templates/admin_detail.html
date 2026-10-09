@@ -23,8 +23,9 @@
       <p class="aide">Le portrait est recadré au centre, au format carte. Placez le visage au milieu de la photo.</p>
     </div>
 
-    <form method="post" action="/admin/etudiants/{{ etudiant.id }}" class="panneau">
+    <form method="post" action="/admin/etudiants/{{ etudiant.id }}" class="panneau" id="fiche-etudiant">
       <input type="hidden" name="csrf" value="{{ csrf }}">
+      <p class="aide">Matricule : <strong>{{ etudiant.matricule }}</strong>. Il se change dans la fiche Scolarité (bouton « Modifier le matricule ») ; la carte suit automatiquement.</p>
       <label>Prénom <input name="prenom" value="{{ etudiant.prenom }}" required maxlength="80"></label>
       <label>Nom <input name="nom" value="{{ etudiant.nom }}" required maxlength="80"></label>
       <label>Sexe
@@ -41,16 +42,18 @@
         </select>
       </label>
       <p class="aide">Année académique : {{ annee_courante() }}. Valide trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
-      <label>E-mail professionnel
-        <input name="email" type="email" value="{{ etudiant.email or '' }}" maxlength="120" placeholder="prenom.nom@univ-africaiim.com">
+      <label>E-mail étudiant
+        <input name="email" type="email" value="{{ etudiant.email or compte or '' }}" maxlength="120" placeholder="prenom.nom@univ-africaiim.com" data-auto="{{ 'non' if (etudiant.email or compte) else 'oui' }}">
       </label>
+      <p class="aide">Rempli automatiquement : prénom le plus court, point, nom, @univ-africaiim.com.</p>
       <button type="submit">Enregistrer la fiche</button>
     </form>
+    <script src="/static/fiche-email.js?v=1" defer></script>
   </div>
 
   <h2>Cantine</h2>
   <p>Solde actuel : <strong>{{ solde }}</strong> · prix d'un repas : {{ prix_repas }}</p>
-  <p class="aide">Le QR de la carte ouvre ce solde. La validation débite un repas et envoie le montant à l'e-mail professionnel.</p>
+  <p class="aide">Le QR de la carte ouvre ce solde. La validation débite un repas et envoie le montant à l'e-mail étudiant.</p>
   <form method="post" action="/admin/etudiants/{{ etudiant.id }}/cantine" class="panneau etroit">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label>Créditer le compte (GNF)

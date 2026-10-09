@@ -22,7 +22,7 @@
         <p>Compte de {{ nom }}</p>
         <p class="solde">{{ solde }}</p>
         <p>Prix du repas : {{ prix }}</p>
-        {% if email %}<p>E-mail professionnel : {{ email }}</p>{% endif %}
+        {% if email %}<p>E-mail étudiant : {{ email }}</p>{% endif %}
         {% if autorise and role in ["cuisiniere", "admin"] and peut %}
           <form method="post" action="/verif/{{ matricule }}/repas">
             <input type="hidden" name="csrf" value="{{ csrf }}">

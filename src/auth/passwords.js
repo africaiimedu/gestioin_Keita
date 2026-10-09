@@ -6,7 +6,7 @@ const PERMISSIONS = {
     "dashboard.read", "student.read", "student.write", "student.status",
     "payment.create", "payment.cancel", "receipt.read", "report.read",
     "reminder.create", "import.run", "audit.read",     "fee.write", "settings.write",
-    "user.write", "cards.manage", "kitchen.manage",
+    "user.write", "cards.manage", "kitchen.manage", "expense.write",
   ],
   gestionnaire: [
     "dashboard.read", "student.read", "student.write", "payment.create",
@@ -24,6 +24,7 @@ export const RIGHTS = [
   ["receipt.read", "Imprimer les reçus"],
   ["reminder.create", "Noter une relance"],
   ["report.read", "Journal de caisse"],
+  ["expense.write", "Dépenses et décharges"],
   ["import.run", "Importer un fichier"],
   ["audit.read", "Journal d'audit"],
   ["fee.write", "Modifier le barème"],

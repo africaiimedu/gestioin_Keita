@@ -13,16 +13,17 @@ export function ficheCarte(student) {
   if (!NOM.test(nom)) return { ok: false, matricule, error: "Le nom n'est pas reconnu par l'application de cartes." };
   if (!MATRICULE.test(matricule)) return { ok: false, matricule, error: "Le matricule n'est pas reconnu par l'application de cartes." };
   if (!ecole) return { ok: false, matricule, error: "L'école est absente." };
-  let email = String(student.email || "").trim().toLowerCase();
-  if (email && !EMAIL.test(email)) email = "";
   const compte = String(student.account_email || "").trim().toLowerCase();
+  let email = compte || String(student.email || "").trim().toLowerCase();
+  if (email && !EMAIL.test(email)) email = "";
   return { ok: true, payload: { prenom, nom, matricule, ecole, email, ...(compte ? { compte } : {}) } };
 }
 
-export async function pushStudentToCard(student) {
+export async function pushStudentToCard(student, { previous = null } = {}) {
   if (!cardConfigured() || !cardToken()) return { ok: false, skipped: true, matricule: student.matricule, error: "La liaison avec les cartes n'est pas configurée." };
   const fiche = ficheCarte(student);
   if (!fiche.ok) return fiche;
+  if (previous && previous !== fiche.payload.matricule) fiche.payload.ancien_matricule = String(previous).toUpperCase();
   await cardReady();
   const response = await cardCall("/api/inscriptions", { method: "POST", body: JSON.stringify(fiche.payload) });
   if (!response.status) return { ok: false, matricule: fiche.payload.matricule, error: "L'application de cartes ne répond pas." };

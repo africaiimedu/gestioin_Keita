@@ -51,25 +51,46 @@ function drawUniversityStamp(doc, x, y, boxWidth, boxHeight) {
   doc.restore();
 }
 
-function arcText(doc, text, radius, fromDeg, toDeg, size) {
+const SEAL_FONT = "Helvetica-Bold";
+const SEAL_ASCENT = 0.718;
+const SEAL_CAP = 0.72;
+const SEAL_ACCENT = 0.2;
+
+function arcWidth(doc, text, size) {
+  doc.font(SEAL_FONT).fontSize(size);
   const chars = Array.from(text);
-  doc.font("Helvetica-Bold").fontSize(size);
-  const gap = size * 0.06;
+  return chars.reduce((sum, ch) => sum + doc.widthOfString(ch), 0) + size * 0.14 * Math.max(0, chars.length - 1);
+}
+
+/**
+ * Texte droit et lisible le long du cercle, centré sur le haut (-90°) ou sur le bas (90°).
+ * En haut, la ligne de base est à l'intérieur ; en bas, à l'extérieur : les lettres ne sont jamais à l'envers.
+ */
+function arcText(doc, text, baseline, size, side) {
+  const chars = Array.from(text);
+  doc.font(SEAL_FONT).fontSize(size);
+  const spacing = size * 0.14;
   const widths = chars.map((ch) => doc.widthOfString(ch));
-  const total = widths.reduce((sum, w) => sum + w, 0) + gap * Math.max(0, chars.length - 1);
-  const from = (fromDeg * Math.PI) / 180;
-  const to = (toDeg * Math.PI) / 180;
-  let cursor = from + (to - from - total / radius) / 2;
+  const middle = side === "top" ? baseline + size * SEAL_CAP / 2 : baseline - size * SEAL_CAP / 2;
+  const total = arcWidth(doc, text, size) / middle;
+  const direction = side === "top" ? 1 : -1;
+  let cursor = (side === "top" ? -Math.PI / 2 : Math.PI / 2) - direction * total / 2;
   chars.forEach((ch, index) => {
-    const w = widths[index];
-    const mid = cursor + w / (2 * radius);
+    const step = widths[index] / middle;
+    const angle = cursor + direction * step / 2;
     doc.save();
-    doc.translate(Math.cos(mid) * radius, Math.sin(mid) * radius);
-    doc.rotate((mid * 180) / Math.PI + 90);
-    doc.text(ch, -w / 2, -size * 0.78, { lineBreak: false });
+    doc.translate(Math.cos(angle) * baseline, Math.sin(angle) * baseline);
+    doc.rotate((angle * 180) / Math.PI + (side === "top" ? 90 : -90));
+    doc.text(ch, -widths[index] / 2, -size * SEAL_ASCENT, { lineBreak: false });
     doc.restore();
-    cursor += (w + gap) / radius;
+    cursor += direction * (step + spacing / middle);
   });
+}
+
+/** Plus grande taille (bornée) pour que le texte tienne dans l'angle donné, à ce rayon. */
+function arcFit(doc, text, radius, spanDeg, maxSize) {
+  const room = radius * (spanDeg * Math.PI) / 180;
+  return Math.min(maxSize, maxSize * room / arcWidth(doc, text, maxSize));
 }
 
 function stampStar(doc, x, y, radius) {
@@ -84,34 +105,53 @@ function stampStar(doc, x, y, radius) {
   doc.closePath().fill();
 }
 
-function drawSeal(doc, x, y, radius, title, year, color) {
+function drawSeal(doc, x, y, radius, title, year, color, { top = "UNIVERSITÉ AFRICAIIM", bottom = "SCOLARITÉ" } = {}) {
+  const outer = radius - 3.2;
+  const gap = Math.max(1.2, radius * 0.035);
+  const topSize = arcFit(doc, top, outer - radius * 0.14, 150, radius * 0.19);
+  const bottomSize = arcFit(doc, bottom, outer - radius * 0.14, 110, radius * 0.19);
+  const ringSize = Math.max(topSize, bottomSize);
+  const inner = outer - gap * 2 - ringSize * (SEAL_CAP + SEAL_ACCENT);
+
   doc.save();
   doc.translate(x, y);
-  doc.rotate(-12);
-  doc.fillColor(color).opacity(0.08);
+  doc.rotate(-10);
+  doc.fillColor("#ffffff").opacity(1);
   doc.circle(0, 0, radius - 0.4).fill();
-  doc.opacity(0.94).strokeColor(color).fillColor(color);
-  doc.lineWidth(1.8).circle(0, 0, radius).stroke();
-  doc.lineWidth(0.65).circle(0, 0, radius - 3.6).stroke();
-  const ring = radius - 8.4;
-  const ringSize = Math.max(5, radius * 0.2);
-  arcText(doc, "AFRICAIIM", ring, -156, -24, ringSize);
-  arcText(doc, "SCOLARITÉ", ring, 24, 156, ringSize * 0.92);
-  stampStar(doc, -(radius - 5.2), 0, 2.15);
-  stampStar(doc, radius - 5.2, 0, 2.15);
+  doc.fillColor(color).opacity(0.07);
+  doc.circle(0, 0, radius - 0.4).fill();
+  doc.opacity(0.95).strokeColor(color).fillColor(color);
+  doc.lineWidth(1.7).circle(0, 0, radius).stroke();
+  doc.lineWidth(0.6).circle(0, 0, outer).stroke();
+  doc.lineWidth(0.6).circle(0, 0, inner).stroke();
+
+  arcText(doc, top, inner + gap, topSize, "top");
+  arcText(doc, bottom, outer - gap, bottomSize, "bottom");
+  const starAt = (outer + inner) / 2;
+  stampStar(doc, -starAt, 0, Math.min(2.2, (outer - inner) * 0.3));
+  stampStar(doc, starAt, 0, Math.min(2.2, (outer - inner) * 0.3));
+
   const parts = title.split(" ").filter(Boolean);
-  const centerSize = parts.length > 1 ? Math.max(6.4, radius * 0.26) : Math.max(8.5, radius * 0.36);
-  doc.font("Helvetica-Bold").fontSize(centerSize).fillColor(color);
-  const lineH = centerSize + 0.4;
-  let textY = -((parts.length * lineH + 6) / 2);
-  for (const line of parts) {
-    const w = doc.widthOfString(line);
-    doc.text(line, -w / 2, textY, { lineBreak: false });
-    textY += lineH;
+  const yearSize = Math.max(4.4, radius * 0.14);
+  doc.font(SEAL_FONT);
+  const widest = Math.max(...parts.map((line) => doc.fontSize(10).widthOfString(line)));
+  let centerSize = Math.min(radius * (parts.length > 1 ? 0.26 : 0.32), 10 * (inner * 1.45) / widest);
+  for (let i = 0; i < 6; i += 1) {
+    const blockHeight = parts.length * centerSize * 1.05 + yearSize + 2;
+    const halfWidth = Math.sqrt(Math.max(0, (inner - 2.5) ** 2 - (blockHeight / 2) ** 2));
+    const fit = 10 * (halfWidth * 2) / widest;
+    if (centerSize <= fit) break;
+    centerSize = fit;
   }
-  doc.font("Helvetica").fontSize(Math.max(4.4, radius * 0.15));
-  const yearW = doc.widthOfString(year);
-  doc.text(year, -yearW / 2, textY + 0.4, { lineBreak: false });
+  const lineHeight = centerSize * 1.05;
+  let textY = -((parts.length * lineHeight + yearSize + 2) / 2);
+  doc.font(SEAL_FONT).fontSize(centerSize).fillColor(color);
+  for (const line of parts) {
+    doc.text(line, -doc.widthOfString(line) / 2, textY + centerSize * (1 - SEAL_ASCENT) * 0.5, { lineBreak: false });
+    textY += lineHeight;
+  }
+  doc.font("Helvetica").fontSize(yearSize);
+  doc.text(year, -doc.widthOfString(year) / 2, textY + 2, { lineBreak: false });
   doc.restore();
   doc.x = doc.page.width / 2;
   doc.y = doc.page.height / 2;
@@ -179,7 +219,7 @@ function openDoc(format) {
   return { doc, done };
 }
 
-function drawHead(doc, { school, number, dateIso, title, subtitle }) {
+function drawHead(doc, { school, number, dateIso, title, subtitle, kind = "REÇU OFFICIEL" }) {
   const city = filled(school.city, "Conakry, Guinée");
   const town = city.split(",")[0].trim() || "Conakry";
   const site = filled(school.web, "universite-africaiim.com").replace(/^https?:\/\//, "").replace(/^www\./, "");
@@ -191,7 +231,7 @@ function drawHead(doc, { school, number, dateIso, title, subtitle }) {
   write(doc, site, 190, 80, 9.5, "Helvetica", MUTED, 220, "center");
   const boxX = RIGHT - 141;
   doc.roundedRect(boxX, 28, 141, 64, 8).lineWidth(1.1).strokeColor(GREEN).stroke();
-  write(doc, "REÇU OFFICIEL", boxX, 37, 7.5, "Helvetica", MUTED, 141, "center");
+  write(doc, kind, boxX, 37, 7.5, "Helvetica", MUTED, 141, "center");
   write(doc, number, boxX, 52, 12, "Helvetica-Bold", GREEN, 141, "center");
   write(doc, `${town}, le ${frenchDate(dateIso)}`, boxX, 74, 8.5, "Helvetica", INK, 141, "center");
   doc.moveTo(LEFT, 106).lineTo(RIGHT, 106).lineWidth(0.7).strokeColor("#dfe6e2").stroke();
@@ -246,11 +286,13 @@ function drawFoot(doc, qr, number) {
 
 function drawCostume(doc, y, costume) {
   const settled = costume.reste <= 0;
+  const quantity = Math.max(1, Number(costume.quantity || 1));
+  const unit = Number(costume.unitPrice || costume.price);
   doc.roundedRect(LEFT, y, WIDTH, 50, 8).lineWidth(0.9).strokeColor("#cfdcd4").stroke();
-  write(doc, "COSTUME", LEFT + 12, y + 8, 7.5, "Helvetica-Bold", LEAF, 120);
+  write(doc, quantity > 1 ? `COSTUMES (${quantity})` : "COSTUME", LEFT + 12, y + 8, 7.5, "Helvetica-Bold", LEAF, 120);
   write(doc, settled ? "Payé" : (costume.paidAfter > 0 ? "Partiellement payé" : "Non payé"), RIGHT - 132, y + 8, 7.5, "Helvetica-Bold", settled ? LEAF : GOLD_TEXT, 120, "right");
   const cells = [
-    ["Prix du costume", money(costume.price), INK],
+    [quantity > 1 ? `${quantity} × ${money(unit)}` : "Prix du costume", money(costume.price), INK],
     ["Versé ce jour", money(costume.today), INK],
     ["Total versé", money(costume.paidAfter), INK],
     ["Reste costume", money(costume.reste), settled ? LEAF : GOLD_TEXT],
@@ -361,65 +403,106 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
 
   drawFoot(doc, qr, receipt.number);
   drawWatermark(doc, W, 505);
-  drawSeal(doc, RIGHT - 70, 134, 36, sealTitle, yearLabel.slice(0, 9), sealColor);
+  drawSeal(doc, RIGHT - 66, 136, 40, sealTitle, yearLabel.slice(0, 9), sealColor);
   doc.end();
   return done;
 }
 
-export async function renderEnrollmentPdf({ snapshot, receipt, school, format = "a4", verifyUrl }) {
+const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+
+function longDate(iso) {
+  const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(iso || "");
+  const day = Number(match[3]);
+  return `${day === 1 ? "1er" : day} ${MONTHS[Number(match[2]) - 1]} ${match[1]}`;
+}
+
+function paragraph(doc, parts, y, size = 12.5) {
+  doc.fontSize(size);
+  parts.forEach(([text, strong], index) => {
+    doc.font(strong ? "Times-Bold" : "Times-Roman").fillColor(strong ? GREEN : INK);
+    const options = { width: WIDTH - 24, lineGap: 4, continued: index < parts.length - 1 };
+    if (index === 0) doc.text(text, LEFT + 12, y, options);
+    else doc.text(text, options);
+  });
+  return doc.y + 10;
+}
+
+function drawSignature(doc, x, y, width, title, name) {
+  doc.roundedRect(x, y, width, 118, 8).lineWidth(0.9).strokeColor("#cfdcd4").stroke();
+  doc.rect(x, y, width, 24).fill("#f2f5f3");
+  write(doc, title, x + 12, y + 8, 8, "Helvetica-Bold", LEAF, width - 24);
+  write(doc, "Nom et prénom :", x + 12, y + 34, 8.5, "Helvetica", MUTED, width - 24);
+  write(doc, name, x + 12, y + 47, 11.5, "Helvetica-Bold", INK, width - 24);
+  write(doc, "Signature :", x + 12, y + 70, 8.5, "Helvetica", MUTED, width - 24);
+  doc.moveTo(x + 12, y + 104).lineTo(x + width - 12, y + 104).lineWidth(0.6).dash(2, { space: 2 }).strokeColor("#9aa59f").stroke().undash();
+}
+
+export async function renderDischargePdf({ expense, school, verifyUrl }) {
   const qr = await QRCode.toBuffer(verifyUrl, { margin: 0, width: 240 });
-  const { doc, done } = openDoc(format);
-  const yearLabel = filled(snapshot.year, "2026-2027");
-  const scholar = Boolean(snapshot.scholar);
+  const { doc, done } = openDoc("a4");
+  const cancelled = expense.status === "annule";
+  const city = filled(expense.city, "Conakry");
+  const amount = money(expense.amount);
 
   drawHead(doc, {
     school,
-    number: receipt.number,
-    dateIso: snapshot.issuedOn,
-    title: "REÇU D'INSCRIPTION",
-    subtitle: `Confirmation d'inscription — année ${yearLabel}`,
+    number: expense.number,
+    dateIso: expense.issued_on,
+    kind: "DÉCHARGE",
+    title: "DÉCHARGE DE RESPONSABILITÉ FINANCIÈRE",
+    subtitle: `Dépense — ${filled(expense.categoryLabel, "Autre")}`,
   });
-  let y = drawIdentity(doc, snapshot, 181);
-  const details = [];
-  if (snapshot.registration) details.push(["dont frais d'inscription", scholar ? "Exonéré (boursier)" : money(snapshot.registration)]);
-  if (snapshot.costumePrice) details.push(["Costume (à part)", money(snapshot.costumePrice)]);
-  y = drawHero(doc, y, scholar ? "FRAIS ANNUELS — BOURSIER" : "FRAIS ANNUELS", snapshot.tuition, details) + 20;
 
-  write(doc, "ÉCHÉANCIER", LEFT, y, 7.5, "Helvetica-Bold", GREEN, 200);
-  y += 16;
-  doc.rect(LEFT, y, WIDTH, 22).fill("#f2f5f3");
-  write(doc, "Échéance", LEFT + 12, y + 7, 8.5, "Helvetica-Bold", MUTED, 220);
-  write(doc, "Date limite", LEFT + 250, y + 7, 8.5, "Helvetica-Bold", MUTED, 120);
-  write(doc, "Montant", RIGHT - 192, y + 7, 8.5, "Helvetica-Bold", MUTED, 180, "right");
-  y += 30;
-  const plan = (snapshot.plan || []).slice(0, 5);
-  if (!plan.length) {
-    write(doc, "Aucune échéance : frais pris en charge.", LEFT + 12, y, 10.5, "Helvetica", MUTED, 400);
-    y += 24;
+  let y = 181;
+  doc.roundedRect(LEFT, y, WIDTH, 50, 10).fill("#f2f5f3");
+  [["NATURE DE LA DÉPENSE", filled(expense.categoryLabel, "Autre")], ["FAIT À", city], ["DATE", longDate(expense.issued_on)]]
+    .forEach(([label, value], index) => {
+      const x = LEFT + 14 + index * (WIDTH / 3);
+      write(doc, label, x, y + 11, 7.5, "Helvetica", MUTED, WIDTH / 3 - 20);
+      write(doc, value, x, y + 26, 12, "Helvetica-Bold", INK, WIDTH / 3 - 20);
+    });
+  y += 66;
+
+  doc.roundedRect(LEFT, y, WIDTH, 74, 8).fill("#e6efe9");
+  doc.rect(LEFT, y, 5, 74).fill(LEAF);
+  write(doc, "SOMME REMISE", LEFT + 25, y + 16, 8, "Helvetica-Bold", LEAF, 300);
+  write(doc, amount, LEFT + 25, y + 34, 27, "Helvetica-Bold", GREEN, 330);
+  drawSeal(doc, RIGHT - 60, y + 37, 35, cancelled ? "ANNULÉE" : "SORTIE CAISSE", String(expense.issued_on || "").slice(0, 4), cancelled ? GOLD_TEXT : LEAF);
+  y += 96;
+
+  y = paragraph(doc, [
+    ["Je soussigné(e), "], [filled(expense.receiver_name, "—"), true], [", "], [filled(expense.receiver_position, "—"), true],
+    [", reconnais avoir reçu de "], [filled(expense.giver_name, "—"), true],
+    [" la somme de "], [amount, true], [" ("], [filled(expense.amountInWords, "—"), true], [")."],
+  ], y);
+  y = paragraph(doc, [["Cette somme m'a été remise au titre de : "], [filled(expense.reason, "—"), true], ["."]], y);
+  y = paragraph(doc, [[
+    "Je reconnais la réception effective de cette somme et déclare en assumer désormais l'entière responsabilité, "
+    + "la personne qui me l'a remise en étant déchargée.",
+  ]], y);
+  y = paragraph(doc, [["La présente décharge est établie pour servir et valoir ce que de droit."]], y);
+  y = paragraph(doc, [["Fait à "], [city, true], [", le "], [longDate(expense.issued_on), true], ["."]], y);
+
+  const top = Math.max(y + 8, 548);
+  const half = (WIDTH - 16) / 2;
+  drawSignature(doc, LEFT, top, half, "LA PERSONNE QUI REMET L'ARGENT", filled(expense.giver_name, ""));
+  drawSignature(doc, LEFT + half + 16, top, half, "LA PERSONNE QUI REÇOIT L'ARGENT", filled(expense.receiver_name, ""));
+
+  const foot = 700;
+  doc.moveTo(LEFT, foot).lineTo(RIGHT, foot).lineWidth(0.7).strokeColor("#dfe6e2").stroke();
+  doc.image(qr, LEFT, foot + 14, { width: 66 });
+  write(doc, "Vérification du document", LEFT + 80, foot + 22, 8.5, "Helvetica-Bold", INK, 220);
+  write(doc, "Scannez le code pour contrôler", LEFT + 80, foot + 36, 8, "Helvetica", MUTED, 220);
+  write(doc, "l'authenticité de cette décharge.", LEFT + 80, foot + 48, 8, "Helvetica", MUTED, 220);
+  if (expense.created_by_name) write(doc, `Saisie par ${expense.created_by_name}`, RIGHT - 240, foot + 22, 8.5, "Helvetica", MUTED, 240, "right");
+  write(doc, `Document n° ${expense.number}`, RIGHT - 240, foot + 36, 8.5, "Helvetica-Bold", INK, 240, "right");
+  if (cancelled) {
+    write(doc, `ANNULÉE : ${filled(expense.cancel_reason, "")}`, RIGHT - 300, foot + 52, 8.5, "Helvetica-Bold", GOLD_TEXT, 300, "right");
   }
-  for (const item of plan) {
-    write(doc, item.label, LEFT + 12, y, 11, "Helvetica", INK, 230);
-    write(doc, frenchDate(item.dueOn) || "—", LEFT + 250, y, 11, "Helvetica", INK, 120);
-    write(doc, money(item.amount), RIGHT - 192, y, 11, "Helvetica-Bold", INK, 180, "right");
-    y += 18;
-    doc.moveTo(LEFT, y).lineTo(RIGHT, y).lineWidth(0.5).strokeColor("#e3e9e5").stroke();
-    y += 8;
-  }
-  doc.rect(LEFT, y, WIDTH, 28).fill("#e6efe9");
-  write(doc, "Total des frais annuels", LEFT + 12, y + 8, 12, "Helvetica-Bold", LEAF, 300);
-  write(doc, money(snapshot.tuition), RIGHT - 230, y + 8, 12, "Helvetica-Bold", LEAF, 218, "right");
-  y += 46;
-
-  write(doc, "ARRÊTÉ LES FRAIS ANNUELS À", LEFT, y, 7.5, "Helvetica-Bold", GREEN, WIDTH);
-  doc.fillColor(INK).font("Times-Italic").fontSize(13);
-  doc.text(filled(snapshot.tuitionInWords, "Montant en lettres non disponible"), LEFT, y + 16, { width: WIDTH, height: 34 });
-  y += 52;
-  doc.fillColor(MUTED).font("Helvetica").fontSize(8.5);
-  doc.text("Ce reçu confirme l'inscription. Il ne constate pas un paiement : chaque versement reçoit son propre reçu de paiement.", LEFT, Math.min(y, 660), { width: WIDTH, height: 24 });
-
-  drawFoot(doc, qr, receipt.number);
-  drawWatermark(doc, W, 505);
-  drawSeal(doc, RIGHT - 70, 134, 36, "INSCRIT", yearLabel.slice(0, 9), LEAF);
+  const band = `UNIVERSITÉ AFRICAIIM — ${expense.number}`;
+  write(doc, `${band} — ${band}`, LEFT - 10, 818, 6.5, "Helvetica", "#8a948f", WIDTH + 20, "center");
+  drawWatermark(doc, W, 470);
   doc.end();
   return done;
 }

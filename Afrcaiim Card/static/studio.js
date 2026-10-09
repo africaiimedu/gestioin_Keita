@@ -24,7 +24,7 @@ const CHAMPS = [
   ["matricule", "Matricule"],
   ["filiere", "École"],
   ["ecole", "École"],
-  ["email", "E-mail professionnel"],
+  ["email", "E-mail étudiant"],
   ["annee_academique", "Année"],
   ["date_validite", "Validité"],
   ["url", "Adresse de vérification"],

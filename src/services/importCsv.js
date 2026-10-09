@@ -1,7 +1,7 @@
 import { METHOD_LABELS } from "../finance/index.js";
 import { HttpError } from "../httpError.js";
 import { transaction } from "../db/index.js";
-import { audit, createPayment, issueEnrollmentReceipt, todayInConakry } from "./domain.js";
+import { audit, createPayment, todayInConakry } from "./domain.js";
 import { assignAccountEmail, findSamePerson, personKey } from "./identity.js";
 
 const METHOD_ALIASES = {
@@ -155,7 +155,6 @@ export async function commitImport(db, user, batchId, decisions) {
         `).run(matricule, row.nom.toUpperCase(), row.prenom, row.programId, year.id, row.level);
         student = await db.prepare("SELECT * FROM students WHERE id = ?").get(inserted.lastInsertRowid);
         await assignAccountEmail(db, student);
-        await issueEnrollmentReceipt(db, user, student.id);
         created += 1;
       }
       const codes = ["inscription", "tranche_1", "tranche_2", "tranche_3"];

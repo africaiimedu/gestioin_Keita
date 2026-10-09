@@ -20,7 +20,7 @@ from app.models import (
     maintenant,
 )
 from app.security import hash_mot_de_passe, mot_de_passe_temporaire, nouveau_jeton
-from app.services.comptes import adresse_compte, mot_de_passe_depart
+from app.services.comptes import ADRESSE, adresse_compte, mot_de_passe_depart
 from app.services.photos import enregistrer_photo
 from app.services.statut import statut_effectif
 
@@ -109,6 +109,8 @@ def creer_etudiant(
             etudiant.photo_chemin = enregistrer_photo(etudiant.id, jpeg)
         secret = mot_de_passe or mot_de_passe_depart()
         compte = identifiant or adresse_compte(db, prenom, nom) or compte
+        if not etudiant.email and ADRESSE.match(compte):
+            etudiant.email = compte
         db.add(
             Utilisateur(
                 identifiant=compte,

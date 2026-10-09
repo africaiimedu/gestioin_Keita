@@ -20,6 +20,19 @@ test("une fiche de scolarité garde le même matricule pour la carte", () => {
   });
 });
 
+test("la carte porte l'adresse étudiante prenom.nom@univ-africaiim.com", () => {
+  const fiche = ficheCarte({
+    first_name: "Joseph",
+    last_name: "TOUPOU",
+    matricule: "AIM-2026-0001",
+    program_name: "AFRICAIIM Business School",
+    email: "joseph@gmail.com",
+    account_email: "joseph.toupou@univ-africaiim.com",
+  });
+  assert.equal(fiche.payload.email, "joseph.toupou@univ-africaiim.com");
+  assert.equal(fiche.payload.compte, "joseph.toupou@univ-africaiim.com");
+});
+
 test("un prénom manquant n'est pas envoyé à la carte", () => {
   const fiche = ficheCarte({
     first_name: "(prénom manquant)",

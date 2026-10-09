@@ -1,4 +1,4 @@
-"""E-mail de débit cantine, envoyé à l'adresse professionnelle de la carte."""
+"""E-mail de débit cantine, envoyé à l'adresse étudiante de la carte."""
 
 from __future__ import annotations
 

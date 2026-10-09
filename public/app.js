@@ -188,9 +188,9 @@ function nav() {
 }
 
 function openHome() {
-  if (nav().length) {
+  if (nav().length || allowed("expense.write")) {
     state.suite = "finances";
-    state.screen = allowed("dashboard.read") ? "tableau" : nav()[0][0];
+    state.screen = allowed("dashboard.read") ? "tableau" : (nav()[0]?.[0] || "depenses");
     return;
   }
   state.suite = "cartes";
@@ -207,6 +207,7 @@ function passwordIssue(password) {
 function pageTitle() {
   if (state.suite === "finances" && state.screen === "comptes") return "Comptes";
   if (state.suite === "finances" && state.screen === "fiche") return "Fiche étudiant";
+  if (state.suite === "finances" && state.screen === "depenses") return "Dépenses et décharges";
   if (state.suite === "cartes") {
     const page = findCarte(state.carte);
     return page.id === "atelier" ? "Atelier cartes" : page.label;
@@ -231,8 +232,7 @@ const MENU_ICONS = {
   list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
   plate: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8",
   menu: "M3 3h18v18H3zM7 8h10M7 12h10M7 16h6",
-  bag: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0",
-};
+  bag: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0",};
 const MENU_INFO = {
   "screen:tableau": ["chart", "Encaissements et recouvrement"],
   "screen:etudiants": ["people", "Fiches et situation de paiement"],
@@ -240,8 +240,7 @@ const MENU_INFO = {
   "screen:retards": ["bell", "Étudiants à relancer"],
   "screen:journal": ["book", "Encaissements du jour"],
   "screen:audit": ["shield", "Qui a fait quoi, et quand"],
-  "screen:parametres": ["tag", "Frais par école et par niveau"],
-  "carte:etudiants": ["card", "Fiches et statut des cartes"],
+  "screen:parametres": ["tag", "Frais par école et par niveau"],  "carte:etudiants": ["card", "Fiches et statut des cartes"],
   "carte:atelier": ["brush", "Composer le modèle de carte"],
   "carte:impression": ["print", "Imprimer une carte"],
   "carte:lot": ["stack", "Imprimer une école entière"],
@@ -299,7 +298,7 @@ function restorePlace() {
   }
   if (!raw.startsWith("finances/")) return;
   const [screen, id] = raw.slice("finances/".length).split("/");
-  const known = ["tableau", "etudiants", "paiement", "journal", "retards", "audit", "parametres", "comptes", "fiche"];
+  const known = ["tableau", "etudiants", "paiement", "journal", "retards", "audit", "parametres", "depenses", "comptes", "fiche"];
   if (!known.includes(screen)) return;
   state.suite = "finances";
   state.screen = screen;
@@ -408,7 +407,12 @@ function loginHtml() {
 }
 
 function financeOnly() {
-  return nav().length > 0 && !allowed("cards.manage") && !allowed("kitchen.manage");
+  return (nav().length > 0 || allowed("expense.write")) && !allowed("cards.manage") && !allowed("kitchen.manage");
+}
+
+function expensesButton(current) {
+  if (!allowed("expense.write")) return "";
+  return `<button type="button" data-screen="depenses" class="${current === "depenses" ? "actif" : ""}">Dépenses</button>`;
 }
 
 function accountsButton(current) {
@@ -423,7 +427,7 @@ function financeBar(current) {
     }
     return dropHtml(label, items, "screen", current);
   }).join("");
-  return `${groups}${accountsButton(current)}`;
+  return `${groups}${expensesButton(current)}${accountsButton(current)}`;
 }
 
 function shell() {
@@ -436,6 +440,7 @@ function shell() {
   const menu = onlyFinance
     ? financeBar(financeCurrent)
     : `${dropHtml("Finances", nav(), "screen", financeCurrent)}
+        ${expensesButton(financeCurrent)}
         ${accountsButton(financeCurrent)}
         ${dropHtml("Cartes", cartes, "carte", carteCurrent)}
         ${dropHtml("Cuisine", cuisine, "carte", carteCurrent)}
@@ -754,6 +759,7 @@ async function openScreen() {
     else if (state.screen === "retards") await showLate(screen);
     else if (state.screen === "audit") await showAudit(screen);
     else if (state.screen === "parametres") showSettings(screen);
+    else if (state.screen === "depenses") await showExpenses(screen);
     else     if (state.screen === "comptes") await showAccounts(screen);
     else if (state.screen === "fiche") await showStudent(screen, state.studentId);
   } catch (error) {
@@ -936,18 +942,6 @@ function dashboardHtml(data, control) {
         <span class="coherence ${control.ok ? "ok" : "bad"}">${control.ok ? "Cohérence OK" : "Écart de cohérence"}</span>
       </div>
     </header>
-    <div class="info-strip">
-      <span>Inscription 20 % · 5 octobre</span>
-      <span>2e versement 40 % · 5 décembre</span>
-      <span>3e versement 40 % · 5 mars</span>
-      ${offerChip("bachelor_1", "Bachelor 1")}
-      ${offerChip("bachelor_2", "Bachelor 2")}
-      ${offerChip("bachelor_3", "Bachelor 3")}
-      ${offerChip("master_1", "Master 1")}
-      ${offerChip("master_2", "Master 2")}
-      <span>Licence et Bachelor en une fois : −${gnf(state.catalog.cashDiscount || 0)}</span>
-      <span>Boursier : aucun frais</span>
-    </div>
     <section class="dash-kpis">
       ${kpiCard("Frais attendus", gnf(data.due), 100, "tone-due")}
       ${kpiCard("Encaissé", gnf(data.paid), paidShare, "tone-paid")}
@@ -1062,16 +1056,12 @@ async function showStudents(screen) {
     const pages = Math.max(1, Math.ceil(data.students.length / pageSize));
     if (state.studentPage > pages) state.studentPage = pages;
     const visible = data.students.slice((state.studentPage - 1) * pageSize, state.studentPage * pageSize);
-    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th><th>Inscription</th></tr></thead><tbody>
-      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td><td><button class="btn secondary enroll-btn" type="button" data-enroll="${student.id}">Reçu d'inscription</button></td></tr>`).join("")}
+    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th></tr></thead><tbody>
+      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td></tr>`).join("")}
     </tbody></table></div>
       <div class="pager"><button type="button" id="page-prev" ${state.studentPage <= 1 ? "disabled" : ""}>Précédent</button><span>${data.students.length} étudiants · page ${state.studentPage} / ${pages}</span><button type="button" id="page-next" ${state.studentPage >= pages ? "disabled" : ""}>Suivant</button></div>
     </article>`;
     document.querySelectorAll("[data-student]").forEach((row) => row.addEventListener("click", () => openStudent(row.dataset.student)));
-    document.querySelectorAll("[data-enroll]").forEach((button) => button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openEnrollmentReceipt(button.dataset.enroll, button);
-    }));
     document.querySelector("#page-prev").addEventListener("click", () => { state.studentPage -= 1; load(); });
     document.querySelector("#page-next").addEventListener("click", () => { state.studentPage += 1; load(); });
   };
@@ -1095,6 +1085,8 @@ async function showStudents(screen) {
     dialog.innerHTML = `<form id="create-student" novalidate>
         <div class="dialog-head"><h2>Nouvelle fiche</h2><button class="dialog-close" type="button" id="close-fiche">Fermer</button></div>
         <div class="duo"><p><label>Nom</label><input name="lastName" required autocomplete="off"></p><p><label>Prénom</label><input name="firstName" required autocomplete="off"></p></div>
+        <div class="duo"><p><label>Matricule <span class="muted">(proposé, modifiable)</span></label><input name="matricule" autocomplete="off" placeholder="AIM-2026-0001" maxlength="31"></p>
+          <p><label>E-mail étudiant <span class="muted">(automatique)</span></label><input name="accountPreview" readonly tabindex="-1" placeholder="prenom.nom@univ-africaiim.com"></p></div>
         <div class="duo"><p><label>École</label><select name="programId" required>${state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("")}</select></p>
           <p><label>Niveau</label><select name="level" required><option value="bachelor">Bachelor</option><option value="master">Master</option></select></p></div>
         <p id="year-row"><label id="year-label">Année de bachelor</label><select name="studyYear" required></select></p>
@@ -1159,10 +1151,16 @@ async function showStudents(screen) {
       const digits = event.target.value.replace(/[^\d]/g, "");
       event.target.value = digits ? grouped(Number(digits)) : "";
     });
-    form.costumeAmount?.addEventListener("input", (event) => {
-      const digits = event.target.value.replace(/[^\d]/g, "");
-      event.target.value = digits ? grouped(Number(digits)) : "";
+    wireCostume(form, () => {}, { fillOnCount: true });
+    const syncEmail = () => { form.accountPreview.value = studentAddress(form.firstName.value, form.lastName.value); };
+    form.firstName.addEventListener("input", syncEmail);
+    form.lastName.addEventListener("input", syncEmail);
+    form.matricule.addEventListener("input", () => {
+      form.matricule.value = form.matricule.value.toUpperCase().replace(/\s+/g, "");
     });
+    api("/api/etudiants/prochain-matricule").then((data) => {
+      if (!form.matricule.value) form.matricule.value = data.matricule;
+    }).catch(() => {});
     syncFee();
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -1202,9 +1200,10 @@ async function showStudents(screen) {
           scholarship: form.scholarship.checked,
           paymentAmount: form.scholarship.checked ? 0 : form.paymentAmount.value.replace(/\D/g, ""),
           costumeAmount: moneyOf(form.costumeAmount),
+          costumeQuantity: Number(form.costumeQuantity?.value) || null,
+          matricule: form.matricule.value.trim(),
           method: form.method.value,
         }) });
-        state.freshReceipt = created.enrollmentReceiptId ? { id: created.enrollmentReceiptId, number: created.enrollmentReceiptNumber } : null;
         saved(created.student.accountEmail
           ? `Fiche enregistrée · compte ${created.student.accountEmail} · mot de passe de départ Africaiim2026`
           : "Fiche enregistrée");
@@ -1218,25 +1217,6 @@ async function showStudents(screen) {
     });
   });
   await load();
-}
-
-async function openEnrollmentReceipt(studentId, button) {
-  const tab = window.open("", "_blank");
-  if (button) button.disabled = true;
-  try {
-    const receipt = await api(`/api/etudiants/${studentId}/inscription`, { method: "POST", body: "{}" });
-    const url = `/api/inscriptions/${receipt.id}.pdf`;
-    if (tab) tab.location.href = url;
-    else window.open(url, "_blank");
-    if (receipt.created) saved(`Reçu d'inscription ${receipt.number} émis`);
-    return receipt;
-  } catch (caught) {
-    tab?.close();
-    saved(caught.message);
-    return null;
-  } finally {
-    if (button) button.disabled = false;
-  }
 }
 
 function openStudent(id) {
@@ -1253,10 +1233,9 @@ async function showStudent(screen, id) {
       <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)}</p>
       ${student.accountEmail ? `<p class="muted">Compte étudiant : ${esc(student.accountEmail)}</p>` : ""}</div>
       <div class="row-actions">
-        ${data.enrollment ? `<a class="btn" href="/api/inscriptions/${data.enrollment.id}.pdf" target="_blank">Imprimer le reçu d'inscription ${esc(data.enrollment.number)}</a>` : `<button class="btn" id="issue-enrollment" type="button">Émettre le reçu d'inscription</button>`}
-        <button class="btn secondary" id="pay-this" type="button">Encaisser</button>
+        <button class="btn" id="pay-this" type="button">Encaisser</button>
+        ${allowed("student.write") ? `<button class="btn secondary" id="edit-matricule" type="button">Modifier le matricule</button>` : ""}
       </div></div>
-    ${state.freshReceipt ? `<div class="banner">Le reçu d'inscription <strong>${esc(state.freshReceipt.number)}</strong> est prêt. Le bouton ci-dessus l'ouvre pour l'impression, autant de fois que vous voulez.</div>` : ""}
     ${state.paymentReceipt ? `<div class="banner">Paiement mis à jour. Nouveau reçu <a href="/api/recus/${state.paymentReceipt.id}.pdf" target="_blank">${esc(state.paymentReceipt.number)}</a>. L'ancien reçu est annulé.</div>` : ""}
     <section class="kpis">${kpi("Frais dus", situation.due)}${kpi("Total payé", situation.paid)}${kpi("Reste", situation.reste)}${kpi("Statut", situation.statusLabel, true)}</section>
     ${data.discounts?.length ? `<p class="banner">${data.discounts.map((item) => esc(item.reason || item.label)).join(" · ")}</p>` : ""}
@@ -1283,11 +1262,7 @@ async function showStudent(screen, id) {
         </div>`;
       }).join("")}</div>
       <p class="muted">Carte étudiant : ${esc(labels[student.cardStatus] || student.cardStatus)}. Le même matricule sert à la carte et à la cantine. Une correction ou une annulation se fait dans Encaissement.</p></article>`;
-  state.freshReceipt = null;
   state.paymentReceipt = null;
-  document.querySelector("#issue-enrollment")?.addEventListener("click", async (event) => {
-    if (await openEnrollmentReceipt(id, event.currentTarget)) showStudent(screen, id);
-  });
   const costumeForm = document.querySelector("#costume-form");
   if (costumeForm) {
     costumeForm.paidOn.value = new Date().toISOString().slice(0, 10);
@@ -1335,6 +1310,20 @@ async function showStudent(screen, id) {
       saved(caught.message);
     }
   }));
+  document.querySelector("#edit-matricule")?.addEventListener("click", () => openMatriculeEdit(student, () => showStudent(screen, id)));
+  document.querySelector("#costume-count")?.addEventListener("change", async (event) => {
+    const select = event.currentTarget;
+    select.disabled = true;
+    try {
+      await api(`/api/etudiants/${id}/costume-nombre`, { method: "PUT", body: JSON.stringify({ quantity: Number(select.value) }) });
+      saved(`Nombre de costumes : ${select.value}`);
+      showStudent(screen, id);
+    } catch (caught) {
+      saved(caught.message);
+      select.value = select.dataset.current;
+      select.disabled = false;
+    }
+  });
   document.querySelector("#pay-this").addEventListener("click", () => {
     state.prefillStudent = { ...student, situation };
     state.screen = "paiement";
@@ -1343,16 +1332,64 @@ async function showStudent(screen, id) {
   });
 }
 
+function openMatriculeEdit(student, onDone) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "sheet notice";
+  dialog.setAttribute("closedby", "none");
+  dialog.innerHTML = `<form class="matricule-form" novalidate>
+      <div class="dialog-head"><div><p class="mark">Fiche de ${esc(student.name)}</p><h2>Modifier le matricule</h2></div>
+        <button class="dialog-close" type="button" data-close>Fermer</button></div>
+      <p class="muted">Le matricule actuel est <strong>${esc(student.matricule)}</strong>. Le nouveau numéro s'applique à la scolarité, à la carte et à la cantine. Les reçus déjà émis gardent l'ancien numéro.</p>
+      <label>Nouveau matricule</label>
+      <input name="matricule" value="${esc(student.matricule)}" maxlength="31" autocomplete="off" required>
+      <p class="muted">Lettres, chiffres et tirets, de 3 à 31 caractères (ex. AIM-2026-0001).</p>
+      <p class="error" data-error hidden></p>
+      <div class="row-actions"><button class="btn secondary" type="button" data-close>Annuler</button><button class="btn" type="submit">Enregistrer le matricule</button></div>
+    </form>`;
+  document.body.appendChild(dialog);
+  const form = dialog.querySelector("form");
+  const close = () => { dialog.close(); dialog.remove(); };
+  dialog.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", close));
+  form.matricule.addEventListener("input", () => { form.matricule.value = form.matricule.value.toUpperCase().replace(/\s+/g, ""); });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = form.querySelector("[data-error]");
+    const button = form.querySelector("[type=submit]");
+    error.hidden = true;
+    button.disabled = true;
+    try {
+      const result = await api(`/api/etudiants/${student.id}/matricule`, { method: "PUT", body: JSON.stringify({ matricule: form.matricule.value }) });
+      close();
+      if (!result.previousMatricule) saved("Matricule inchangé");
+      else if (result.card?.ok === false) saved(`Matricule ${result.student.matricule} enregistré. La carte sera mise à jour à la prochaine synchronisation.`);
+      else saved(`Matricule ${result.student.matricule} enregistré. Réimprimez la carte.`);
+      onDone();
+    } catch (caught) {
+      error.hidden = false;
+      error.textContent = caught.message;
+      button.disabled = false;
+    }
+  });
+  dialog.showModal();
+  form.matricule.select();
+}
+
 function costumeCard(costume) {
   if (!costume) return "";
   const tone = { paye: "solde", partiel: "partiel", non_paye: "en_retard", non_fixe: "aucun_paiement" }[costume.status] || "aucun_paiement";
   const share = costume.price ? Math.min(100, Math.round(costume.paid / costume.price * 100)) : 0;
   const methodLabel = (code) => state.catalog.methods.find((item) => item.code === code)?.label || "—";
   const canPay = allowed("payment.create") && costume.price > 0 && costume.reste > 0;
+  const quantity = costume.quantity || 1;
+  const minimum = costume.unitPrice ? Math.max(1, Math.ceil(costume.paid / costume.unitPrice)) : 1;
+  const counts = Array.from({ length: 10 }, (_, index) => index + 1).filter((count) => count >= minimum || count === quantity)
+    .map((count) => `<option value="${count}" ${count === quantity ? "selected" : ""}>${count} costume${count > 1 ? "s" : ""}</option>`).join("");
   return `<article class="card costume-box" style="margin-top:14px">
-    <div class="costume-head"><h2>Costume</h2><span class="tag ${tone}">${esc(costume.statusLabel)}</span></div>
+    <div class="costume-head"><h2>${quantity > 1 ? `Costumes (${quantity})` : "Costume"}</h2>
+      ${costume.price && allowed("payment.create") ? `<label class="costume-count">Nombre<select id="costume-count" data-current="${quantity}">${counts}</select></label>` : ""}
+      <span class="tag ${tone}">${esc(costume.statusLabel)}</span></div>
     ${costume.price ? `<div class="stat-row">
-        <div class="stat-tile"><span>Prix du costume</span><strong>${gnf(costume.price)}</strong></div>
+        <div class="stat-tile"><span>${quantity > 1 ? `${quantity} × ${esc(gnf(costume.unitPrice))}` : "Prix du costume"}</span><strong>${gnf(costume.price)}</strong></div>
         <div class="stat-tile"><span>Montant versé</span><strong>${gnf(costume.paid)}</strong></div>
         <div class="stat-tile ${costume.reste ? "alert" : ""}"><span>Reste à payer</span><strong>${gnf(costume.reste)}</strong></div>
       </div>
@@ -1459,10 +1496,7 @@ function openPaymentUpdate(record, onDone) {
     refreshUpdatePreview();
   });
   form.paidOn.addEventListener("change", refreshUpdatePreview);
-  form.costumeAmount?.addEventListener("input", (event) => {
-    const digits = event.target.value.replace(/[^\d]/g, "");
-    event.target.value = digits ? grouped(Number(digits)) : "";
-  });
+  wireCostume(form);
   refreshUpdatePreview();
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1483,6 +1517,7 @@ function openPaymentUpdate(record, onDone) {
     const payload = {
       amount: amountValue,
       costumeAmount: moneyOf(form.costumeAmount),
+      costumeQuantity: Number(form.costumeQuantity?.value) || null,
       paidOn: form.paidOn.value,
       method: form.method.value,
       reference: form.reference.value.trim(),
@@ -1604,11 +1639,12 @@ async function showPayment(screen) {
       refreshPreview();
     }));
   });
-  ["amount", "costumeAmount"].forEach((name) => document.querySelector(`#pay-form [name=${name}]`)?.addEventListener("input", (event) => {
+  document.querySelector("#pay-form [name=amount]").addEventListener("input", (event) => {
     const digits = event.target.value.replace(/[^\d]/g, "");
     event.target.value = digits ? grouped(Number(digits)) : "";
     refreshPreview();
-  }));
+  });
+  wireCostume(document.querySelector("#pay-form"), refreshPreview);
   ["paidOn", "method", "reference"].forEach((name) => document.querySelector(`[name=${name}]`).addEventListener("change", refreshPreview));
   document.querySelector("#pay-form").addEventListener("submit", submitPayment);
 }
@@ -1628,10 +1664,11 @@ async function refreshPreview() {
   const studentId = document.querySelector("[name=studentId]").value;
   const amount = Number(document.querySelector("[name=amount]").value.replace(/\D/g, ""));
   const costumeAmount = moneyOf(document.querySelector("#pay-form [name=costumeAmount]"));
+  const costumeQuantity = Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null;
   if (!studentId || !amount) return;
   try {
     const data = await api("/api/paiements/apercu", { method: "POST", body: JSON.stringify({
-      studentId: Number(studentId), amount, costumeAmount, paidOn: document.querySelector("[name=paidOn]").value,
+      studentId: Number(studentId), amount, costumeAmount, costumeQuantity, paidOn: document.querySelector("[name=paidOn]").value,
       reference: document.querySelector("[name=reference]").value,
     }) });
     const costume = data.costume;
@@ -1639,7 +1676,7 @@ async function refreshPreview() {
       <p>Cumul versé : <strong>${gnf(data.after.paid)}</strong></p>
       <p>Reste après ce paiement : <strong>${gnf(data.after.reste)}</strong></p>
       <p>Statut après : ${esc(data.after.statusLabel)}</p>
-      ${costume?.price ? `<p>Costume : prix ${gnf(costume.price)} · déjà versé ${gnf(costume.paid)} · reste après ${gnf(costume.resteAfter)}</p>` : ""}
+      ${costume?.price ? `<p>Costume${costume.quantity > 1 ? `s : ${costume.quantity} × ${gnf(costume.unitPrice)} = ${gnf(costume.price)}` : ` : prix ${gnf(costume.price)}`} · déjà versé ${gnf(costume.paid)} · reste après ${gnf(costume.resteAfter)}</p>` : ""}
       ${costume?.today ? `<p>Total encaissé ce jour : <strong>${gnf(amount + costume.today)}</strong></p>` : ""}
       ${data.warnings.map((warning) => `<p class="limited">${esc(warning)}</p>`).join("")}`;
   } catch (error) {
@@ -1673,6 +1710,7 @@ async function submitPayment(event) {
     studentId: Number(document.querySelector("[name=studentId]").value),
     amount,
     costumeAmount: moneyOf(document.querySelector("#pay-form [name=costumeAmount]")),
+    costumeQuantity: Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null,
     paidOn: document.querySelector("[name=paidOn]").value,
     method: document.querySelector("[name=method]").value,
     reference: document.querySelector("[name=reference]").value.trim(),
@@ -1709,6 +1747,19 @@ async function submitPayment(event) {
   }
 }
 
+/** prenom.nom@univ-africaiim.com : le prénom le plus court (3 lettres au moins) et le nom le plus court. */
+function studentAddress(firstName, lastName) {
+  const words = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’']/g, "")
+    .split(/[^a-z0-9-]+/).map((word) => word.replace(/^-+|-+$/g, "")).filter(Boolean);
+  const shortest = (list) => {
+    const meaningful = list.filter((word) => word.replace(/-/g, "").length >= 3);
+    return (meaningful.length ? meaningful : list).reduce((best, word) => (word.length < best.length ? word : best));
+  };
+  const first = words(firstName);
+  const last = words(lastName);
+  return first.length && last.length ? `${shortest(first)}.${shortest(last)}@univ-africaiim.com` : "";
+}
+
 function costumePriceSetting() {
   return Number(state.catalog?.settings?.costume_price || 0);
 }
@@ -1716,7 +1767,57 @@ function costumePriceSetting() {
 function costumeField(label = "Costume versé ce jour (GNF)") {
   const price = costumePriceSetting();
   if (!price) return `<p class="muted costume-hint">Costume : prix non fixé. L'administrateur le règle dans Tarifs.</p>`;
-  return `<p class="costume-field"><label>${esc(label)} <span class="muted">(facultatif · prix ${gnf(price)})</span></label><input name="costumeAmount" inputmode="numeric" placeholder="0 si le costume n'est pas payé aujourd'hui"></p>`;
+  const counts = Array.from({ length: 10 }, (_, index) => index + 1)
+    .map((count) => `<option value="${count}">${count} costume${count > 1 ? "s" : ""} · ${gnf(count * price)}</option>`).join("");
+  return `<div class="costume-field">
+      <div class="duo">
+        <p><label>${esc(label)} <span class="muted">(facultatif)</span></label><input name="costumeAmount" inputmode="numeric" placeholder="0 si le costume n'est pas payé aujourd'hui"></p>
+        <p><label>Nombre de costumes</label><select name="costumeQuantity"><option value="">Selon le montant versé</option>${counts}</select></p>
+      </div>
+      <p class="costume-live muted" data-costume-live>Prix unitaire : ${gnf(price)}. Pour 2 costumes, versez ${gnf(2 * price)} ou choisissez « 2 costumes ».</p>
+    </div>`;
+}
+
+/** Nombre de costumes retenu à l'écran : celui choisi, sinon celui que le montant paie exactement. */
+function costumeCountOf(form) {
+  const price = costumePriceSetting();
+  const chosen = Number(form.costumeQuantity?.value || 0);
+  if (chosen) return chosen;
+  const amount = moneyOf(form.costumeAmount);
+  return price && amount > price && amount % price === 0 ? Math.min(20, amount / price) : null;
+}
+
+function wireCostume(form, onChange = () => {}, { fillOnCount = false } = {}) {
+  const price = costumePriceSetting();
+  const live = form.querySelector("[data-costume-live]");
+  if (!form.costumeAmount || !price) return;
+  const paint = () => {
+    const amount = moneyOf(form.costumeAmount);
+    const count = costumeCountOf(form) || 1;
+    if (!amount && !form.costumeQuantity.value) {
+      live.textContent = `Prix unitaire : ${gnf(price)}. Pour 2 costumes, versez ${gnf(2 * price)} ou choisissez « 2 costumes ».`;
+      return;
+    }
+    const total = count * price;
+    const rest = Math.max(0, total - amount);
+    live.innerHTML = `<strong>${count} costume${count > 1 ? "s" : ""} × ${esc(gnf(price))} = ${esc(gnf(total))}</strong>${amount ? ` · versé ${esc(gnf(amount))} · ${rest ? `reste ${esc(gnf(rest))}` : "rien à payer en plus"}` : ""}`;
+  };
+  form.costumeAmount.addEventListener("input", (event) => {
+    const digits = event.target.value.replace(/[^\d]/g, "");
+    event.target.value = digits ? grouped(Number(digits)) : "";
+    paint();
+    onChange();
+  });
+  let filled = 0;
+  form.costumeQuantity.addEventListener("change", () => {
+    const amount = moneyOf(form.costumeAmount);
+    if (fillOnCount && (!amount || amount === filled)) {
+      filled = Number(form.costumeQuantity.value || 0) * price;
+      form.costumeAmount.value = filled ? grouped(filled) : "";
+    }
+    paint();
+    onChange();
+  });
 }
 
 function moneyOf(input) {
@@ -1754,6 +1855,267 @@ async function showJournal(screen) {
   };
   input.addEventListener("change", load);
   await load();
+}
+
+function plural(count, word) {
+  return `${count} ${word}${count > 1 ? "s" : ""}`;
+}
+
+const WORD_UNITS = ["zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize",
+  "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
+
+function tensInWords(n, plural) {
+  if (n < 20) return WORD_UNITS[n];
+  if (n < 70) {
+    const tens = ["", "", "vingt", "trente", "quarante", "cinquante", "soixante"][Math.floor(n / 10)];
+    const unit = n % 10;
+    return unit === 0 ? tens : unit === 1 ? `${tens} et un` : `${tens}-${WORD_UNITS[unit]}`;
+  }
+  if (n < 80) return n === 71 ? "soixante et onze" : `soixante-${WORD_UNITS[n - 60]}`;
+  return n === 80 ? (plural ? "quatre-vingts" : "quatre-vingt") : `quatre-vingt-${WORD_UNITS[n - 80]}`;
+}
+
+function hundredsInWords(n, plural) {
+  if (n < 100) return tensInWords(n, plural);
+  const hundreds = Math.floor(n / 100);
+  const rest = n % 100;
+  const word = hundreds === 1 ? "cent" : `${WORD_UNITS[hundreds]} cent`;
+  if (!rest) return hundreds > 1 && plural ? `${word}s` : word;
+  return `${word} ${tensInWords(rest, plural)}`;
+}
+
+function amountInWords(amount) {
+  if (!Number.isInteger(amount) || amount <= 0) return "";
+  if (amount === 1) return "un franc guinéen";
+  const parts = [];
+  let rest = amount;
+  for (const [value, one, many, plural] of [[1e9, "milliard", "milliards", true], [1e6, "million", "millions", true], [1e3, "mille", "mille", false]]) {
+    if (rest < value) continue;
+    const count = Math.floor(rest / value);
+    rest -= count * value;
+    parts.push(value === 1e3 && count === 1 ? "mille" : `${hundredsInWords(count, plural)} ${count > 1 ? many : one}`);
+  }
+  if (rest) parts.push(hundredsInWords(rest, true));
+  const round = amount >= 1e6 && amount % 1e6 === 0;
+  return `${parts.join(" ")} ${round ? "de " : ""}francs guinéens`;
+}
+
+function longFrenchDate(iso) {
+  const [year, month, day] = String(iso || "").slice(0, 10).split("-").map(Number);
+  if (!year) return "";
+  return `${day === 1 ? "1er" : day} ${months[month - 1].toLowerCase()} ${year}`;
+}
+
+function printDocument(url) {
+  document.querySelector("#print-frame")?.remove();
+  const frame = document.createElement("iframe");
+  frame.id = "print-frame";
+  frame.className = "print-frame";
+  frame.title = "Impression";
+  frame.src = url;
+  frame.addEventListener("load", () => {
+    setTimeout(() => {
+      try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+      } catch {
+        window.open(url, "_blank");
+      }
+    }, 400);
+  }, { once: true });
+  document.body.appendChild(frame);
+}
+
+function dischargeText(values) {
+  const blank = (value, hint) => (String(value || "").trim() ? `<strong>${esc(value)}</strong>` : `<span class="blank">${esc(hint)}</span>`);
+  const amount = Number(values.amount || 0);
+  return `<p>Je soussigné(e), ${blank(values.receiverName, "nom et prénom de la personne qui reçoit")}, ${blank(values.receiverPosition, "poste occupé")},
+      reconnais avoir reçu de ${blank(values.giverName, "nom et prénom de la personne qui remet")}
+      la somme de ${amount ? `<strong>${esc(gnf(amount))}</strong> (<strong>${esc(amountInWords(amount))}</strong>)` : `<span class="blank">montant</span>`}.</p>
+    <p>Cette somme m'a été remise au titre de : ${blank(values.reason, "motif du versement")}.</p>
+    <p>Je reconnais la réception effective de cette somme et déclare en assumer désormais l'entière responsabilité, la personne qui me l'a remise en étant déchargée.</p>
+    <p>La présente décharge est établie pour servir et valoir ce que de droit.</p>
+    <p>Fait à ${blank(values.city, "ville")}, le <strong>${esc(longFrenchDate(values.issuedOn))}</strong>.</p>`;
+}
+
+async function showExpenses(screen) {
+  const filters = state.expenseFilters || {};
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString();
+  const data = await api(`/api/depenses${query ? `?${query}` : ""}`);
+  const { summary, defaults } = data;
+  const categories = defaults.categories;
+  const canCancel = allowed("payment.cancel");
+  const top = data.byCategory[0]?.amount || 1;
+  const row = (item) => `<tr class="${item.status === "annule" ? "is-cancelled" : ""}">
+      <td><span class="tag action">${esc(item.number)}</span><br><span class="muted">${esc(frenchDay(item.issued_on))}</span></td>
+      <td class="name"><strong>${esc(item.receiver_name)}</strong><br><span class="muted">${esc(item.receiver_position)}</span></td>
+      <td><span class="exp-cat exp-cat-${esc(item.category)}">${esc(item.categoryLabel)}</span><br><span class="muted exp-reason">${esc(item.reason)}</span></td>
+      <td class="num"><strong>${gnf(item.amount)}</strong><br><span class="muted">remis par ${esc(item.giver_name)}</span></td>
+      <td class="exp-actions">${item.status === "annule"
+        ? `<span class="tag trop_percu">Annulée</span><br><span class="muted">${esc(item.cancel_reason || "")}</span>`
+        : `<button class="btn" type="button" data-print="${item.id}">Imprimer</button>
+           <a class="btn secondary" href="/api/depenses/${item.id}.pdf" target="_blank">PDF</a>
+           ${canCancel ? `<button class="btn ghost" type="button" data-cancel-expense="${item.id}" data-number="${esc(item.number)}">Annuler</button>` : ""}`}</td>
+    </tr>`;
+  screen.innerHTML = `<div class="top"><div><p class="mark">Trésorerie</p><h1>Dépenses</h1>
+      <p class="lead">Chaque sortie d'argent fait l'objet d'une décharge de responsabilité financière numérotée, signée par les deux parties et imprimable tout de suite.</p></div>
+      <button class="btn" id="new-expense" type="button">Nouvelle décharge</button></div>
+    <section class="exp-kpis">
+      <article class="exp-kpi main"><span>Dépensé aujourd'hui</span><strong>${gnf(summary.today)}</strong><small>${plural(summary.todayCount, "décharge")}</small></article>
+      <article class="exp-kpi"><span>Ce mois-ci</span><strong>${gnf(summary.month)}</strong><small>${plural(summary.monthCount, "décharge")}</small></article>
+      <article class="exp-kpi"><span>Sur la période affichée</span><strong>${gnf(summary.period)}</strong><small>du ${esc(frenchDay(data.from))} au ${esc(frenchDay(data.to))}</small></article>
+      <article class="exp-kpi ${summary.cancelledCount ? "warn" : ""}"><span>Annulées</span><strong>${summary.cancelledCount}</strong><small>non comptées dans les totaux</small></article>
+    </section>
+    <form class="exp-filters card" id="expense-filters">
+      <label>Du<input type="date" name="du" value="${esc(data.from)}"></label>
+      <label>Au<input type="date" name="au" value="${esc(data.to)}"></label>
+      <label>Nature<select name="categorie"><option value="">Toutes</option>${categories.map((item) => `<option value="${item.code}" ${filters.categorie === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}</select></label>
+      <label>État<select name="statut"><option value="">Toutes</option><option value="valide" ${filters.statut === "valide" ? "selected" : ""}>Valides</option><option value="annule" ${filters.statut === "annule" ? "selected" : ""}>Annulées</option></select></label>
+      <label class="grow">Recherche<input type="search" name="q" value="${esc(filters.q || "")}" placeholder="N°, bénéficiaire, motif…"></label>
+      <button class="btn secondary" type="submit">Filtrer</button>
+    </form>
+    <div class="exp-layout">
+      <article class="card exp-list"><h2>Décharges <span class="muted">· ${plural(data.expenses.length, "document")}</span></h2>
+        ${data.expenses.length ? `<div class="table-scroll"><table><thead><tr><th>N° et date</th><th>Bénéficiaire</th><th>Nature et motif</th><th class="num">Montant</th><th></th></tr></thead>
+          <tbody>${data.expenses.map(row).join("")}</tbody></table></div>`
+        : `<div class="empty"><span class="empty-icon" aria-hidden="true">GNF</span><p><strong>Aucune dépense sur cette période.</strong></p><p class="muted">« Nouvelle décharge » enregistre une sortie d'argent et imprime le document à signer.</p></div>`}
+      </article>
+      <aside class="card exp-side"><h2>Répartition</h2>
+        ${data.byCategory.length ? data.byCategory.map((item) => `<div class="exp-bar">
+            <p><span>${esc(item.label)}</span><strong>${gnf(item.amount)}</strong></p>
+            <span class="exp-track"><i class="exp-cat-${esc(item.code)}" style="width:${Math.max(4, Math.round(item.amount / top * 100))}%"></i></span>
+            <small class="muted">${plural(item.count, "décharge")}</small>
+          </div>`).join("") : `<p class="muted">Les montants par nature de dépense s'afficheront ici.</p>`}
+        <p class="exp-note">Une décharge enregistrée ne se modifie pas. En cas d'erreur, l'administrateur l'annule avec un motif, puis on en établit une nouvelle.</p>
+      </aside>
+    </div>
+    <dialog id="expense-dialog" class="sheet exp-sheet" closedby="none"></dialog>`;
+
+  document.querySelector("#expense-filters").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    state.expenseFilters = { du: form.du.value, au: form.au.value, categorie: form.categorie.value, statut: form.statut.value, q: form.q.value.trim() };
+    showExpenses(screen);
+  });
+  document.querySelectorAll("[data-print]").forEach((button) => button.addEventListener("click", () => {
+    printDocument(`/api/depenses/${button.dataset.print}.pdf`);
+  }));
+  document.querySelectorAll("[data-cancel-expense]").forEach((button) => button.addEventListener("click", async () => {
+    const reason = window.prompt(`Motif de l'annulation de la décharge ${button.dataset.number} (au moins 5 caractères) :`);
+    if (!reason) return;
+    try {
+      await api(`/api/depenses/${button.dataset.cancelExpense}/annuler`, { method: "POST", body: JSON.stringify({ reason }) });
+      saved(`Décharge ${button.dataset.number} annulée`);
+      showExpenses(screen);
+    } catch (caught) {
+      saved(caught.message);
+    }
+  }));
+  document.querySelector("#new-expense").addEventListener("click", () => openExpenseForm(defaults, (expense) => {
+    printDocument(`/api/depenses/${expense.id}.pdf`);
+    showExpenses(screen);
+  }));
+}
+
+function openExpenseForm(defaults, onCreated) {
+  const dialog = document.querySelector("#expense-dialog");
+  dialog.innerHTML = `<form id="expense-form" class="exp-form" novalidate>
+      <div class="dialog-head"><div><p class="mark">Nouvelle dépense</p><h2>Décharge de responsabilité financière</h2></div>
+        <button class="dialog-close" type="button" id="close-expense">Fermer</button></div>
+      <div class="exp-form-grid">
+        <div class="exp-fields">
+          <fieldset><legend>Montant</legend>
+            <div class="duo"><p><label>Montant remis (GNF)</label><input name="amount" inputmode="numeric" required placeholder="Ex. 1.500.000" autocomplete="off"></p>
+              <p><label>Nature de la dépense</label><select name="category">${defaults.categories.map((item) => `<option value="${item.code}" ${item.code === "autre" ? "selected" : ""}>${esc(item.label)}</option>`).join("")}</select></p></div>
+            <p class="exp-words" data-words>Le montant en lettres s'écrit tout seul.</p>
+          </fieldset>
+          <fieldset><legend>Personne qui reçoit l'argent</legend>
+            <div class="duo"><p><label>Nom et prénom</label><input name="receiverName" required maxlength="120" autocomplete="off"></p>
+              <p><label>Poste occupé</label><input name="receiverPosition" required maxlength="80" placeholder="Ex. Responsable logistique" autocomplete="off"></p></div>
+          </fieldset>
+          <fieldset><legend>Personne qui remet l'argent</legend>
+            <p><label>Nom et prénom</label><input name="giverName" required maxlength="120" value="${esc(defaults.giverName)}" autocomplete="off"></p>
+          </fieldset>
+          <fieldset><legend>Motif et lieu</legend>
+            <p><label>Motif du versement</label><textarea name="reason" rows="2" required maxlength="300" placeholder="Ex. Achat de fournitures de bureau pour le secrétariat"></textarea></p>
+            <div class="duo"><p><label>Fait à</label><input name="city" required maxlength="60" value="${esc(defaults.city)}"></p>
+              <p><label>Date</label><input value="${esc(longFrenchDate(defaults.today))}" readonly tabindex="-1"></p></div>
+          </fieldset>
+          <p class="error" id="expense-error" hidden></p>
+          <div class="row-actions"><button class="btn secondary" type="button" id="cancel-expense">Annuler</button>
+            <button class="btn" type="submit">Enregistrer et imprimer</button></div>
+        </div>
+        <section class="exp-paper" aria-label="Aperçu de la décharge">
+          <header><img src="/logo.png" alt=""><div><strong>Université AFRICAIIM</strong><span>Décharge n° attribué à l'enregistrement</span></div></header>
+          <h3>DÉCHARGE DE RESPONSABILITÉ FINANCIÈRE</h3>
+          <div class="exp-paper-text" data-paper></div>
+          <div class="exp-paper-signs">
+            <div><span>La personne qui remet l'argent</span><strong data-sign-giver></strong><i>Signature</i></div>
+            <div><span>La personne qui reçoit l'argent</span><strong data-sign-receiver></strong><i>Signature</i></div>
+          </div>
+        </section>
+      </div>
+    </form>`;
+  dialog.showModal();
+  const form = dialog.querySelector("#expense-form");
+  const close = () => dialog.close();
+  dialog.querySelector("#close-expense").addEventListener("click", close);
+  dialog.querySelector("#cancel-expense").addEventListener("click", close);
+  dialog.addEventListener("cancel", (event) => event.preventDefault());
+  const values = () => ({
+    amount: moneyOf(form.amount),
+    receiverName: form.receiverName.value.trim(),
+    receiverPosition: form.receiverPosition.value.trim(),
+    giverName: form.giverName.value.trim(),
+    reason: form.reason.value.trim(),
+    city: form.city.value.trim(),
+    category: form.category.value,
+    issuedOn: defaults.today,
+  });
+  const paint = () => {
+    const current = values();
+    form.querySelector("[data-paper]").innerHTML = dischargeText(current);
+    form.querySelector("[data-words]").textContent = current.amount ? `Soit ${amountInWords(current.amount)}.` : "Le montant en lettres s'écrit tout seul.";
+    form.querySelector("[data-sign-giver]").textContent = current.giverName || "—";
+    form.querySelector("[data-sign-receiver]").textContent = current.receiverName || "—";
+  };
+  form.amount.addEventListener("input", (event) => {
+    const digits = event.target.value.replace(/[^\d]/g, "");
+    event.target.value = digits ? grouped(Number(digits)) : "";
+  });
+  form.addEventListener("input", paint);
+  paint();
+  form.amount.focus();
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = form.querySelector("#expense-error");
+    error.hidden = true;
+    const current = values();
+    const missing = [];
+    if (!current.amount) missing.push("le montant");
+    if (current.receiverName.length < 3) missing.push("le nom de la personne qui reçoit");
+    if (current.receiverPosition.length < 2) missing.push("son poste");
+    if (current.giverName.length < 3) missing.push("le nom de la personne qui remet");
+    if (current.reason.length < 3) missing.push("le motif");
+    if (current.city.length < 2) missing.push("la ville");
+    if (missing.length) {
+      error.hidden = false;
+      error.textContent = `Renseignez ${missing.join(", ")}.`;
+      return;
+    }
+    const button = form.querySelector("[type=submit]");
+    button.disabled = true;
+    try {
+      const result = await api("/api/depenses", { method: "POST", body: JSON.stringify(current) });
+      dialog.close();
+      saved(`Décharge ${result.expense.number} enregistrée`);
+      onCreated(result.expense);
+    } catch (caught) {
+      error.hidden = false;
+      error.textContent = caught.message;
+      button.disabled = false;
+    }
+  });
 }
 
 async function showLate(screen) {
@@ -1867,7 +2229,7 @@ async function showAudit(screen) {
     </tbody></table></div>` : `<div class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>Aucune connexion enregistrée.</p></div>`}</article>`;
 }
 
-const FINANCE_RIGHTS = ["dashboard.read", "student.read", "student.write", "student.status", "payment.create", "payment.cancel", "receipt.read", "reminder.create", "report.read", "audit.read", "fee.write", "settings.write"];
+const FINANCE_RIGHTS = ["dashboard.read", "student.read", "student.write", "student.status", "payment.create", "payment.cancel", "receipt.read", "reminder.create", "report.read", "expense.write", "audit.read", "fee.write", "settings.write"];
 const PASSWORD_RULE = "Au moins 6 caractères, avec une majuscule, une minuscule, un chiffre et un caractère spécial.";
 
 function initials(name) {
@@ -2185,13 +2547,6 @@ function openAccountDialog(screen, data, account, creator) {
   });
 
   dialog.showModal();
-}
-
-function offerChip(level, title) {
-  const amounts = [...new Set((state.catalog.fees || []).filter((fee) => fee.level === level).map((fee) => fee.tuition_amount))];
-  if (amounts.length === 1) return `<span>${title} ${gnf(amounts[0])}</span>`;
-  if (!amounts.length) return "";
-  return `<span>${title} selon l'école</span>`;
 }
 
 function showSettings(screen) {

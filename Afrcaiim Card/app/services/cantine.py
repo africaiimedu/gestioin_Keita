@@ -36,11 +36,11 @@ def decision_repas(solde: int, prix: int, email: str, carte_active: bool) -> Dec
     if not carte_active:
         return Decision(False, "Cette carte ne peut pas être utilisée à la cantine.")
     if not email:
-        return Decision(False, "Aucun e-mail professionnel n'est inscrit sur la carte.")
+        return Decision(False, "Aucun e-mail étudiant n'est inscrit sur la carte.")
     try:
         controler_email(email)
     except ValueError:
-        return Decision(False, "L'e-mail professionnel inscrit sur la carte n'est pas valide.")
+        return Decision(False, "L'e-mail étudiant inscrit sur la carte n'est pas valide.")
     if solde < prix:
         return Decision(
             False,

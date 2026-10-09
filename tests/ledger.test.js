@@ -4,6 +4,8 @@ import { freshTestDb } from "./helpers/testDb.js";
 import { seedAll } from "../src/seed/run.js";
 import { transaction } from "../src/db/index.js";
 import * as domain from "../src/services/domain.js";
+import * as expenses from "../src/services/expenses.js";
+import { renderDischargePdf } from "../src/services/receiptPdf.js";
 
 let db;
 let comptable;
@@ -165,15 +167,13 @@ test("une remise enregistrée change les frais dus, pas les paiements", async ()
   await db.prepare("DELETE FROM discounts WHERE student_id = ?").run(student.id);
 });
 
-test("une nouvelle fiche produit un reçu d'inscription, et l'e-mail du personnel est contrôlé", async () => {
+test("une nouvelle fiche ne produit aucun reçu d'inscription, et l'e-mail du personnel est contrôlé", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const created = await domain.createStudent(db, agent, {
     lastName: "ESSAI", firstName: "Inscription", programId: program.id, level: "licence",
   });
-  assert.match(created.enrollmentReceiptNumber, /^INS-2026-\d{6}$/);
-  const again = await domain.issueEnrollmentReceipt(db, agent, created.student.id);
-  assert.equal(again.number, created.enrollmentReceiptNumber);
-  assert.equal(again.created, false);
+  const issued = await db.prepare("SELECT COUNT(*) AS n FROM enrollment_receipts WHERE student_id = ?").get(created.student.id);
+  assert.equal(issued.n, 0);
   await assert.rejects(() => domain.createUser(db, agent, {
     fullName: "Mauvais domaine", email: "essai@gmail.com", password: "Motdepasse1!", rights: ["dashboard.read"],
   }));
@@ -396,6 +396,93 @@ test("costume : prix, versement lié au reçu et refus du trop-perçu", async ()
   const situation = await domain.costumeSituation(db, created.student.id);
   assert.equal(situation.paid, 300_000);
   assert.equal(situation.status, "partiel");
+});
+
+test("costumes : 1.600.000 versés = 2 costumes payés, rien à payer en plus", async () => {
+  await domain.updateSettings(db, agent, { costume_price: "800.000" });
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "DOUBLE", firstName: "Tenue", programId: program.id, level: "bachelor_1",
+  });
+  const paid = await domain.createPayment(db, agent, {
+    studentId: created.student.id, amount: 1_000_000, costumeAmount: 1_600_000, paidOn: "2026-10-06", method: "especes",
+    idempotencyKey: "costume-double-0001",
+  }, "2026-10-06");
+  assert.equal(paid.costume.quantity, 2);
+  assert.equal(paid.costume.price, 1_600_000);
+  assert.equal(paid.costume.reste, 0);
+  const receipt = await db.prepare("SELECT snapshot_json FROM receipts WHERE id = ?").get(paid.receiptId);
+  const snapshot = JSON.parse(receipt.snapshot_json);
+  assert.deepEqual([snapshot.costume.quantity, snapshot.costume.unitPrice, snapshot.costume.reste], [2, 800_000, 0]);
+
+  await assert.rejects(() => domain.setCostumeQuantity(db, agent, created.student.id, 1), /au moins 2/);
+  const three = await domain.setCostumeQuantity(db, agent, created.student.id, 3);
+  assert.deepEqual([three.quantity, three.price, three.reste], [3, 2_400_000, 800_000]);
+  const preview = await domain.previewPayment(db, {
+    studentId: created.student.id, amount: 100_000, costumeAmount: 800_000, paidOn: "2026-10-06",
+  }, "2026-10-06");
+  assert.equal(preview.costume.resteAfter, 0);
+});
+
+test("matricule : saisi à l'inscription, unique, modifiable ensuite", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const suggested = await domain.suggestMatricule(db);
+  assert.match(suggested, /^AIM-\d{4}-\d{4}$/);
+  const created = await domain.createStudent(db, agent, {
+    lastName: "MATRICULE", firstName: "Choisi", programId: program.id, level: "bachelor_1", matricule: " aim-2026-0500 ",
+  });
+  assert.equal(created.student.matricule, "AIM-2026-0500");
+  await assert.rejects(() => domain.createStudent(db, agent, {
+    lastName: "AUTRE", firstName: "Personne", programId: program.id, level: "bachelor_1", matricule: "AIM-2026-0500",
+  }), (error) => error.status === 409);
+  await assert.rejects(() => domain.changeMatricule(db, agent, created.student.id, "a"), (error) => error.status === 400);
+  const changed = await domain.changeMatricule(db, agent, created.student.id, "AIM-2026-0501");
+  assert.equal(changed.previousMatricule, "AIM-2026-0500");
+  assert.equal(changed.student.matricule, "AIM-2026-0501");
+  const taken = await db.prepare("SELECT matricule FROM students WHERE id <> ? ORDER BY id LIMIT 1").get(created.student.id);
+  await assert.rejects(() => domain.changeMatricule(db, agent, created.student.id, taken.matricule), (error) => error.status === 409);
+  await assert.rejects(() => domain.changeMatricule(db, direction, created.student.id, "AIM-2026-0502"), (error) => error.status === 403);
+  const trace = await db.prepare("SELECT before_json, after_json FROM audit_logs WHERE action = 'etudiant.matricule' ORDER BY id DESC LIMIT 1").get();
+  assert.match(trace.before_json, /AIM-2026-0500/);
+  assert.match(trace.after_json, /AIM-2026-0501/);
+});
+
+test("dépenses : décharge numérotée, montant en lettres, immuable, annulable avec motif", async () => {
+  await assert.rejects(() => expenses.createExpense(db, comptable, {
+    amount: 500_000, receiverName: "Kaba Mariama", receiverPosition: "Logistique", reason: "Fournitures",
+  }), (error) => error.status === 403);
+  const { expense } = await expenses.createExpense(db, agent, {
+    amount: 1_500_000, category: "fournitures", receiverName: "  Kaba   Mariama ", receiverPosition: "Responsable logistique",
+    giverName: "Joseph Toupou", reason: "Achat de rames de papier", city: "Conakry",
+  });
+  assert.match(expense.number, /^DEC-\d{4}-000001$/);
+  assert.equal(expense.receiver_name, "Kaba Mariama");
+  assert.equal(expense.amountInWords, "un million cinq cent mille francs guinéens");
+  assert.equal(expense.categoryLabel, "Fournitures et matériel");
+  const second = await expenses.createExpense(db, agent, {
+    amount: 200_000, receiverName: "Camara Ibrahima", receiverPosition: "Chauffeur", reason: "Carburant",
+  });
+  assert.match(second.expense.number, /000002$/);
+  assert.equal(second.expense.giver_name, agent.full_name);
+
+  await assert.rejects(() => db.prepare("UPDATE expenses SET amount = 1 WHERE id = ?").run(expense.id), /ne peut pas être modifiée/);
+  await assert.rejects(() => db.prepare("DELETE FROM expenses WHERE id = ?").run(expense.id), /ne peut pas être supprimée/);
+  await assert.rejects(() => expenses.cancelExpense(db, agent, second.expense.id, "non"), (error) => error.status === 400);
+  const cancelled = await expenses.cancelExpense(db, agent, second.expense.id, "Montant saisi par erreur");
+  assert.equal(cancelled.expense.status, "annule");
+  await assert.rejects(() => expenses.cancelExpense(db, agent, second.expense.id, "Encore une fois"), (error) => error.status === 409);
+
+  const list = await expenses.listExpenses(db, {});
+  assert.equal(list.expenses.length, 2);
+  assert.equal(list.summary.period, 1_500_000);
+  assert.equal(list.summary.cancelledCount, 1);
+  assert.deepEqual(list.byCategory.map((item) => item.code), ["fournitures"]);
+
+  const printed = await expenses.expenseForPrint(db, expense.id);
+  assert.equal(printed.print_count, 1);
+  const pdf = await renderDischargePdf({ expense: printed, school: {}, verifyUrl: `http://localhost/v/${printed.verify_token}` });
+  assert.equal(pdf.subarray(0, 4).toString(), "%PDF");
+  assert.equal((await expenses.expenseByToken(db, printed.verify_token)).number, expense.number);
 });
 
 test("Sequelize : modèles et SQL annulés ensemble, montants en nombres, dates en texte", async () => {

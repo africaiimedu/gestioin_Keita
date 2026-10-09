@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import ROOT, base_url
 from app.services import cups, relais
 from app.services.cantine import crediter, prix_repas, regler_prix
+from app.services.comptes import adresse_compte
 from app.services.courrier import formater_francs
 from app.deps import Redirection, exiger_admin, exiger_bureau, get_db
 from app.models import Etudiant, Journal, MouvementCantine, Utilisateur
@@ -260,7 +261,16 @@ def detail(
         mouvements=mouvements,
         prix_repas=formater_francs(prix_repas()),
         solde=formater_francs(etudiant.solde_cantine or 0),
+        compte=_adresse_etudiant(db, etudiant),
     )
+
+
+def _adresse_etudiant(db: Session, etudiant: Etudiant, prenom: str = "", nom: str = "") -> str:
+    """Adresse du compte étudiant ; à défaut, prenomlepluscourt.nom@univ-africaiim.com."""
+    compte = db.scalar(select(Utilisateur.identifiant).where(Utilisateur.etudiant_id == etudiant.id))
+    if compte:
+        return compte
+    return adresse_compte(db, prenom or etudiant.prenom, nom or etudiant.nom) or ""
 
 
 @router.post("/etudiants/{etudiant_id}")
@@ -280,6 +290,8 @@ def modifier(
 ):
     etudiant = _etudiant(db, etudiant_id)
     _exiger_csrf(request, csrf, f"/admin/etudiants/{etudiant_id}")
+    if not email.strip():
+        email = _adresse_etudiant(db, etudiant, prenom.strip(), nom.strip())
     try:
         fiche = controler_fiche(
             prenom, nom, etudiant.matricule, filiere, annee_academique, date_validite or None, email,

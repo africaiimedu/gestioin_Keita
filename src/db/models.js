@@ -77,6 +77,7 @@ const tables = () => ({
     photo_path: text(),
     card_status: { type: DataTypes.TEXT, allowNull: false, defaultValue: "active" },
     source: { type: DataTypes.TEXT, allowNull: false, defaultValue: "saisie" },
+    costume_quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     created_at: stamp(),
   }],
   Discount: ["discounts", {
@@ -157,6 +158,28 @@ const tables = () => ({
   }],
   ImportBatch: ["import_batches", { id: id(), filename: text(), status: text(false), report_json: text(false), created_by: ref(true), created_at: stamp() }],
   Setting: ["settings", { key: { type: DataTypes.TEXT, primaryKey: true }, value: text(false) }],
+  Expense: ["expenses", {
+    id: id(),
+    number: text(false),
+    year: { type: DataTypes.INTEGER, allowNull: false },
+    seq: { type: DataTypes.INTEGER, allowNull: false },
+    issued_on: day(),
+    city: text(false),
+    receiver_name: text(false),
+    receiver_position: text(false),
+    giver_name: text(false),
+    amount: amount(),
+    reason: text(false),
+    category: { type: DataTypes.TEXT, allowNull: false, defaultValue: "autre" },
+    status: { type: DataTypes.TEXT, allowNull: false, defaultValue: "valide" },
+    cancel_reason: text(),
+    cancelled_by: ref(true),
+    cancelled_at: stamp(),
+    verify_token: text(false),
+    print_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    created_by: ref(),
+    created_at: stamp(),
+  }],
 });
 
 export function defineModels(sequelize) {

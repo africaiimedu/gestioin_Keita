@@ -91,9 +91,14 @@ export async function costumePrice(db) {
   return Math.max(0, Number((await setting(db, "costume_price")) || 0));
 }
 
-/** Prix, versé et reste du costume. Un versement lié à un paiement annulé ne compte plus. */
-export async function costumeSituation(db, studentId) {
-  const price = await costumePrice(db);
+export const COSTUME_MAX = 20;
+
+/** Prix (nombre de costumes × prix unitaire), versé et reste. Un versement lié à un paiement annulé ne compte plus. */
+export async function costumeSituation(db, studentId, quantityOverride = null) {
+  const unitPrice = await costumePrice(db);
+  const row = await db.prepare("SELECT costume_quantity FROM students WHERE id = ?").get(studentId);
+  const quantity = quantityOverride || Math.max(1, Number(row?.costume_quantity || 1));
+  const price = unitPrice * quantity;
   const entries = (await db.prepare(`
     SELECT c.id, c.amount, c.paid_on, c.method, c.note, c.status, c.cancel_reason, c.payment_id,
            r.number AS receipt_number, r.id AS receipt_id, p.status AS payment_status
@@ -113,7 +118,37 @@ export async function costumeSituation(db, studentId) {
   else if (reste === 0) status = "paye";
   else if (paid > 0) status = "partiel";
   const labels = { non_fixe: "Prix non fixé", paye: "Payé", partiel: "Partiellement payé", non_paye: "Non payé" };
-  return { price, paid, reste, status, statusLabel: labels[status], entries };
+  return { unitPrice, quantity, price, paid, reste, status, statusLabel: labels[status], entries };
+}
+
+function costumeQuantityOf(value) {
+  if (value == null || value === "") return null;
+  const quantity = Number(value);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > COSTUME_MAX) {
+    throw new HttpError(400, `Le nombre de costumes doit être compris entre 1 et ${COSTUME_MAX}`);
+  }
+  return quantity;
+}
+
+/** Nombre de costumes retenu : celui choisi, sinon celui que le montant paie exactement (2 × prix = 2 costumes). */
+function costumeQuantityFor(costume, amount, requested) {
+  if (requested) return requested;
+  const total = costume.paid + amount;
+  if (!costume.unitPrice || total <= costume.price || total % costume.unitPrice !== 0) return costume.quantity;
+  return Math.min(COSTUME_MAX, total / costume.unitPrice);
+}
+
+/** Situation du costume pour ce versement ; avec write, le nombre de costumes est enregistré sur la fiche. */
+async function costumeFor(db, studentId, amount, requestedQuantity, { write = false } = {}) {
+  const current = await costumeSituation(db, studentId);
+  const quantity = costumeQuantityFor(current, amount, costumeQuantityOf(requestedQuantity));
+  if (quantity === current.quantity) return current;
+  const next = await costumeSituation(db, studentId, quantity);
+  if (next.unitPrice && next.paid > next.price) {
+    throw new HttpError(400, `${formatGnf(next.paid)} sont déjà versés pour les costumes : il en faut au moins ${Math.ceil(next.paid / next.unitPrice)}.`);
+  }
+  if (write) await db.prepare("UPDATE students SET costume_quantity = ? WHERE id = ?").run(quantity, studentId);
+  return next;
 }
 
 function costumeAmountOf(value) {
@@ -127,9 +162,10 @@ function assertCostumeRoom(costume, amount) {
   if (amount <= 0) return;
   if (!costume.price) throw new HttpError(400, "Le prix du costume n'est pas encore fixé dans les paramètres");
   if (amount > costume.reste) {
+    const several = costume.quantity > 1 ? `les ${costume.quantity} costumes` : "le costume";
     const message = costume.reste <= 0
-      ? "Le costume est déjà entièrement payé. Le versement n'a pas été enregistré."
-      : `Le montant du costume (${formatGnf(amount)}) est supérieur au reste à payer pour le costume (${formatGnf(costume.reste)}). Le versement n'a pas été enregistré.`;
+      ? `${several[0].toUpperCase()}${several.slice(1)} ${costume.quantity > 1 ? "sont" : "est"} déjà entièrement payé${costume.quantity > 1 ? "s" : ""}. Pour un costume de plus, augmentez le nombre de costumes.`
+      : `Le montant du costume (${formatGnf(amount)}) est supérieur au reste à payer pour ${several} (${formatGnf(costume.reste)}). Pour plusieurs costumes, choisissez le nombre de costumes. Le versement n'a pas été enregistré.`;
     throw new HttpError(400, message, { code: "AMOUNT_TOO_HIGH", reste: costume.reste });
   }
 }
@@ -144,7 +180,7 @@ export async function recordCostume(db, user, studentId, input, asOf = todayInCo
   return transaction(db, async () => {
     const student = await db.prepare("SELECT id, matricule FROM students WHERE id = ?").get(Number(studentId));
     if (!student) throw new HttpError(404, "Étudiant introuvable");
-    assertCostumeRoom(await costumeSituation(db, student.id), amount);
+    assertCostumeRoom(await costumeFor(db, student.id, amount, input.quantity, { write: true }), amount);
     const inserted = await db.prepare(`
       INSERT INTO costume_payments(student_id, payment_id, amount, paid_on, method, note, received_by)
       VALUES(?, ?, ?, ?, ?, ?, ?) RETURNING id
@@ -437,9 +473,10 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
   const current = await studentSituation(db, input.studentId, asOf);
   const warnings = [];
   if (isScholar(current.discounts)) throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
-  const costume = await costumeSituation(db, current.student.id);
   const costumeAmount = costumeAmountOf(input.costumeAmount);
+  let costume = await costumeSituation(db, current.student.id);
   try {
+    costume = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity);
     assertCostumeRoom(costume, costumeAmount);
   } catch (error) {
     warnings.push(error.message);
@@ -600,7 +637,7 @@ export function presentSituation(situation) {
   };
 }
 
-async function nextDocumentNumber(db, kind, year) {
+export async function nextDocumentNumber(db, kind, year) {
   const row = await db.prepare(`
     INSERT INTO document_sequences(kind, year, last_number) VALUES(?, ?, 1)
     ON CONFLICT(kind, year) DO UPDATE SET last_number = document_sequences.last_number + 1
@@ -641,8 +678,8 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
     if (offer.amount > room && !input.acceptCredit) {
       throw new HttpError(400, overpayMessage(input.amount, room), { code: "AMOUNT_TOO_HIGH", reste: room });
     }
-    const costumeBefore = await costumeSituation(db, current.student.id);
     const costumeAmount = costumeAmountOf(input.costumeAmount);
+    const costumeBefore = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity, { write: true });
     assertCostumeRoom(costumeBefore, costumeAmount);
     if (offer.apply) {
       await db.prepare(`
@@ -718,6 +755,8 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
       amountInWords: amountInWords(amount + costumeAmount),
       totalAmount: amount + costumeAmount,
       costume: costumeBefore.price > 0 ? {
+        unitPrice: costumeBefore.unitPrice,
+        quantity: costumeBefore.quantity,
         price: costumeBefore.price,
         paidBefore: costumeBefore.paid,
         today: costumeAmount,
@@ -801,6 +840,7 @@ export async function updatePayment(db, user, paymentId, input, asOf = todayInCo
       method: input.method,
       reference: input.reference,
       costumeAmount: input.costumeAmount,
+      costumeQuantity: input.costumeQuantity,
       note,
       idempotencyKey: key,
       acceptCredit: input.acceptCredit,
@@ -1030,18 +1070,21 @@ export async function createStudent(db, user, input) {
   }
   if (scholarship && paymentAmount > 0) throw new HttpError(400, "Un boursier ne verse aucun frais de scolarité");
   const costumeAmount = costumeAmountOf(input.costumeAmount);
+  const costumeQuantity = costumeQuantityOf(input.costumeQuantity);
   if ((paymentAmount > 0 || costumeAmount > 0) && !METHODS.has(input.method)) throw new HttpError(400, "Choisissez le moyen de paiement");
+  const typedMatricule = matriculeOf(input.matricule, { optional: true });
   const year = await activeYear(db);
   const program = await db.prepare("SELECT * FROM programs WHERE id = ?").get(Number(input.programId));
   if (!program) throw new HttpError(400, "Filière inconnue");
   const paidOn = todayInConakry();
   const created = await transaction(db, async () => {
     await refuseSamePerson(db, last, first);
-    const matricule = await nextMatricule(db, year.label);
+    const matricule = typedMatricule || await nextMatricule(db, year.label);
+    await refuseTakenMatricule(db, matricule);
     const result = await db.prepare(`
-      INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie') RETURNING id
-    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone));
+      INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source, costume_quantity)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie', ?) RETURNING id
+    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1);
     const studentId = result.lastInsertRowid;
     await assignAccountEmail(db, { id: studentId, first_name: first, last_name: last });
     await audit(db, user.id, "etudiant.creer", "students", studentId, null, { matricule, last, first, level: input.level, scholarship });
@@ -1060,55 +1103,73 @@ export async function createStudent(db, user, input) {
         idempotencyKey: `fiche-${matricule}`,
         note: "Versement du jour à l'inscription",
         costumeAmount,
+        costumeQuantity,
       }, paidOn);
     } else if (costumeAmount > 0) {
-      await recordCostume(db, user, studentId, { amount: costumeAmount, paidOn, method: input.method, note: "Versé à l'inscription" }, paidOn);
+      await recordCostume(db, user, studentId, { amount: costumeAmount, quantity: costumeQuantity, paidOn, method: input.method, note: "Versé à l'inscription" }, paidOn);
     }
     const current = await studentSituation(db, studentId, paidOn);
     await refreshCard(db, current.student, current.situation);
-    const receipt = await issueEnrollmentReceipt(db, user, studentId);
-    return { ...(await studentSituation(db, studentId, paidOn)), enrollmentReceiptId: receipt.id, enrollmentReceiptNumber: receipt.number };
+    return studentSituation(db, studentId, paidOn);
   });
   pushStudentToCard(created.student).catch(() => {});
   return created;
 }
 
-export async function issueEnrollmentReceipt(db, user, studentId) {
+const MATRICULE_FORMAT = /^[A-Z0-9][A-Z0-9-]{2,30}$/;
+
+function matriculeOf(value, { optional = false } = {}) {
+  const matricule = String(value ?? "").replace(/\s+/g, "").toUpperCase();
+  if (!matricule && optional) return null;
+  if (!MATRICULE_FORMAT.test(matricule)) {
+    throw new HttpError(400, "Le matricule doit compter de 3 à 31 caractères : lettres, chiffres et tirets (ex. AIM-2026-0001).");
+  }
+  return matricule;
+}
+
+async function refuseTakenMatricule(db, matricule, exceptId = null) {
+  const other = await db.prepare(`
+    SELECT matricule, last_name, first_name FROM students WHERE upper(matricule) = ? AND id <> COALESCE(?::int, 0)
+  `).get(matricule, exceptId);
+  if (other) throw new HttpError(409, `Le matricule ${matricule} est déjà attribué à ${other.last_name} ${other.first_name}.`);
+}
+
+/** Matricule proposé pour une nouvelle fiche : la scolarité peut le remplacer. */
+export async function suggestMatricule(db) {
+  const year = await activeYear(db);
+  return nextMatricule(db, year.label);
+}
+
+export async function changeMatricule(db, user, studentId, value) {
+  if (!can(user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit de modifier cette fiche");
+  const matricule = matriculeOf(value);
+  const result = await transaction(db, async () => {
+    const before = await db.prepare("SELECT * FROM students WHERE id = ?").get(Number(studentId));
+    if (!before) throw new HttpError(404, "Étudiant introuvable");
+    if (before.matricule === matricule) return { previous: null, situation: await studentSituation(db, before.id) };
+    await refuseTakenMatricule(db, matricule, before.id);
+    await db.prepare("UPDATE students SET matricule = ? WHERE id = ?").run(matricule, before.id);
+    await audit(db, user.id, "etudiant.matricule", "students", before.id, { matricule: before.matricule }, { matricule });
+    return { previous: before.matricule, situation: await studentSituation(db, before.id) };
+  });
+  const card = result.previous && result.situation.student.status !== "archive"
+    ? await pushStudentToCard(result.situation.student, { previous: result.previous })
+    : null;
+  return { ...result.situation, previousMatricule: result.previous, card };
+}
+
+export async function setCostumeQuantity(db, user, studentId, value) {
+  if (!can(user, "payment.create")) throw new HttpError(403, "Vous n'avez pas le droit de modifier le costume");
+  const quantity = costumeQuantityOf(value);
+  if (!quantity) throw new HttpError(400, "Indiquez le nombre de costumes");
   return transaction(db, async () => {
-    const existing = await db.prepare("SELECT id, number FROM enrollment_receipts WHERE student_id = ?").get(studentId);
-    if (existing) return { id: existing.id, number: existing.number, created: false };
-    const current = await studentSituation(db, studentId);
-    const student = current.student;
-    const year = Number(todayInConakry().slice(0, 4));
-    const seq = await nextDocumentNumber(db, "INS", year);
-    const number = `INS-${year}-${String(seq).padStart(6, "0")}`;
-    const token = crypto.randomBytes(24).toString("base64url");
-    const snapshot = {
-      kind: "inscription",
-      studentName: `${student.last_name} ${student.first_name}`.trim(),
-      matricule: student.matricule,
-      program: student.program_name,
-      level: student.level,
-      year: student.year_label,
-      issuedOn: todayInConakry(),
-      agentName: user.full_name,
-      tuition: current.situation.due,
-      tuitionInWords: amountInWords(current.situation.due),
-      registration: registrationFee(student.level),
-      scholar: isScholar(current.discounts),
-      costumePrice: await costumePrice(db),
-      plan: current.situation.plan.map((item) => ({
-        label: item.label,
-        amount: item.amount,
-        dueOn: item.dueOn,
-      })),
-    };
-    const receipt = await db.prepare(`
-      INSERT INTO enrollment_receipts(student_id, number, year, seq, verify_token, snapshot_json)
-      VALUES(?, ?, ?, ?, ?, ?) RETURNING id
-    `).run(studentId, number, year, seq, token, JSON.stringify(snapshot));
-    await audit(db, user.id, "inscription.recu", "enrollment_receipts", receipt.lastInsertRowid, null, { number, matricule: student.matricule });
-    return { id: receipt.lastInsertRowid, number, created: true };
+    const student = await db.prepare("SELECT id FROM students WHERE id = ?").get(Number(studentId));
+    if (!student) throw new HttpError(404, "Étudiant introuvable");
+    const before = await costumeSituation(db, student.id);
+    if (quantity === before.quantity) return before;
+    const after = await costumeFor(db, Number(studentId), 0, quantity, { write: true });
+    await audit(db, user.id, "costume.nombre", "students", studentId, { quantity: before.quantity }, { quantity });
+    return after;
   });
 }
 

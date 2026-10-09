@@ -107,7 +107,7 @@ def controler_email(email: str | None) -> str:
     if not email:
         return ""
     if len(email) > 120 or not _EMAIL.match(email):
-        raise ValueError("l'e-mail professionnel n'est pas valide.")
+        raise ValueError("l'e-mail étudiant n'est pas valide.")
     return email
 
 

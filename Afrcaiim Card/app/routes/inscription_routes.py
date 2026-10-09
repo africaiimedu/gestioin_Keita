@@ -30,6 +30,11 @@ def _matricule_propre(valeur: str) -> str:
     return re.sub(r"\s+", "", valeur or "").upper()
 
 
+def _adresse_du_compte(db: Session, etudiant: Etudiant) -> str:
+    compte = db.scalar(select(Utilisateur.identifiant).where(Utilisateur.etudiant_id == etudiant.id))
+    return compte if compte and ADRESSE.match(compte) else ""
+
+
 def _retirer_matricule(db: Session, matricule: str):
     propre = _matricule_propre(matricule)
     if not _MATRICULE.match(propre):
@@ -71,7 +76,18 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
     compte = str(corps.get("compte") or "").strip().lower()
     if compte and not ADRESSE.match(compte):
         return JSONResponse({"message": "L'adresse du compte doit finir par @univ-africaiim.com."}, status_code=400)
+    if not fiche.email and compte:
+        fiche.email = compte
     existant = db.scalar(select(Etudiant).where(Etudiant.matricule == fiche.matricule))
+    ancien = _matricule_propre(str(corps.get("ancien_matricule") or ""))
+    if ancien and ancien != fiche.matricule:
+        renomme = db.scalar(select(Etudiant).where(Etudiant.matricule == ancien))
+        if renomme is not None:
+            if existant is not None:
+                return JSONResponse({"message": f"Le matricule {fiche.matricule} existe déjà dans les cartes."}, status_code=409)
+            renomme.matricule = fiche.matricule
+            journaliser(db, "matricule_modifie", etudiant_id=renomme.id, details=f"{ancien} → {fiche.matricule}")
+            existant = renomme
     if existant is None:
         try:
             etudiant, _secret, _compte = creer_etudiant(
@@ -106,7 +122,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
             filiere=fiche.filiere,
             annee_academique=fiche.annee_academique,
             date_validite=fiche.date_validite,
-            email=fiche.email or existant.email,
+            email=fiche.email or existant.email or _adresse_du_compte(db, existant),
             sexe=fiche.sexe,
             acteur_id=None,
         )

@@ -45,3 +45,25 @@ def test_le_site_retire_aussi_la_fiche(monkeypatch):
         assert encore.json()["supprime"] is False
     finally:
         client.delete(f"/api/inscriptions/{_MATRICULE}", headers=entete)
+
+
+def test_matricule_change_garde_la_meme_fiche_et_l_adresse_etudiante(monkeypatch):
+    monkeypatch.setenv("INSCRIPTION_JETON", _JETON)
+    client = TestClient(app)
+    entete = {"X-Jeton": _JETON}
+    ancien, nouveau = "AIIM-TEST-ANCIEN", "AIIM-TEST-NOUVEAU"
+    fiche = {"prenom": "Mamadou Alpha", "nom": "Renomme", "ecole": "AFRICAIIM Tech"}
+    try:
+        assert client.post("/api/inscriptions", headers=entete, json={**fiche, "matricule": ancien}).status_code == 200
+        with SessionLocal() as db:
+            avant = db.scalar(select(Etudiant).where(Etudiant.matricule == ancien))
+            assert avant.email == "alpha.renomme@univ-africaiim.com"
+            identifiant = avant.id
+        renomme = client.post("/api/inscriptions", headers=entete, json={**fiche, "matricule": nouveau, "ancien_matricule": ancien})
+        assert renomme.status_code == 200, renomme.text
+        with SessionLocal() as db:
+            assert db.scalar(select(Etudiant).where(Etudiant.matricule == ancien)) is None
+            assert db.scalar(select(Etudiant).where(Etudiant.matricule == nouveau)).id == identifiant
+    finally:
+        client.delete(f"/api/inscriptions/{ancien}", headers=entete)
+        client.delete(f"/api/inscriptions/{nouveau}", headers=entete)

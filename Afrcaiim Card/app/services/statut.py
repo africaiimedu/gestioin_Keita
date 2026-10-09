@@ -23,6 +23,8 @@ LIBELLES_ACTION = {
     "reeditee": "Réédition",
     "photo": "Photo mise à jour",
     "modification": "Fiche modifiée",
+    "matricule_modifie": "Matricule modifié",
+    "compte_etudiant": "Compte étudiant",
     "credit_cantine": "Compte cantine crédité",
     "debit_cantine": "Repas débité",
     "commande_cantine": "Commande cantine",

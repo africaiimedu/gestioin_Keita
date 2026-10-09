@@ -29,7 +29,6 @@ import {
   createStudent,
   createUser,
   deactivateUser,
-  issueEnrollmentReceipt,
   updateUserAccess,
   dashboard,
   lateStudents,
@@ -48,8 +47,12 @@ import {
   updatePayment,
   updateSettings,
   updateStudent,
+  changeMatricule,
+  setCostumeQuantity,
+  suggestMatricule,
 } from "./services/domain.js";
-import { renderEnrollmentPdf, renderReceiptPdf } from "./services/receiptPdf.js";
+import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseForPrint, listExpenses } from "./services/expenses.js";
+import { renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { syncStudentsToCard } from "./services/cardSync.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
@@ -204,9 +207,12 @@ app.get("/api/etudiants", requireAction("student.read"), async (req, res) => {
     students: rows.map((row) => ({ ...publicStudent(row.student), situation: row.situation })),
   });
 });
+app.get("/api/etudiants/prochain-matricule", requireAction("student.write"), async (_req, res) => {
+  res.json({ matricule: await suggestMatricule(db) });
+});
 app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) => {
   const current = await studentSituation(db, Number(req.params.id));
-  const [payments, reminders, enrollment, costume] = await Promise.all([
+  const [payments, reminders, costume] = await Promise.all([
     db.prepare(`
       SELECT p.id, p.amount, p.paid_on, p.method, p.reference, p.installment_code, p.note, p.status,
              p.date_unconfirmed, u.full_name AS agent, r.id AS receipt_id, r.number AS receipt_number, r.print_count,
@@ -219,7 +225,6 @@ app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) =>
       ORDER BY p.paid_on, p.id
     `).all(current.student.id),
     db.prepare("SELECT id, channel, message, created_at FROM reminders WHERE student_id = ? ORDER BY id DESC").all(current.student.id),
-    db.prepare("SELECT id, number, created_at FROM enrollment_receipts WHERE student_id = ?").get(current.student.id),
     costumeSituation(db, current.student.id),
   ]);
   res.json({
@@ -228,12 +233,17 @@ app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) =>
     discounts: current.discounts,
     payments,
     reminders,
-    enrollment,
     costume,
   });
 });
 app.post("/api/etudiants/:id/costume", requireAction("payment.create"), async (req, res) => {
   res.status(201).json(await recordCostume(db, req.user, Number(req.params.id), req.body || {}));
+});
+app.put("/api/etudiants/:id/costume-nombre", requireAction("payment.create"), async (req, res) => {
+  res.json(await setCostumeQuantity(db, req.user, Number(req.params.id), req.body?.quantity));
+});
+app.put("/api/etudiants/:id/matricule", requireAction("student.write"), async (req, res) => {
+  res.json(await changeMatricule(db, req.user, Number(req.params.id), req.body?.matricule));
 });
 app.post("/api/costumes/:id/annuler", requireAction("payment.cancel"), async (req, res) => {
   res.json(await cancelCostume(db, req.user, Number(req.params.id), req.body?.reason));
@@ -243,16 +253,7 @@ app.post("/api/etudiants", requireAction("student.write"), async (req, res) => {
   res.status(201).json({
     student: publicStudent(created.student),
     situation: created.situation,
-    enrollmentReceiptId: created.enrollmentReceiptId,
-    enrollmentReceiptNumber: created.enrollmentReceiptNumber,
   });
-});
-app.post("/api/etudiants/:id/inscription", requireAction("receipt.read"), async (req, res) => {
-  const studentId = Number(req.params.id);
-  const existing = await db.prepare("SELECT id FROM enrollment_receipts WHERE student_id = ?").get(studentId);
-  if (!existing && !can(req.user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit d'émettre un reçu d'inscription");
-  const receipt = await issueEnrollmentReceipt(db, req.user, studentId);
-  res.status(receipt.created ? 201 : 200).json(receipt);
 });
 app.patch("/api/etudiants/:id", requireAction("student.write"), async (req, res) => {
   const updated = await updateStudent(db, req.user, Number(req.params.id), req.body || {});
@@ -316,20 +317,29 @@ app.get("/api/recus/:id.pdf", requireAction("receipt.read"), async (req, res) =>
   res.setHeader("Content-Disposition", `inline; filename="${receipt.number}.pdf"`);
   res.send(pdf);
 });
-app.get("/api/inscriptions/:id.pdf", requireAction("receipt.read"), async (req, res) => {
-  const receipt = await db.prepare(`
-    UPDATE enrollment_receipts SET print_count = print_count + 1 WHERE id = ? RETURNING *
-  `).get(Number(req.params.id));
-  if (!receipt) throw new HttpError(404, "Reçu d'inscription introuvable");
-  const pdf = await renderEnrollmentPdf({
-    snapshot: JSON.parse(receipt.snapshot_json),
-    receipt,
+app.get("/api/depenses", requireAction("expense.write"), async (req, res) => {
+  const [list, defaults] = await Promise.all([
+    listExpenses(db, { from: req.query.du, to: req.query.au, q: req.query.q, category: req.query.categorie, status: req.query.statut }),
+    expenseDefaults(db, req.user),
+  ]);
+  res.json({ ...list, defaults });
+});
+app.post("/api/depenses", requireAction("expense.write"), async (req, res) => {
+  res.status(201).json(await createExpense(db, req.user, req.body || {}));
+});
+app.post("/api/depenses/:id/annuler", requireAction("expense.write"), async (req, res) => {
+  res.json(await cancelExpense(db, req.user, Number(req.params.id), req.body?.reason));
+});
+app.get("/api/depenses/:id.pdf", requireAction("expense.write"), async (req, res) => {
+  const expense = await expenseForPrint(db, Number(req.params.id));
+  const pdf = await renderDischargePdf({
+    expense,
     school: await schoolBlock(),
-    format: req.query.format === "a5" ? "a5" : "a4",
-    verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${receipt.verify_token}`,
+    verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${expense.verify_token}`,
   });
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${receipt.number}.pdf"`);
+  res.setHeader("Content-Disposition", `inline; filename="${expense.number}.pdf"`);
   res.send(pdf);
 });
 app.get("/api/journal", requireAction("report.read"), async (req, res) => {
@@ -483,20 +493,20 @@ app.get("/api/integrations/cartes", async (req, res) => {
 });
 
 app.get("/v/:token", async (req, res) => {
-  const enrollment = await db.prepare("SELECT number, snapshot_json FROM enrollment_receipts WHERE verify_token = ?").get(req.params.token);
-  if (enrollment) {
-    const snap = JSON.parse(enrollment.snapshot_json);
+  const expense = await expenseByToken(db, req.params.token);
+  if (expense) {
+    const cancelled = expense.status === "annule";
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>Vérification ${escapeHtml(enrollment.number)}</title>
+      <title>Vérification ${escapeHtml(expense.number)}</title>
       <link rel="stylesheet" href="/styles.css">
-      <main class="verify"><p class="mark">Université AFRICAIIM</p><h1>Reçu d'inscription</h1>
-      <p class="state ok">AUTHENTIQUE</p>
-      <p>Numéro : <strong>${escapeHtml(enrollment.number)}</strong></p>
-      <p>Étudiant : ${escapeHtml(snap.studentName)}</p>
-      <p>Matricule : ${escapeHtml(snap.matricule)}</p>
-      <p>École : ${escapeHtml(snap.program)}</p>
-      <p class="muted">Ce document confirme l'inscription. Il ne constate pas un paiement.</p></main></html>`);
+      <main class="verify"><p class="mark">Université AFRICAIIM</p><h1>Décharge de responsabilité financière</h1>
+      <p class="state ${cancelled ? "bad" : "ok"}">${cancelled ? "ANNULÉE" : "AUTHENTIQUE"}</p>
+      <p>Numéro : <strong>${escapeHtml(expense.number)}</strong></p>
+      <p>Montant : <strong>${escapeHtml(formatGnf(expense.amount))}</strong></p>
+      <p>Date : ${escapeHtml(expense.issued_on)}</p>
+      <p>Reçu par : ${escapeHtml(expense.receiver_name)}</p>
+      <p class="muted">Aucune autre donnée n'est affichée sur cette page.</p></main></html>`);
     return;
   }
   const receipt = await db.prepare(`
