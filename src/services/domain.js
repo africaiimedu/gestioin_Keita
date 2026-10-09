@@ -48,14 +48,11 @@ function cashOffer(current, amount) {
     return { discounts: current.discounts, amount, apply: false };
   }
   const already = current.discounts.some((item) => item.label === CASH_LABEL);
-  if (already) {
-    const reduced = current.situation.due;
-    return { discounts: current.discounts, amount: amount === current.tuition ? reduced : amount, apply: false, reduced };
-  }
+  if (already) return { discounts: current.discounts, amount, apply: false, reduced: current.situation.due };
   if (!discount) return { discounts: current.discounts, amount, apply: false };
   const reduced = Math.max(0, current.tuition - discount);
   if (amount < reduced) return { discounts: current.discounts, amount, apply: false, reduced };
-  return { discounts: current.discounts, amount: amount === current.tuition ? reduced : amount, apply: true, reduced };
+  return { discounts: current.discounts, amount, apply: true, reduced };
 }
 
 function payableRoom(current, offer) {
@@ -63,9 +60,11 @@ function payableRoom(current, offer) {
   return Math.max(0, current.situation.reste);
 }
 
-function overpayMessage(typed, room) {
+/** Le montant saisi est enregistré tel quel : jamais réduit en silence, refusé s'il dépasse le reste à payer. */
+function overpayMessage(typed, room, offer = {}) {
   if (room <= 0) return "Cet étudiant n'a plus rien à payer. Le versement n'a pas été enregistré.";
-  return `Le montant versé (${formatGnf(typed)}) est supérieur au montant à payer (${formatGnf(room)}). Le versement n'a pas été enregistré.`;
+  const discount = offer.apply ? `, remise de ${formatGnf(CASH_DISCOUNT)} comprise pour un paiement en une fois` : "";
+  return `Le montant saisi (${formatGnf(typed)}) est supérieur au montant à payer (${formatGnf(room)}${discount}). Le versement n'a pas été enregistré.`;
 }
 
 export function todayInConakry(now = new Date()) {
@@ -493,7 +492,7 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
   const offer = cashOffer(current, input.amount);
   const room = payableRoom(current, offer);
   if (offer.amount > room) {
-    warnings.push(overpayMessage(input.amount, room));
+    warnings.push(overpayMessage(input.amount, room, offer));
     return {
       warnings,
       before: current.situation,
@@ -587,7 +586,7 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
       cashDiscount: Boolean(offer.apply),
       limited: true,
       refused: true,
-      limitedMessage: overpayMessage(asked, room),
+      limitedMessage: overpayMessage(asked, room, offer),
     };
   }
   return {
@@ -676,7 +675,7 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
     const offer = cashOffer(current, input.amount);
     const room = payableRoom(current, offer);
     if (offer.amount > room && !input.acceptCredit) {
-      throw new HttpError(400, overpayMessage(input.amount, room), { code: "AMOUNT_TOO_HIGH", reste: room });
+      throw new HttpError(400, overpayMessage(input.amount, room, offer), { code: "AMOUNT_TOO_HIGH", reste: room });
     }
     const costumeAmount = costumeAmountOf(input.costumeAmount);
     const costumeBefore = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity, { write: true });

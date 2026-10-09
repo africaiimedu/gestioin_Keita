@@ -271,14 +271,14 @@ app.post("/api/paiements/apercu", requireAction("payment.create"), async (req, r
   res.json(await previewPayment(db, req.body || {}));
 });
 app.post("/api/paiements", requireAction("payment.create"), async (req, res) => {
-  const result = await createPayment(db, req.user, req.body || {});
+  const result = await createPayment(db, req.user, { ...req.body, acceptCredit: false });
   res.status(result.replay ? 200 : 201).json(result);
 });
 app.post("/api/paiements/:id/apercu", requireAction("payment.create"), async (req, res) => {
   res.json(await previewPaymentUpdate(db, Number(req.params.id), req.body || {}));
 });
 app.post("/api/paiements/:id/mettre-a-jour", requireAction("payment.create"), async (req, res) => {
-  const result = await updatePayment(db, req.user, Number(req.params.id), req.body || {});
+  const result = await updatePayment(db, req.user, Number(req.params.id), { ...req.body, acceptCredit: false });
   res.status(result.replay ? 200 : 201).json(result);
 });
 app.post("/api/paiements/:id/annuler", requireAction("payment.cancel"), async (req, res) => {

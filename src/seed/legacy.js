@@ -92,15 +92,31 @@ export const FEE_PLANS = {
   tech: { tuition: 37_000_000, parts: partsOf(37_000_000) },
 };
 
-/** Barème des nouvelles fiches. Les étudiants déjà importés gardent leur ancien barème. */
-export const OFFER_PLANS = {
-  bachelor: { tuition: 24_000_000, parts: partsOf(24_000_000) },
-  bachelor_1: { tuition: 24_000_000, parts: partsOf(24_000_000) },
-  bachelor_2: { tuition: 24_000_000, parts: partsOf(24_000_000) },
-  bachelor_3: { tuition: 24_000_000, parts: partsOf(24_000_000) },
-  master_1: { tuition: 27_000_000, parts: partsOf(27_000_000) },
-  master_2: { tuition: 28_000_000, parts: partsOf(28_000_000) },
+/**
+ * Scolarité des nouvelles fiches, par année d'études ; l'inscription s'y ajoute.
+ * Africaiim Tech a son propre barème. Les étudiants déjà importés gardent leur ancien barème.
+ */
+const OFFER_TUITION = {
+  bachelor: 24_000_000,
+  bachelor_1: 24_000_000,
+  bachelor_2: 25_000_000,
+  bachelor_3: 26_000_000,
+  master_1: 27_000_000,
+  master_2: 28_000_000,
 };
+const TECH_TUITION = {
+  bachelor: 35_000_000,
+  bachelor_1: 35_000_000,
+  bachelor_2: 35_000_000,
+  bachelor_3: 35_000_000,
+  master_1: 45_000_000,
+  master_2: 45_000_000,
+};
+
+export function offerPlans(programCode) {
+  const grid = String(programCode || "").toUpperCase() === "TECH" ? TECH_TUITION : OFFER_TUITION;
+  return Object.fromEntries(Object.entries(grid).map(([level, tuition]) => [level, { tuition, parts: partsOf(tuition) }]));
+}
 
 export const DUE_DATES = {
   inscription: "2026-10-05",

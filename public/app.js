@@ -1199,9 +1199,10 @@ async function showStudents(screen) {
       if (!form.scholarship.checked) {
         const typed = Number(form.paymentAmount.value.replace(/\D/g, "") || 0);
         const tuition = tuitionOf();
-        const limit = form.payInFull.checked ? cashOf(tuition) : tuition;
+        const limit = cashOf(tuition);
         if (typed > limit) {
-          notifyOverpay(`Le versement du jour (${gnf(typed)}) est supérieur au montant à payer (${gnf(limit)}). La fiche n'a pas été enregistrée.`);
+          const discount = limit < tuition ? `, remise de ${gnf(state.catalog.cashDiscount || 0)} comprise pour un paiement en une fois` : "";
+          notifyOverpay(`Le versement du jour (${gnf(typed)}) est supérieur au montant à payer (${gnf(limit)}${discount}). La fiche n'a pas été enregistrée.`);
           return;
         }
       }

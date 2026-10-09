@@ -201,9 +201,17 @@ test("une nouvelle fiche ne produit aucun reçu d'inscription, et l'e-mail du pe
 
 test("bachelor, masters, remise de 1.200.000 en une fois et boursier", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  await assert.rejects(
+    () => domain.createStudent(db, agent, {
+      lastName: "BARRY", firstName: "Comptant", programId: program.id, level: "bachelor",
+      paymentAmount: 25_000_000, method: "marchand",
+    }),
+    (error) => error.details?.code === "AMOUNT_TOO_HIGH" && /23\.800\.000 GNF, remise de 1\.200\.000 GNF comprise/.test(error.message),
+  );
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM students WHERE last_name = 'BARRY' AND first_name = 'Comptant'").get()).n, 0);
   const comptant = await domain.createStudent(db, agent, {
     lastName: "BARRY", firstName: "Comptant", programId: program.id, level: "bachelor",
-    paymentAmount: 25_000_000, method: "marchand",
+    paymentAmount: 23_800_000, method: "marchand",
   });
   assert.equal(comptant.situation.due, 23_800_000);
   assert.equal(comptant.situation.paid, 23_800_000);
@@ -241,6 +249,25 @@ test("bachelor, masters, remise de 1.200.000 en une fois et boursier", async () 
 
   const bachelorYears = (await db.prepare("SELECT DISTINCT level FROM fee_schedules WHERE level LIKE 'bachelor_%'").all()).map((row) => row.level).sort();
   assert.deepEqual(bachelorYears, ["bachelor_1", "bachelor_2", "bachelor_3"]);
+  const grid = await db.prepare(`
+    SELECT p.code, f.level, f.tuition_amount, f.registration_amount, f.installment_1, f.installment_2
+    FROM fee_schedules f JOIN programs p ON p.id = f.program_id
+    WHERE f.level IN ('bachelor_1', 'bachelor_2', 'bachelor_3', 'master_1', 'master_2')
+  `).all();
+  const tuitionOf = (code, level) => grid.find((row) => row.code === code && row.level === level)?.tuition_amount;
+  for (const code of ["ABS", "DROIT", "SUP", "EXPERTISE", "CARRIERE"]) {
+    assert.deepEqual(
+      ["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"].map((level) => tuitionOf(code, level)),
+      [24_000_000, 25_000_000, 26_000_000, 27_000_000, 28_000_000],
+      code,
+    );
+  }
+  assert.deepEqual(
+    ["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"].map((level) => tuitionOf("TECH", level)),
+    [35_000_000, 35_000_000, 35_000_000, 45_000_000, 45_000_000],
+  );
+  const techMaster = grid.find((row) => row.code === "TECH" && row.level === "master_1");
+  assert.deepEqual([techMaster.registration_amount, techMaster.installment_1, techMaster.installment_2], [9_000_000, 18_000_000, 18_000_000]);
   const licence = await db.prepare("SELECT id, tuition_amount FROM fee_schedules WHERE level = 'licence' AND program_id = ?").get(program.id);
   await assert.rejects(() => domain.saveFeeSchedule(db, agent, { id: licence.id, tuition: 10_000_000 }));
   assert.equal((await db.prepare("SELECT tuition_amount FROM fee_schedules WHERE id = ?").get(licence.id)).tuition_amount, licence.tuition_amount);

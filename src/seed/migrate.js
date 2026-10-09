@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "../auth/passwords.js";
-import { OFFER_PLANS, PROGRAMS } from "./legacy.js";
+import { PROGRAMS, offerPlans } from "./legacy.js";
 import { transaction } from "../db/index.js";
 
 const SUPER_ADMIN_EMAIL = "jtoupou@univ-africaiim.com";
@@ -86,9 +86,9 @@ export async function applyIdentity(db) {
 export async function ensureOfferSchedules(db) {
   const year = await db.prepare("SELECT id FROM academic_years WHERE active = 1").get();
   if (!year) return;
-  const programs = await db.prepare("SELECT id FROM programs").all();
+  const programs = await db.prepare("SELECT id, code FROM programs").all();
   for (const program of programs) {
-    for (const [level, plan] of Object.entries(OFFER_PLANS)) {
+    for (const [level, plan] of Object.entries(offerPlans(program.code))) {
       await db.prepare(`
         INSERT INTO fee_schedules(
           program_id, academic_year_id, level, tuition_amount, registration_amount,
