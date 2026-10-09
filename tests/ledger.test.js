@@ -591,4 +591,38 @@ test("Sequelize : modèles et SQL annulés ensemble, montants en nombres, dates 
   assert.equal(typeof total.s, "number");
   assert.equal(typeof total.n, "number");
 });
+
+test("seul l'admin corrige un paiement saisi par erreur : ancien reçu annulé, nouveau reçu", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "SYLLA", firstName: "Correction", programId: program.id, level: "bachelor",
+    paymentAmount: 2_500_000, method: "especes",
+  });
+  const wrong = await db.prepare("SELECT p.id, r.number FROM payments p JOIN receipts r ON r.payment_id = p.id WHERE p.student_id = ?").get(created.student.id);
+  await assert.rejects(
+    () => domain.correctPayment(db, comptable, wrong.id, { amount: 25_000_000, reason: "Montant mal saisi", idempotencyKey: "correction-refus-01" }),
+    /Seul l'admin/,
+  );
+  await assert.rejects(
+    () => domain.correctPayment(db, agent, wrong.id, { amount: 25_000_000, reason: "", idempotencyKey: "correction-motif-01" }),
+    /motif/,
+  );
+  await assert.rejects(
+    () => domain.correctPayment(db, agent, wrong.id, { amount: 26_000_000, reason: "Montant mal saisi", idempotencyKey: "correction-trop-01" }),
+    (error) => error.details?.code === "AMOUNT_TOO_HIGH",
+  );
+  assert.equal((await db.prepare("SELECT status FROM payments WHERE id = ?").get(wrong.id)).status, "valide");
+
+  const fixed = await domain.correctPayment(db, agent, wrong.id, {
+    amount: 25_000_000, method: "virement", reason: "Montant mal saisi", idempotencyKey: "correction-ok-0001",
+  });
+  assert.equal((await db.prepare("SELECT status FROM payments WHERE id = ?").get(wrong.id)).status, "annule");
+  assert.match(fixed.creditNote, /^AVO-/);
+  assert.notEqual(fixed.receiptNumber, wrong.number);
+  const after = (await domain.studentSituation(db, created.student.id)).situation;
+  assert.equal(after.paid, 25_000_000);
+  assert.equal(after.reste, 0);
+  assert.equal((await db.prepare("SELECT method FROM payments WHERE id = ?").get(fixed.paymentId)).method, "virement");
+  await assert.rejects(() => domain.correctPayment(db, agent, wrong.id, { amount: 1_000, reason: "Deuxième correction", idempotencyKey: "correction-bis-001" }), /déjà annulé/);
+});
 });

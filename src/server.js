@@ -20,6 +20,7 @@ import {
   audit,
   cancelCostume,
   cancelPayment,
+  correctPayment,
   cashJournal,
   costumeSituation,
   recordCostume,
@@ -283,6 +284,10 @@ app.post("/api/paiements/:id/mettre-a-jour", requireAction("payment.create"), as
 });
 app.post("/api/paiements/:id/annuler", requireAction("payment.cancel"), async (req, res) => {
   res.json(await cancelPayment(db, req.user, Number(req.params.id), req.body?.reason));
+});
+app.post("/api/paiements/:id/corriger", requireAction("payment.cancel"), async (req, res) => {
+  const result = await correctPayment(db, req.user, Number(req.params.id), req.body || {});
+  res.status(result.replay ? 200 : 201).json(result);
 });
 app.post("/api/paiements/:id/debloquer", requireUser, async (req, res) => {
   res.json(await unlockPayment(db, req.user, Number(req.params.id)));

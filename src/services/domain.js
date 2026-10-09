@@ -879,6 +879,49 @@ export async function cancelPayment(db, user, paymentId, reason, asOf = todayInC
   });
 }
 
+/** Correction d'une erreur de saisie, réservée à l'admin : l'ancien reçu est annulé (avec avoir), un nouveau reçu porte les bons montants. */
+export async function correctPayment(db, user, paymentId, input = {}, asOf = todayInConakry()) {
+  if (!can(user, "payment.cancel")) throw new HttpError(403, "Seul l'admin ou le super admin peut corriger un paiement");
+  const reason = String(input.reason || "").trim();
+  if (reason.length < 5) throw new HttpError(400, "Le motif de la correction est obligatoire (au moins 5 caractères)");
+  const key = String(input.idempotencyKey || "").trim();
+  if (key.length < 8) throw new HttpError(400, "Validation incomplète. Rechargez la page et recommencez.");
+  const already = await db.prepare("SELECT id FROM payments WHERE idempotency_key = ?").get(key);
+  if (already) {
+    const receipt = await db.prepare("SELECT id, number FROM receipts WHERE payment_id = ?").get(already.id);
+    return { replay: true, paymentId: already.id, receiptId: receipt?.id, receiptNumber: receipt?.number };
+  }
+  const payment = await db.prepare("SELECT * FROM payments WHERE id = ?").get(Number(paymentId));
+  if (!payment) throw new HttpError(404, "Paiement introuvable");
+  if (payment.status !== "valide") throw new HttpError(400, "Ce paiement est déjà annulé : il ne peut plus être corrigé");
+  const oldReceipt = await db.prepare("SELECT number FROM receipts WHERE payment_id = ?").get(payment.id);
+  const label = oldReceipt?.number || `paiement n° ${payment.id}`;
+  return transaction(db, async () => {
+    const cancelled = await cancelPayment(db, user, payment.id, `Correction : ${reason}`, asOf);
+    const discount = String(input.cashDiscount ?? "").toLowerCase();
+    if (discount === "non" || discount === "false") {
+      await db.prepare("DELETE FROM discounts WHERE student_id = ? AND label = ?").run(payment.student_id, CASH_LABEL);
+    }
+    const created = await createPayment(db, user, {
+      studentId: payment.student_id,
+      amount: input.amount,
+      paidOn: input.paidOn || payment.paid_on,
+      method: input.method || payment.method,
+      reference: input.reference ?? payment.reference,
+      installmentCode: payment.installment_code || null,
+      note: `Correction du reçu ${label} : ${reason}`,
+      idempotencyKey: key,
+      cashDiscount: discount === "oui" || discount === "true",
+      acceptDuplicateReference: true,
+    }, asOf);
+    await db.prepare("UPDATE costume_payments SET payment_id = ? WHERE payment_id = ? AND status = 'valide'").run(created.paymentId, payment.id);
+    await audit(db, user.id, "paiement.corriger", "payments", payment.id,
+      { amount: payment.amount, paidOn: payment.paid_on, method: payment.method, receipt: oldReceipt?.number || null },
+      { amount: input.amount, paidOn: input.paidOn || payment.paid_on, method: input.method || payment.method, receipt: created.receiptNumber, reason, creditNote: cancelled.creditNote });
+    return { ...created, creditNote: cancelled.creditNote, correctedPaymentId: payment.id, correctedReceipt: oldReceipt?.number || null };
+  });
+}
+
 async function ensurePaymentControl(db, paymentId) {
   await db.prepare("INSERT INTO payment_controls(payment_id) VALUES (?) ON CONFLICT(payment_id) DO NOTHING").run(paymentId);
   return db.prepare("SELECT * FROM payment_controls WHERE payment_id = ?").get(paymentId);

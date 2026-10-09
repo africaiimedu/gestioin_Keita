@@ -1284,7 +1284,7 @@ async function showStudent(screen, id) {
     ${data.discounts?.length ? `<p class="banner">${data.discounts.map((item) => esc(item.reason || item.label)).join(" · ")}</p>` : ""}
     <article class="card" style="margin-top:14px"><h2>Paiements</h2>
       <div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th><th></th></tr></thead><tbody>
-      ${data.payments.map((payment) => `<tr><td>${esc(frenchDay(payment.paid_on))}${payment.date_unconfirmed ? "<br><span class='muted'>Date à confirmer</span>" : ""}</td><td class="num"><strong>${gnf(payment.amount)}</strong></td><td>${esc(state.catalog.methods.find((item) => item.code === payment.method)?.label || payment.method)}${payment.status === "annule" ? `<br><span class="tag trop_percu">Annulé</span>` : ""}</td><td>${payment.receipt_number ? `<a href="/api/recus/${payment.receipt_id}.pdf" target="_blank">${esc(payment.receipt_number)}</a>` : ""}</td><td>${payment.status === "annule" ? esc(payment.cancel_reason || "Annulé") : ""}</td></tr>`).join("")}
+      ${data.payments.map((payment) => `<tr><td>${esc(frenchDay(payment.paid_on))}${payment.date_unconfirmed ? "<br><span class='muted'>Date à confirmer</span>" : ""}</td><td class="num"><strong>${gnf(payment.amount)}</strong></td><td>${esc(state.catalog.methods.find((item) => item.code === payment.method)?.label || payment.method)}${payment.status === "annule" ? `<br><span class="tag trop_percu">Annulé</span>` : ""}</td><td>${payment.receipt_number ? `<a href="/api/recus/${payment.receipt_id}.pdf" target="_blank">${esc(payment.receipt_number)}</a>` : ""}</td><td>${payment.status === "annule" ? esc(payment.cancel_reason || "Annulé") : (allowed("payment.cancel") ? `<button class="btn secondary" type="button" data-correct="${payment.id}">Corriger</button>` : "")}</td></tr>`).join("")}
       </tbody></table></div></article>
     ${costumeCard(data.costume)}
     <article class="card" style="margin-top:14px"><h2>Échéances couvertes</h2>
@@ -1304,7 +1304,7 @@ async function showStudent(screen, id) {
           </div>
         </div>`;
       }).join("")}</div>
-      <p class="muted">Carte étudiant : ${esc(labels[student.cardStatus] || student.cardStatus)}. Le même matricule sert à la carte et à la cantine. Une correction ou une annulation se fait dans Encaissement.</p></article>`;
+      <p class="muted">Carte étudiant : ${esc(labels[student.cardStatus] || student.cardStatus)}. Le même matricule sert à la carte et à la cantine. Un paiement saisi par erreur se corrige avec « Corriger », réservé à l'administrateur.</p></article>`;
   state.paymentReceipt = null;
   const costumeForm = document.querySelector("#costume-form");
   if (costumeForm) {
@@ -1354,6 +1354,10 @@ async function showStudent(screen, id) {
     }
   }));
   document.querySelector("#edit-matricule")?.addEventListener("click", () => openMatriculeEdit(student, () => showStudent(screen, id)));
+  document.querySelectorAll("[data-correct]").forEach((button) => button.addEventListener("click", () => {
+    const payment = data.payments.find((item) => String(item.id) === button.dataset.correct);
+    if (payment) openPaymentCorrection(payment, student, () => showStudent(screen, id));
+  }));
   document.querySelector("#costume-count")?.addEventListener("change", async (event) => {
     const select = event.currentTarget;
     select.disabled = true;
@@ -1417,6 +1421,72 @@ function openMatriculeEdit(student, onDone) {
   form.matricule.select();
 }
 
+function openPaymentCorrection(payment, student, onDone) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "sheet notice";
+  dialog.setAttribute("closedby", "none");
+  const methods = state.catalog.methods.map((item) => `<option value="${item.code}" ${item.code === payment.method ? "selected" : ""}>${esc(item.label)}</option>`).join("");
+  const bachelor = !String(student.level || "").startsWith("master");
+  dialog.innerHTML = `<form class="matricule-form" novalidate>
+      <div class="dialog-head"><div><p class="mark">${esc(student.name)}${payment.receipt_number ? ` · reçu ${esc(payment.receipt_number)}` : ""}</p><h2>Corriger le paiement</h2></div>
+        <button class="dialog-close" type="button" data-close>Fermer</button></div>
+      <p class="muted">Réservé à l'administrateur. Le paiement saisi par erreur (${esc(gnf(payment.amount))} du ${esc(frenchDay(payment.paid_on))}) est annulé avec un avoir, puis un nouveau reçu est émis avec les montants corrigés. Rien n'est effacé de l'historique.</p>
+      <div class="duo"><p><label>Bonne scolarité versée (GNF, sans le costume)</label><input name="amount" inputmode="numeric" value="${esc(grouped(payment.amount))}" required></p>
+        <p><label>Date</label><input name="paidOn" type="date" value="${esc(String(payment.paid_on).slice(0, 10))}" required></p></div>
+      <div class="duo"><p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p>
+        <p><label>Référence <span class="muted">(facultatif)</span></label><input name="reference" value="${esc(payment.reference || "")}"></p></div>
+      ${bachelor ? `<p><label>Remise de ${gnf(state.catalog.cashDiscount || 0)}</label><select name="cashDiscount">
+        <option value="">Ne pas changer</option><option value="oui">Oui, déduire la remise</option><option value="non">Non, retirer la remise</option></select></p>` : ""}
+      <label>Motif de la correction</label><textarea name="reason" rows="2" required placeholder="Ex. : montant mal saisi, 2.500.000 au lieu de 25.000.000"></textarea>
+      <p class="error" data-error hidden></p>
+      <div class="row-actions"><button class="btn secondary" type="button" data-close>Annuler</button><button class="btn" type="submit">Corriger et émettre le nouveau reçu</button></div>
+    </form>`;
+  document.body.appendChild(dialog);
+  const form = dialog.querySelector("form");
+  const key = newKey();
+  const close = () => { dialog.close(); dialog.remove(); };
+  dialog.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", close));
+  form.amount.addEventListener("input", (event) => {
+    const digits = event.target.value.replace(/[^\d]/g, "");
+    event.target.value = digits ? grouped(Number(digits)) : "";
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = form.querySelector("[data-error]");
+    const button = form.querySelector("[type=submit]");
+    error.hidden = true;
+    const amount = moneyOf(form.amount);
+    const reason = form.reason.value.trim();
+    if (!amount || reason.length < 5) {
+      error.hidden = false;
+      error.textContent = !amount ? "Indiquez le bon montant de scolarité." : "Indiquez le motif de la correction (au moins 5 caractères).";
+      return;
+    }
+    button.disabled = true;
+    try {
+      const result = await api(`/api/paiements/${payment.id}/corriger`, { method: "POST", body: JSON.stringify({
+        amount,
+        paidOn: form.paidOn.value,
+        method: form.method.value,
+        reference: form.reference.value.trim(),
+        cashDiscount: form.cashDiscount?.value || "",
+        reason,
+        idempotencyKey: key,
+      }) });
+      close();
+      saved(`Paiement corrigé. Nouveau reçu ${result.receiptNumber}, ancien reçu annulé (avoir ${result.creditNote}).`);
+      onDone(result);
+    } catch (caught) {
+      if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
+      error.hidden = false;
+      error.textContent = caught.message;
+      button.disabled = false;
+    }
+  });
+  dialog.showModal();
+  form.amount.select();
+}
+
 function costumeCard(costume) {
   if (!costume) return "";
   const tone = { paye: "solde", partiel: "partiel", non_paye: "en_retard", non_fixe: "aucun_paiement" }[costume.status] || "aucun_paiement";
@@ -1474,12 +1544,13 @@ function openPaymentUpdate(record, onDone) {
       </div>
       <section class="update-history">
         <h3>Historique des versements <span class="muted">(${record.count})</span></h3>
-        <div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th></tr></thead><tbody>
+        <div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th>${allowed("payment.cancel") ? "<th></th>" : ""}</tr></thead><tbody>
           ${history.map((item) => `<tr class="${item.status === "annule" ? "is-cancelled" : ""}">
             <td class="when-cell">${esc(frenchDay(item.paid_on))}</td>
             <td class="num"><strong>${gnf(item.amount)}</strong>${item.costume_amount ? `<br><span class="muted">Costume à part : ${gnf(item.costume_amount)}</span>` : ""}</td>
             <td>${esc(methodLabel(item.method))}${item.status === "annule" ? ` <span class="tag trop_percu">Annulé</span>` : ""}</td>
             <td>${item.receipt_number ? `<a href="/api/recus/${item.receipt_id}.pdf" target="_blank">${esc(item.receipt_number)}</a>` : `<span class="muted">Avant l'application</span>`}</td>
+            ${allowed("payment.cancel") ? `<td>${item.status === "valide" ? `<button class="btn secondary" type="button" data-correct="${item.id}">Corriger</button>` : ""}</td>` : ""}
           </tr>`).join("")}
         </tbody></table></div>
       </section>
@@ -1501,6 +1572,12 @@ function openPaymentUpdate(record, onDone) {
   dialog.showModal();
   document.querySelector("#close-update").addEventListener("click", () => dialog.close());
   dialog.addEventListener("cancel", (event) => event.preventDefault());
+  dialog.querySelectorAll("[data-correct]").forEach((button) => button.addEventListener("click", () => {
+    const wrong = history.find((item) => String(item.id) === button.dataset.correct);
+    if (!wrong) return;
+    dialog.close();
+    openPaymentCorrection(wrong, record, () => onDone?.());
+  }));
   const form = document.querySelector("#update-form");
   const key = newKey();
   const payment = { id: record.lastPaymentId };
