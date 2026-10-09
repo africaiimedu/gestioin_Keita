@@ -1,5 +1,5 @@
 // Efface tous les étudiants avant le début des inscriptions : fiches, paiements, reçus, fiches d'inscription,
-// costumes, relances, pièces jointes, puis côté Cartes les fiches, comptes étudiants, cartes, commandes et reçus cantine.
+// costumes, relances, pièces jointes, décharges de dépenses, puis côté Cartes les fiches, comptes étudiants, cartes, commandes et reçus cantine.
 // Garde les comptes du personnel, les filières, les barèmes, les réglages, le menu et le journal d'audit.
 // La numérotation (matricules, reçus, fiches d'inscription) repart de 1.
 // Usage : node scripts/remise-a-zero-etudiants.js [--appliquer]
@@ -30,8 +30,9 @@ const TABLES = [
   "student_installments",
   "students",
   "import_batches",
+  "expenses",
 ];
-const GUARDED = ["payments", "costume_payments", "receipts", "enrollment_receipts", "cancellations"];
+const GUARDED = ["payments", "costume_payments", "receipts", "enrollment_receipts", "cancellations", "expenses"];
 
 async function counts(db) {
   const result = {};
