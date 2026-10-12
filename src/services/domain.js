@@ -1136,6 +1136,26 @@ export async function listCashPayments(db, date = null) {
   }));
 }
 
+/** Reçu émis après celui-ci pour le même étudiant (versement de scolarité ou costume payé seul) : c'est lui qui fait foi. */
+export async function laterReceipt(db, receipt) {
+  return db.prepare(`
+    SELECT number, "paidOn" FROM (
+      SELECT r2.number, p2.paid_on AS "paidOn", r2.created_at AS at
+      FROM payments p
+      JOIN payments p2 ON p2.student_id = p.student_id AND p2.status = 'valide'
+        AND (p2.paid_on > p.paid_on OR (p2.paid_on = p.paid_on AND p2.id > p.id))
+      JOIN receipts r2 ON r2.payment_id = p2.id
+      WHERE p.id = ?
+      UNION ALL
+      SELECT k.receipt_number, k.paid_on, k.created_at
+      FROM costume_payments k
+      JOIN payments p ON p.id = ?
+      WHERE k.student_id = p.student_id AND k.status = 'valide' AND k.payment_id IS NULL AND k.receipt_number LIKE 'REC-%'
+        AND k.created_at >= ?::timestamp AND k.receipt_number > ?
+    ) later ORDER BY at DESC, number DESC LIMIT 1
+  `).get(receipt.payment_id, receipt.payment_id, receipt.created_at, receipt.number) || null;
+}
+
 /** Le reçu le plus récent de l'étudiant, qu'il vienne d'un versement de scolarité ou d'un costume payé seul. */
 function latestReceipt(payment, costume) {
   const fromPayment = payment?.receipt_id

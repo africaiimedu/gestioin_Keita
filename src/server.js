@@ -27,6 +27,7 @@ import {
   setCustomFee,
   cashJournal,
   costumeSituation,
+  laterReceipt,
   recordCostume,
   catalog,
   createPayment,
@@ -328,7 +329,7 @@ app.get("/api/costumes/:id/recu.pdf", requireAction("receipt.read"), async (req,
     verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${entry.verify_token}`,
   };
   const pdf = snapshot.costumeOnly
-    ? await renderReceiptPdf({ ...common, receipt: { number: entry.receipt_number } })
+    ? await renderReceiptPdf({ ...common, receipt: { number: entry.receipt_number }, liveCostume: await costumeSituation(db, entry.student_id) })
     : await renderCostumeReceiptPdf({ ...common, number: entry.receipt_number });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${entry.receipt_number}.pdf"`);
@@ -339,19 +340,11 @@ app.get("/api/recus/:id.pdf", requireAction("receipt.read"), async (req, res) =>
     UPDATE receipts r SET print_count = r.print_count + 1
     FROM payments p
     WHERE p.id = r.payment_id AND r.id = ?
-    RETURNING r.*, p.status AS payment_status
+    RETURNING r.*, p.status AS payment_status, p.student_id
   `).get(Number(req.params.id));
   if (!receipt) throw new HttpError(404, "Reçu introuvable");
   const cancelled = await db.prepare("SELECT * FROM cancellations WHERE payment_id = ?").get(receipt.payment_id);
-  const replacedBy = receipt.payment_status === "valide" ? await db.prepare(`
-    SELECT r2.number, p2.paid_on AS "paidOn"
-    FROM payments p
-    JOIN payments p2 ON p2.student_id = p.student_id AND p2.status = 'valide'
-      AND (p2.paid_on > p.paid_on OR (p2.paid_on = p.paid_on AND p2.id > p.id))
-    JOIN receipts r2 ON r2.payment_id = p2.id
-    WHERE p.id = ?
-    ORDER BY p2.paid_on DESC, p2.id DESC LIMIT 1
-  `).get(receipt.payment_id) : null;
+  const replacedBy = receipt.payment_status === "valide" ? await laterReceipt(db, receipt) : null;
   const format = req.query.format === "a5" ? "a5" : "a4";
   const pdf = await renderReceiptPdf({
     snapshot: JSON.parse(receipt.snapshot_json),
@@ -361,6 +354,7 @@ app.get("/api/recus/:id.pdf", requireAction("receipt.read"), async (req, res) =>
     cancelled: receipt.payment_status === "annule" ? cancelled : null,
     replacedBy,
     verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${receipt.verify_token}`,
+    liveCostume: await costumeSituation(db, receipt.student_id),
   });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${receipt.number}.pdf"`);

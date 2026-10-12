@@ -340,10 +340,29 @@ function drawHistory(doc, y, history) {
   return y + 6;
 }
 
-export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4", cancelled = null, replacedBy = null, verifyUrl }) {
+/**
+ * Le bloc costume montre ce qui est réellement payé à l'impression : un costume réglé après ce reçu y apparaît payé.
+ * Seul « Versé ce jour » reste celui du reçu. Un reçu annulé garde ses chiffres d'origine.
+ */
+function costumeShown(fixed, live, cancelled) {
+  if (cancelled || !live || !(live.price > 0)) return fixed;
+  return {
+    unitPrice: live.unitPrice,
+    quantity: live.quantity,
+    price: live.price,
+    today: Number(fixed?.today || 0),
+    paidAfter: live.paid,
+    reste: live.reste,
+  };
+}
+
+export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4", cancelled = null, replacedBy = null, verifyUrl, liveCostume = null }) {
   const qr = await QRCode.toBuffer(verifyUrl, { margin: 0, width: 240 });
   const { doc, done } = openDoc(format);
-  const costume = snapshot.costume || null;
+  const costume = costumeShown(snapshot.costume || null, liveCostume, cancelled);
+  const costumeElsewhere = costume && liveCostume?.lastReceipt && liveCostume.lastReceipt !== receipt.number && costume.paidAfter > Number(costume.today || 0)
+    ? `Costume : ${money(costume.paidAfter)} versés au total, dernier versement sur le reçu ${liveCostume.lastReceipt}.`
+    : "";
   const history = !costume && Array.isArray(snapshot.history) ? snapshot.history : [];
   const compact = Boolean(costume) || history.length > 0;
   const tuitionToday = Number(snapshot.amount || 0);
@@ -388,6 +407,10 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
   y += compact ? 32 : 44;
 
   if (costume) y = drawCostume(doc, y, costume) + 14;
+  if (costumeElsewhere) {
+    write(doc, costumeElsewhere, LEFT, y - 8, 8, "Helvetica", MUTED, WIDTH);
+    y += 12;
+  }
 
   write(doc, costumeToday > 0 ? "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE (SCOLARITÉ ET COSTUME) À" : "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE À", LEFT, y, 7.5, "Helvetica-Bold", GREEN, WIDTH);
   doc.fillColor(INK).font("Times-Italic").fontSize(compact ? 12 : 13);

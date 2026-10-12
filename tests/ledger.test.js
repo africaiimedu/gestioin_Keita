@@ -5,7 +5,7 @@ import { seedAll } from "../src/seed/run.js";
 import { transaction } from "../src/db/index.js";
 import * as domain from "../src/services/domain.js";
 import * as expenses from "../src/services/expenses.js";
-import { renderDischargePdf } from "../src/services/receiptPdf.js";
+import { renderDischargePdf, renderReceiptPdf } from "../src/services/receiptPdf.js";
 
 let db;
 let comptable;
@@ -561,6 +561,15 @@ test("costume payé seul, sans scolarité : accepté avec son propre reçu, mêm
   assert.equal(listed.costumeOnly.length, 3);
   assert.equal(listed.receiptNumber, extra.receipt.number);
   assert.equal(listed.receiptUrl, `/api/costumes/${extra.receipt.id}/recu.pdf`);
+  const oldReceipt = await db.prepare("SELECT r.* FROM receipts r JOIN payments p ON p.id = r.payment_id WHERE p.student_id = ?").get(created.student.id);
+  assert.equal((await domain.laterReceipt(db, oldReceipt)).number, extra.receipt.number);
+  const live = await domain.costumeSituation(db, created.student.id);
+  assert.deepEqual([live.paid, live.reste, live.lastReceipt], [1_600_000, 0, extra.receipt.number]);
+  const pdf = await renderReceiptPdf({
+    snapshot: JSON.parse(oldReceipt.snapshot_json), receipt: oldReceipt, school: {}, verifyUrl: "https://exemple/v/x", liveCostume: live,
+    replacedBy: await domain.laterReceipt(db, oldReceipt),
+  });
+  assert.ok(pdf.length > 1000);
   assert.equal(listed.costumePaid, 1_600_000);
 });
 
