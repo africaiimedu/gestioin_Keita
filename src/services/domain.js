@@ -47,6 +47,7 @@ export function cashDiscountFor(level) {
 function cashOffer(current, amount, wanted = false) {
   const none = { discounts: current.discounts, amount, apply: false };
   if (!wanted) return none;
+  if (hasCustomFee(current.student)) return { ...none, refusal: "Cet étudiant a un prix exceptionnel fixé par l'administration : pas de remise à appliquer." };
   if (current.discounts.some((item) => item.label === CASH_LABEL)) return { ...none, notice: "La remise de 1.200.000 GNF est déjà appliquée pour cet étudiant." };
   if (isScholar(current.discounts)) return { ...none, refusal: "Cet étudiant est boursier : pas de remise à appliquer." };
   const discount = cashDiscountFor(current.student.level);
@@ -301,6 +302,30 @@ export async function reopenBalance(db, user, studentId, reason) {
 
 export { settledAmount };
 
+/** Prix annuel fixé pour un seul étudiant (scolarité + inscription, sans remise). Vide : retour au barème. */
+export async function setCustomFee(db, user, studentId, input = {}) {
+  if (!can(user, "payment.cancel")) throw new HttpError(403, "Seul l'admin ou le super admin peut fixer un prix exceptionnel");
+  const reason = String(input.reason || "").trim();
+  if (reason.length < 5) throw new HttpError(400, "Le motif est obligatoire (au moins 5 caractères)");
+  const raw = input.amount === null || input.amount === undefined ? "" : String(input.amount).replace(/\D/g, "");
+  const amount = raw === "" ? null : Number(raw);
+  if (amount !== null && (!Number.isSafeInteger(amount) || amount <= 0)) throw new HttpError(400, "Indiquez un prix annuel valide en GNF");
+  return transaction(db, async () => {
+    const current = await studentSituation(db, studentId);
+    if (amount !== null && amount < current.situation.paid) {
+      throw new HttpError(400, `Le prix ne peut pas être inférieur à ce qui est déjà versé (${formatGnf(current.situation.paid)}).`);
+    }
+    await db.prepare("UPDATE students SET custom_fee = ?, custom_fee_reason = ? WHERE id = ?")
+      .run(amount, amount === null ? null : reason, current.student.id);
+    const after = await studentSituation(db, current.student.id);
+    await refreshCard(db, after.student, after.situation);
+    await audit(db, user.id, amount === null ? "etudiant.prix_bareme" : "etudiant.prix_exceptionnel", "students", current.student.id,
+      { customFee: current.student.custom_fee ?? null, due: current.situation.due, reste: current.situation.reste },
+      { customFee: amount, due: after.situation.due, reste: after.situation.reste, reason });
+    return { ...after, settled: settledAmount(after) };
+  });
+}
+
 async function yearById(db, yearId) {
   if (yearId) return db.prepare("SELECT * FROM academic_years WHERE id = ?").get(yearId);
   return db.prepare("SELECT * FROM academic_years WHERE active = 1").get();
@@ -367,12 +392,18 @@ function planFrom(student, ledger) {
     amount: (overrideMap.has(code) ? overrideMap.get(code).amount : base[code]) + (code === "inscription" ? registration : 0),
     dueOn: overrideMap.get(code)?.due_on || dues.get(code),
   })).filter((item) => item.amount > 0);
-  return { tuition: fee.tuition_amount + registration, registration, installments, custom: overrides.length > 0 };
+  const tuition = hasCustomFee(student) ? Number(student.custom_fee) : fee.tuition_amount + registration;
+  return { tuition, registration, installments, custom: overrides.length > 0 };
+}
+
+function hasCustomFee(student) {
+  return student.custom_fee !== null && student.custom_fee !== undefined;
 }
 
 function bundleFrom(student, ledger, asOf) {
   const { tuition, installments } = planFrom(student, ledger);
-  const discounts = ledger.strip(ledger.discounts.get(student.id) || []);
+  const discounts = ledger.strip(ledger.discounts.get(student.id) || [])
+    .filter((item) => !hasCustomFee(student) || item.label !== CASH_LABEL);
   const adjustments = ledger.strip(ledger.adjustments.get(student.id) || []);
   const payments = ledger.strip(ledger.payments.get(student.id) || []);
   const situation = computeSituation({ tuition, discounts, adjustments, installments, payments, asOf });
@@ -733,6 +764,8 @@ function publicStudent(student) {
     source: student.source,
     legacyNumber: student.legacy_number,
     createdAt: student.created_at,
+    customFee: hasCustomFee(student) ? Number(student.custom_fee) : null,
+    customFeeReason: hasCustomFee(student) ? student.custom_fee_reason : null,
   };
 }
 
@@ -1104,6 +1137,7 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
       matricule: student.matricule,
       program: student.program_name,
       level: student.level,
+      customFee: hasCustomFee(student) ? Number(student.custom_fee) : null,
       history,
       count: valid.length,
       cancelled: history.length - valid.length,

@@ -24,6 +24,7 @@ import {
   settleBalance,
   reopenBalance,
   settledAmount,
+  setCustomFee,
   cashJournal,
   costumeSituation,
   recordCostume,
@@ -265,6 +266,10 @@ app.post("/api/etudiants/:id/solder", requireAction("payment.cancel"), async (re
 });
 app.post("/api/etudiants/:id/retablir-reste", requireAction("payment.cancel"), async (req, res) => {
   const result = await reopenBalance(db, req.user, Number(req.params.id), req.body?.reason);
+  res.json({ situation: result.situation, settled: result.settled });
+});
+app.put("/api/etudiants/:id/prix", requireAction("payment.cancel"), async (req, res) => {
+  const result = await setCustomFee(db, req.user, Number(req.params.id), req.body || {});
   res.json({ situation: result.situation, settled: result.settled });
 });
 app.post("/api/costumes/:id/annuler", requireAction("payment.cancel"), async (req, res) => {

@@ -1350,7 +1350,9 @@ async function showStudent(screen, id) {
         ${allowed("student.write") ? `<button class="btn secondary" id="edit-matricule" type="button">Modifier le matricule</button>` : ""}
         ${allowed("payment.cancel") && situation.reste > 0 ? `<button class="btn secondary" id="settle-balance" type="button">Mettre le reste à 0</button>` : ""}
         ${allowed("payment.cancel") && data.settled > 0 ? `<button class="btn secondary" id="reopen-balance" type="button">Rétablir le reste (${gnf(data.settled)})</button>` : ""}
+        ${allowed("payment.cancel") ? `<button class="btn secondary" id="custom-fee" type="button">${student.customFee !== null ? "Modifier le prix exceptionnel" : "Prix exceptionnel"}</button>` : ""}
       </div></div>
+    ${student.customFee !== null ? `<p class="banner">Prix exceptionnel : <strong>${gnf(student.customFee)}</strong> pour l'année, sans remise${student.customFeeReason ? ` · ${esc(student.customFeeReason)}` : ""}</p>` : ""}
     ${state.paymentReceipt ? `<div class="banner">Paiement mis à jour. Nouveau reçu <a href="/api/recus/${state.paymentReceipt.id}.pdf" target="_blank">${esc(state.paymentReceipt.number)}</a>${printButton(`/api/recus/${state.paymentReceipt.id}.pdf`)}. L'ancien reçu est annulé.</div>` : ""}
     <section class="kpis">${kpi("Frais dus", situation.due)}${kpi("Total payé", situation.paid)}${kpi("Reste", situation.reste)}${kpi("Statut", situation.statusLabel, true)}</section>
     ${data.discounts?.length || data.adjustments?.length ? `<p class="banner">${[...(data.discounts || []), ...(data.adjustments || [])].map((item) => esc(item.reason || item.label)).join(" · ")}</p>` : ""}
@@ -1443,6 +1445,20 @@ async function showStudent(screen, id) {
   balanceAction("#reopen-balance", "retablir-reste",
     `Rétablir le reste de ${gnf(data.settled || 0)} pour ${student.name} ?\n\nMotif (au moins 5 caractères) :`,
     "Reste rétabli");
+  document.querySelector("#custom-fee")?.addEventListener("click", async () => {
+    const typed = window.prompt(`Prix annuel exceptionnel pour ${student.name} (scolarité + inscription, sans remise), en GNF.\nLaisser vide pour revenir au barème normal.`,
+      student.customFee !== null ? grouped(student.customFee) : "");
+    if (typed === null) return;
+    const reason = window.prompt("Motif (au moins 5 caractères) :", student.customFeeReason || "");
+    if (reason === null) return;
+    try {
+      await api(`/api/etudiants/${id}/prix`, { method: "PUT", body: JSON.stringify({ amount: typed.replace(/\D/g, ""), reason }) });
+      saved(typed.replace(/\D/g, "") ? "Prix exceptionnel enregistré" : "Retour au barème normal");
+      showStudent(screen, id);
+    } catch (caught) {
+      saved(caught.message);
+    }
+  });
   document.querySelectorAll("[data-correct]").forEach((button) => button.addEventListener("click", () => {
     const payment = data.payments.find((item) => String(item.id) === button.dataset.correct);
     if (payment) openPaymentCorrection(payment, student, () => showStudent(screen, id));
@@ -1710,7 +1726,7 @@ function openPaymentUpdate(record, onDone) {
   });
   form.paidOn.addEventListener("change", refreshUpdatePreview);
   form.cashDiscount.addEventListener("change", refreshUpdatePreview);
-  showDiscountFor(form, record.level);
+  showDiscountFor(form, record.level, record.customFee ?? null);
   wireCostume(form);
   refreshUpdatePreview();
   form.addEventListener("submit", async (event) => {
@@ -1801,7 +1817,7 @@ async function loadCashPayments() {
     </div>
     <p class="muted cash-legend">Total des versements validés, toutes dates confondues : scolarité ${gnf(totals.tuition)}${totals.costume ? ` ; costumes, comptés à part : ${gnf(totals.costume)}` : ""}. Les versements saisis à l'import comptent aussi.${totals.cancelled ? ` ${plural(totals.cancelled, "versement annulé")} non compté${totals.cancelled > 1 ? "s" : ""}.` : ""}</p>
     <div class="table-scroll"><table class="cash-table"><thead><tr><th>Dernier versement</th><th>Étudiant</th><th class="num">Total versé</th><th class="num">Reste à payer</th><th>Dernier reçu</th><th class="actions">Action</th></tr></thead><tbody>
-    ${data.students.map((row) => `<tr data-find="${esc(`${row.name} ${row.matricule} ${row.history.map((item) => item.receipt_number || "").join(" ")}`.toLowerCase())}">
+    ${data.students.map((row) => `<tr hidden data-find="${esc(`${row.name} ${row.matricule} ${row.history.map((item) => item.receipt_number || "").join(" ")}`.toLowerCase())}">
       <td class="when-cell">${esc(frenchDay(row.lastPaidOn))}</td>
       <td><div class="who-cell"><strong>${esc(row.name)}</strong><span class="muted">${esc(row.matricule)}</span></div></td>
       <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">Costume à part : ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
@@ -1809,17 +1825,31 @@ async function loadCashPayments() {
       <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>${printButton(`/api/recus/${row.receiptId}.pdf`)}` : `<span class="muted">Avant l'application</span>`}</td>
       <td class="actions"><div class="row-actions">${row.lastPaymentId && allowed("payment.create") ? `<button data-update="${row.studentId}" class="btn secondary" type="button">Mettre à jour</button>` : ""}</div></td>
     </tr>`).join("")}
-  </tbody></table></div>`;
+  </tbody></table></div>
+  <div class="pager" id="cash-pager"><button type="button" id="cash-prev">Précédent</button><span id="cash-page"></span><button type="button" id="cash-next">Suivant</button></div>`;
   const search = box.querySelector("#cash-search");
-  search.addEventListener("input", () => {
+  const rows = [...box.querySelectorAll("tbody tr")];
+  const perPage = 10;
+  let page = state.cashPage || 1;
+  const paint = () => {
     const query = search.value.trim().toLowerCase();
-    let shown = 0;
-    box.querySelectorAll("tbody tr").forEach((row) => {
-      row.hidden = Boolean(query) && !row.dataset.find.includes(query);
-      if (!row.hidden) shown += 1;
-    });
-    box.querySelector("#cash-count").textContent = query ? `${shown} sur ${plural(totals.students, "étudiant")}` : summary;
-  });
+    const matches = rows.filter((row) => !query || row.dataset.find.includes(query));
+    const pages = Math.max(1, Math.ceil(matches.length / perPage));
+    page = Math.min(Math.max(1, page), pages);
+    if (!query) state.cashPage = page;
+    const visible = new Set(matches.slice((page - 1) * perPage, page * perPage));
+    rows.forEach((row) => { row.hidden = !visible.has(row); });
+    box.querySelector("#cash-count").textContent = query ? `${matches.length} sur ${plural(totals.students, "étudiant")}` : summary;
+    box.querySelector("#cash-page").textContent = matches.length
+      ? `${(page - 1) * perPage + 1}–${Math.min(page * perPage, matches.length)} sur ${matches.length} · page ${page} / ${pages}`
+      : "Aucun étudiant ne correspond";
+    box.querySelector("#cash-prev").disabled = page <= 1;
+    box.querySelector("#cash-next").disabled = page >= pages;
+  };
+  search.addEventListener("input", () => { page = 1; paint(); });
+  box.querySelector("#cash-prev").addEventListener("click", () => { page -= 1; paint(); });
+  box.querySelector("#cash-next").addEventListener("click", () => { page += 1; paint(); });
+  paint();
   document.querySelectorAll("#cash-payments [data-update]").forEach((button) => button.addEventListener("click", () => {
     const record = data.students.find((item) => String(item.studentId) === button.dataset.update);
     openPaymentUpdate(record, async (result) => {
@@ -1863,8 +1893,7 @@ async function showPayment(screen) {
   dialog.addEventListener("cancel", (event) => event.preventDefault());
   if (state.prefillStudent) openPay();
   await loadCashPayments();
-  const date = document.querySelector("[name=paidOn]");
-  date.value = new Date().toISOString().slice(0, 10);
+  document.querySelector("#pay-form [name=paidOn]").value = new Date().toISOString().slice(0, 10);
   const search = document.querySelector("#search");
   if (state.prefillStudent) showCurrent(state.prefillStudent);
   search.addEventListener("input", async () => {
@@ -1872,7 +1901,7 @@ async function showPayment(screen) {
     document.querySelector("#results").innerHTML = data.students.slice(0, 6).map((student) => `<button type="button" data-pick="${student.id}">${esc(student.name)} · ${esc(student.matricule)} · reste ${gnf(student.situation.reste)}</button>`).join("");
     document.querySelectorAll("[data-pick]").forEach((button) => button.addEventListener("click", async () => {
       const picked = data.students.find((student) => String(student.id) === button.dataset.pick);
-      document.querySelector("[name=studentId]").value = picked.id;
+      document.querySelector("#pay-form [name=studentId]").value = picked.id;
       search.value = picked.name;
       document.querySelector("#results").innerHTML = "";
       showCurrent(picked);
@@ -1889,15 +1918,15 @@ async function showPayment(screen) {
   document.querySelector("#pay-form").addEventListener("submit", submitPayment);
 }
 
-function showDiscountFor(form, level) {
+function showDiscountFor(form, level, customFee = null) {
   const row = form?.querySelector(".discount-row");
   if (!row) return;
-  row.hidden = String(level || "").startsWith("master");
+  row.hidden = String(level || "").startsWith("master") || customFee !== null;
   if (row.hidden) form.cashDiscount.value = "non";
 }
 
 function showCurrent(student) {
-  showDiscountFor(document.querySelector("#pay-form"), student.level);
+  showDiscountFor(document.querySelector("#pay-form"), student.level, student.customFee ?? null);
   const situation = student.situation;
   if (!situation) {
     document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)}</p></div>`;
@@ -1909,16 +1938,18 @@ function showCurrent(student) {
 }
 
 async function refreshPreview() {
-  const studentId = document.querySelector("[name=studentId]").value;
-  const amount = Number(document.querySelector("[name=amount]").value.replace(/\D/g, ""));
-  const costumeAmount = moneyOf(document.querySelector("#pay-form [name=costumeAmount]"));
-  const costumeQuantity = Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null;
+  const form = document.querySelector("#pay-form");
+  if (!form) return;
+  const studentId = form.studentId.value;
+  const amount = moneyOf(form.amount);
+  const costumeAmount = moneyOf(form.costumeAmount);
+  const costumeQuantity = Number(form.costumeQuantity?.value) || null;
   if (!studentId || (!amount && !costumeAmount)) return;
   try {
     const data = await api("/api/paiements/apercu", { method: "POST", body: JSON.stringify({
-      studentId: Number(studentId), amount, costumeAmount, costumeQuantity, paidOn: document.querySelector("[name=paidOn]").value,
-      cashDiscount: discountChosen(document.querySelector("#pay-form")),
-      reference: document.querySelector("[name=reference]").value,
+      studentId: Number(studentId), amount, costumeAmount, costumeQuantity, paidOn: form.paidOn.value,
+      cashDiscount: discountChosen(form),
+      reference: form.reference.value,
     }) });
     const costume = data.costume;
     if (data.costumeOnly) {
@@ -1944,36 +1975,43 @@ async function submitPayment(event) {
   event.preventDefault();
   const error = document.querySelector("#pay-error");
   error.hidden = true;
-  const button = event.target.querySelector("[type=submit]");
+  const form = event.target;
+  const button = form.querySelector("[type=submit]");
   button.disabled = true;
-  if (!document.querySelector("[name=studentId]").value) {
+  if (!form.studentId.value) {
     error.hidden = false;
     error.textContent = "Choisissez un étudiant dans la liste.";
     button.disabled = false;
     return;
   }
-  const amount = Number(document.querySelector("[name=amount]").value.replace(/\D/g, ""));
-  const costumeOnly = !amount && moneyOf(document.querySelector("#pay-form [name=costumeAmount]")) > 0;
+  const amount = moneyOf(form.amount);
+  const costumeOnly = !amount && moneyOf(form.costumeAmount) > 0;
   if (!amount && !costumeOnly) {
     error.hidden = false;
     error.textContent = "Indiquez la scolarité versée, ou le montant du costume s'il est payé seul.";
     button.disabled = false;
     return;
   }
+  if (!form.paidOn.value) {
+    error.hidden = false;
+    error.textContent = "Indiquez la date du versement.";
+    button.disabled = false;
+    return;
+  }
   if (costumeOnly) {
     try {
-      const result = await api(`/api/etudiants/${document.querySelector("[name=studentId]").value}/costume`, { method: "POST", body: JSON.stringify({
-        amount: moneyOf(document.querySelector("#pay-form [name=costumeAmount]")),
-        quantity: Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null,
-        paidOn: document.querySelector("[name=paidOn]").value,
-        method: document.querySelector("[name=method]").value,
-        note: document.querySelector("[name=note]").value.trim() || "Costume payé seul",
+      const result = await api(`/api/etudiants/${form.studentId.value}/costume`, { method: "POST", body: JSON.stringify({
+        amount: moneyOf(form.costumeAmount),
+        quantity: Number(form.costumeQuantity?.value) || null,
+        paidOn: form.paidOn.value,
+        method: form.method.value,
+        note: form.note.value.trim() || "Costume payé seul",
       }) });
       document.querySelector("#pay-dialog")?.close();
       saved("Versement du costume enregistré");
       const success = document.querySelector("#pay-success");
       if (success) success.innerHTML = `<div class="banner">Costume enregistré. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}.</div>`;
-      document.querySelector("#pay-form [name=costumeAmount]").value = "";
+      form.costumeAmount.value = "";
       await loadCashPayments();
     } catch (caught) {
       if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
@@ -1984,19 +2022,19 @@ async function submitPayment(event) {
     }
     return;
   }
-  const file = document.querySelector("[name=file]").files[0];
+  const file = form.file.files[0];
   let attachment = null;
   if (file) attachment = { dataBase64: await fileToData(file), mime: file.type };
   const payload = {
-    studentId: Number(document.querySelector("[name=studentId]").value),
+    studentId: Number(form.studentId.value),
     amount,
-    costumeAmount: moneyOf(document.querySelector("#pay-form [name=costumeAmount]")),
-    costumeQuantity: Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null,
-    cashDiscount: discountChosen(document.querySelector("#pay-form")),
-    paidOn: document.querySelector("[name=paidOn]").value,
-    method: document.querySelector("[name=method]").value,
-    reference: document.querySelector("[name=reference]").value.trim(),
-    note: document.querySelector("[name=note]").value.trim(),
+    costumeAmount: moneyOf(form.costumeAmount),
+    costumeQuantity: Number(form.costumeQuantity?.value) || null,
+    cashDiscount: discountChosen(form),
+    paidOn: form.paidOn.value,
+    method: form.method.value,
+    reference: form.reference.value.trim(),
+    note: form.note.value.trim(),
     idempotencyKey: state.idempotencyKey,
     attachment,
   };
@@ -2016,10 +2054,8 @@ async function submitPayment(event) {
       const costumeNote = result.costume?.today ? ` Costume versé : ${gnf(result.costume.today)}, reste costume ${gnf(result.costume.reste)}.` : "";
       success.innerHTML = `<div class="banner">Paiement enregistré. Reçu <a href="/api/recus/${result.receiptId}.pdf" target="_blank">${esc(result.receiptNumber)}</a>${printButton(`/api/recus/${result.receiptId}.pdf`)}. Reste après paiement : ${gnf(result.after.reste)}. ${result.after.reste <= 0 ? "Mention du reçu : PAYÉ." : "Mention du reçu : ACOMPTE REÇU."}${costumeNote}</div>`;
     }
-    const costumeInput = document.querySelector("#pay-form [name=costumeAmount]");
-    if (costumeInput) costumeInput.value = "";
-    const discountInput = document.querySelector("#pay-form [name=cashDiscount]");
-    if (discountInput) discountInput.value = "non";
+    if (form.costumeAmount) form.costumeAmount.value = "";
+    if (form.cashDiscount) form.cashDiscount.value = "non";
     state.idempotencyKey = newKey();
     await loadCashPayments();
   } catch (caught) {

@@ -348,6 +348,37 @@ test("reste mis à 0 par l'admin, avec motif, puis rétabli sans rien effacer", 
   assert.equal((await domain.settleBalance(db, agent, id, "Nouvel accord")).situation.reste, 0);
 });
 
+test("prix exceptionnel fixé par l'admin : remplace le barème, sans remise, et se retire sans rien effacer", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "CAMARA", firstName: "Exception", programId: program.id, level: "bachelor_1",
+    paymentAmount: 23_800_000, method: "especes", cashDiscount: true,
+  });
+  const id = created.student.id;
+  assert.equal(created.situation.due, 23_800_000);
+  await assert.rejects(() => domain.setCustomFee(db, comptable, id, { amount: 24_800_000, reason: "Accord de la direction" }), /admin/);
+  await assert.rejects(() => domain.setCustomFee(db, agent, id, { amount: 24_800_000, reason: "ok" }), /motif/i);
+  await assert.rejects(() => domain.setCustomFee(db, agent, id, { amount: 20_000_000, reason: "Accord de la direction" }), /déjà versé/);
+  const fixed = await domain.setCustomFee(db, agent, id, { amount: "24.800.000", reason: "Accord de la direction" });
+  assert.equal(fixed.situation.due, 24_800_000);
+  assert.equal(fixed.situation.reste, 1_000_000);
+  assert.equal(fixed.discounts.some((item) => item.label === "Paiement comptant"), false);
+  assert.equal(domain.publicStudent(fixed.student).customFee, 24_800_000);
+  const preview = await domain.previewPayment(db, { studentId: id, amount: 1_000_000, cashDiscount: true });
+  assert.match(preview.warnings.join(" "), /prix exceptionnel/);
+  await assert.rejects(() => domain.createPayment(db, agent, {
+    studentId: id, amount: 1_000_000, paidOn: "2026-10-12", method: "especes", idempotencyKey: "prix-exception-remise", cashDiscount: true,
+  }, "2026-10-12"), /prix exceptionnel/);
+  const paid = await domain.createPayment(db, agent, {
+    studentId: id, amount: 1_000_000, paidOn: "2026-10-12", method: "especes", idempotencyKey: "prix-exception-solde",
+  }, "2026-10-12");
+  assert.equal(paid.after.reste, 0);
+  assert.equal(paid.after.status, "solde");
+  const back = await domain.setCustomFee(db, agent, id, { amount: "", reason: "Retour au barème" });
+  assert.equal(back.situation.due, 23_800_000);
+  assert.equal((await db.prepare("SELECT count(*)::int AS n FROM discounts WHERE student_id = ? AND label = 'Paiement comptant'").get(id)).n, 1);
+});
+
 test("compte étudiant créé à l'inscription, et une personne n'est jamais enregistrée deux fois", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const first = await domain.createStudent(db, agent, {
