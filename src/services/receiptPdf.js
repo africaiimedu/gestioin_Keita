@@ -162,16 +162,23 @@ function cycleName(code) {
   const value = String(code || "");
   if (value.startsWith("master")) return "Master";
   if (value.startsWith("bachelor")) return "Bachelor";
+  if (value.startsWith("cpi_")) return "CPI";
+  if (value.startsWith("miage_")) return "MIAGE";
   if (value === "tech") return "Tech Ingénieur";
   return "Licence";
 }
 
 function studyYear(code) {
-  return { bachelor_1: "1re année", bachelor_2: "2e année", bachelor_3: "3e année", master_1: "1re année", master_2: "2e année" }[code] || "—";
+  return {
+    bachelor_1: "1re année", bachelor_2: "2e année", bachelor_3: "3e année", master_1: "1re année", master_2: "2e année",
+    cpi_1: "1re année", cpi_2: "2e année", miage_1: "1re année", miage_2: "2e année", miage_3: "3e année",
+  }[code] || "—";
 }
 
 function programmeName(level, school) {
   if (level === "tech") return "Cycle Tech Ingénieur";
+  if (String(level).startsWith("cpi_")) return "Cycle Préparatoire Intégré (CPI)";
+  if (String(level).startsWith("miage_")) return "MIAGE — Méthodes Informatiques Appliquées à la Gestion des Entreprises";
   const domain = String(school || "")
     .replace(/^AFRICAIIM\s+/i, "")
     .replace(/^École de\s+/i, "")
@@ -255,7 +262,10 @@ function drawIdentity(doc, snapshot, top) {
   write(doc, "ANNÉE D’ÉTUDES", cols[2], top + 55, 7.5, "Helvetica", MUTED, 150);
   writeOrdinal(doc, studyYear(snapshot.level), cols[2], top + 71, 12, INK);
   write(doc, "PROGRAMME", cols[0], top + 94, 7.5, "Helvetica", MUTED, 400);
-  write(doc, programmeName(snapshot.level, snapshot.program), cols[0], top + 110, 12, "Helvetica-Bold", INK, 400);
+  const programme = programmeName(snapshot.level, snapshot.program);
+  doc.font("Helvetica-Bold").fontSize(12);
+  const programmeSize = Math.max(8, Math.min(12, 12 * 400 / doc.widthOfString(programme)));
+  write(doc, programme, cols[0], top + 110, programmeSize, "Helvetica-Bold", INK, 400);
   return top + 135 + 15;
 }
 

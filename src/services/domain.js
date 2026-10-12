@@ -24,8 +24,9 @@ import { assignAccountEmail, refuseSamePerson } from "./identity.js";
 
 const METHODS = new Set(Object.keys(METHOD_LABELS));
 const INSTALLMENTS = ["inscription", "tranche_1", "tranche_2", "tranche_3"];
-const LEVELS = new Set(["licence", "master", "tech", "bachelor", "bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"]);
-const OFFER_LEVELS = new Set(["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"]);
+const TECH_LEVELS = new Set(["cpi_1", "cpi_2", "miage_1", "miage_2", "miage_3"]);
+const LEVELS = new Set(["licence", "master", "tech", "bachelor", "bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2", ...TECH_LEVELS]);
+const OFFER_LEVELS = new Set(["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2", ...TECH_LEVELS]);
 const CASH_LABEL = "Paiement comptant";
 const SCHOLAR_LABEL = "Bourse";
 const UNIQUE_VIOLATION = "23505";
@@ -39,7 +40,7 @@ export const CASH_DISCOUNT = 1_200_000;
 
 export function cashDiscountFor(level) {
   const code = String(level || "");
-  return code.startsWith("licence") || code.startsWith("bachelor") ? CASH_DISCOUNT : 0;
+  return code.startsWith("licence") || code.startsWith("bachelor") || TECH_LEVELS.has(code) ? CASH_DISCOUNT : 0;
 }
 
 /** La remise n'est jamais déduite d'office : l'agent choisit « Remise : oui » ou « non » à l'encaissement. */
@@ -209,6 +210,61 @@ export async function cancelCostume(db, user, entryId, reason) {
   });
 }
 
+const SETTLE_LABEL = "Solde accordé";
+const REOPEN_PREFIX = "Solde rétabli";
+
+/** Montant encore accordé par « reste à 0 » : remises « Solde accordé » moins les rétablissements. */
+function settledAmount(current) {
+  const granted = current.discounts.filter((item) => item.label === SETTLE_LABEL).reduce((total, item) => total + Number(item.value), 0);
+  const reopened = current.adjustments.filter((item) => String(item.reason || "").startsWith(REOPEN_PREFIX)).reduce((total, item) => total + Number(item.amount), 0);
+  return Math.max(0, granted - reopened);
+}
+
+function settleReason(user, reason, verb) {
+  if (!can(user, "payment.cancel")) throw new HttpError(403, `Seul l'admin ou le super admin peut ${verb}`);
+  const text = String(reason || "").trim();
+  if (text.length < 5) throw new HttpError(400, "Le motif est obligatoire (au moins 5 caractères)");
+  return text;
+}
+
+/** L'étudiant est considéré comme ayant tout payé : le reste est accordé, sans toucher aux paiements ni aux reçus. */
+export async function settleBalance(db, user, studentId, reason) {
+  const text = settleReason(user, reason, "mettre le reste à 0");
+  return transaction(db, async () => {
+    const current = await studentSituation(db, studentId);
+    const amount = current.situation.reste;
+    if (amount <= 0) throw new HttpError(400, "Cet étudiant n'a déjà plus rien à payer");
+    await db.prepare(`
+      INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
+      VALUES(?, ?, 'fixe', ?, ?, ?)
+    `).run(current.student.id, SETTLE_LABEL, amount, `Reste de ${formatGnf(amount)} mis à 0 : ${text}`, user.id);
+    const after = await studentSituation(db, current.student.id);
+    await refreshCard(db, after.student, after.situation);
+    await audit(db, user.id, "etudiant.solder", "students", current.student.id,
+      { due: current.situation.due, reste: amount }, { due: after.situation.due, reste: after.situation.reste, accorde: amount, reason: text });
+    return { ...after, settled: settledAmount(after) };
+  });
+}
+
+/** Annule un « reste à 0 » par un ajustement : la remise accordée reste visible dans l'historique. */
+export async function reopenBalance(db, user, studentId, reason) {
+  const text = settleReason(user, reason, "rétablir le reste");
+  return transaction(db, async () => {
+    const current = await studentSituation(db, studentId);
+    const amount = settledAmount(current);
+    if (amount <= 0) throw new HttpError(400, "Aucun reste mis à 0 à rétablir pour cet étudiant");
+    await db.prepare("INSERT INTO adjustments(student_id, amount, reason, created_by) VALUES(?, ?, ?, ?)")
+      .run(current.student.id, amount, `${REOPEN_PREFIX} (${formatGnf(amount)}) : ${text}`, user.id);
+    const after = await studentSituation(db, current.student.id);
+    await refreshCard(db, after.student, after.situation);
+    await audit(db, user.id, "etudiant.retablir_reste", "students", current.student.id,
+      { due: current.situation.due, reste: current.situation.reste }, { due: after.situation.due, reste: after.situation.reste, retabli: amount, reason: text });
+    return { ...after, settled: 0 };
+  });
+}
+
+export { settledAmount };
+
 async function yearById(db, yearId) {
   if (yearId) return db.prepare("SELECT * FROM academic_years WHERE id = ?").get(yearId);
   return db.prepare("SELECT * FROM academic_years WHERE active = 1").get();
@@ -323,6 +379,8 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
   const family = {
     bachelor: ["bachelor", "bachelor_1", "bachelor_2", "bachelor_3"],
     master: ["master", "master_1", "master_2"],
+    cpi: ["cpi_1", "cpi_2"],
+    miage: ["miage_1", "miage_2", "miage_3"],
   }[filters.level];
   return students
     .map((student) => ({ student, situation: bundleFrom(student, ledger, asOf).situation }))
@@ -631,6 +689,7 @@ function publicStudent(student) {
     cardStatus: student.card_status,
     source: student.source,
     legacyNumber: student.legacy_number,
+    createdAt: student.created_at,
   };
 }
 
@@ -1123,6 +1182,9 @@ export async function createStudent(db, user, input) {
   const year = await activeYear(db);
   const program = await db.prepare("SELECT * FROM programs WHERE id = ?").get(Number(input.programId));
   if (!program) throw new HttpError(400, "Filière inconnue");
+  const techSchool = String(program.code || "").toUpperCase() === "TECH";
+  if (techSchool && !TECH_LEVELS.has(input.level)) throw new HttpError(400, "Africaiim Tech : choisissez CPI 1, CPI 2, MIAGE 1, MIAGE 2 ou MIAGE 3");
+  if (!techSchool && TECH_LEVELS.has(input.level)) throw new HttpError(400, "Les niveaux CPI et MIAGE sont réservés à Africaiim Tech");
   const paidOn = todayInConakry();
   const created = await transaction(db, async () => {
     await refuseSamePerson(db, last, first);
@@ -1501,6 +1563,8 @@ export async function catalog(db) {
     levels: [
       { code: "bachelor", label: "Bachelor" },
       { code: "master", label: "Master" },
+      { code: "cpi", label: "CPI (Africaiim Tech)" },
+      { code: "miage", label: "MIAGE (Africaiim Tech)" },
     ],
     statuses: Object.entries(STATUS_LABELS).map(([code, label]) => ({ code, label })),
     settings: Object.fromEntries(settings.map((row) => [row.key, row.value])),
@@ -1509,10 +1573,10 @@ export async function catalog(db) {
     registrationFees: REGISTRATION_FEES,
     cashDiscount: CASH_DISCOUNT,
     hypotheses: [
-      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor (${formatGnf(REGISTRATION_FEES.techBachelor)} en Bachelor à Africaiim Tech), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
+      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.techBachelor)} à Africaiim Tech (CPI et MIAGE), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
       "Répartition de la scolarité : 20 % le 5 octobre, 40 % le 5 décembre, 40 % le 5 mars.",
-      "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. Le tarif de départ est 24 000 000, 27 000 000 et 28 000 000. Chaque école se règle dans Tarifs.",
-      `En Licence et Bachelor, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,
+      "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. À Africaiim Tech : Cycle Préparatoire Intégré (CPI 1, CPI 2) puis MIAGE 1, 2 et 3. Chaque école se règle dans Tarifs.",
+      `En Licence, Bachelor, CPI et MIAGE, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,
       "Un étudiant boursier ne paie ni la scolarité ni les frais d'inscription.",
       "Les fiches déjà enregistrées gardent leur barème (Licence 25 000 000, Master 30 000 000, Tech 37 000 000).",
       "L'admin de la scolarité peut modifier ces montants. Les paiements déjà enregistrés ne changent pas.",

@@ -67,9 +67,10 @@ export function formatGnf(amount) {
  */
 export const REGISTRATION_FEES = { bachelor: 1_000_000, master: 3_000_000, techBachelor: 2_000_000 };
 
-/** Africaiim Tech (code TECH) : 2.000.000 d'inscription en Bachelor 1, 2 et 3 ; son Master et les anciennes fiches importées suivent le tarif commun. */
+/** Africaiim Tech (code TECH) : 2.000.000 d'inscription en CPI 1, 2 et MIAGE 1, 2, 3 (et ses anciennes fiches Bachelor) ; le reste suit le tarif commun. */
 export function registrationFee(level, programCode = "") {
   const code = String(level || "");
+  if (code.startsWith("cpi_") || code.startsWith("miage_")) return REGISTRATION_FEES.techBachelor;
   if (code.startsWith("master")) return REGISTRATION_FEES.master;
   const techBachelor = String(programCode || "").toUpperCase() === "TECH" && code.startsWith("bachelor");
   return techBachelor ? REGISTRATION_FEES.techBachelor : REGISTRATION_FEES.bachelor;

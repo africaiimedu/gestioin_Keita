@@ -14,6 +14,7 @@ const labels = {
   licence: "Licence", master: "Master", tech: "Tech Ingénieur",
   bachelor: "Bachelor", bachelor_1: "Bachelor 1", bachelor_2: "Bachelor 2", bachelor_3: "Bachelor 3",
   master_1: "Master 1", master_2: "Master 2",
+  cpi_1: "CPI 1", cpi_2: "CPI 2", miage_1: "MIAGE 1", miage_2: "MIAGE 2", miage_3: "MIAGE 3",
   actif: "Actif", suspendu: "Suspendu", archive: "Archivé",
   active: "Carte active", limited: "Carte limitée", suspended: "Carte suspendue",
   super_admin: "Super admin", admin: "Admin", gestionnaire: "Gestionnaire",
@@ -31,6 +32,7 @@ const schools = [
 const months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 function levelLabel(code) {
+  if (/^(cpi|miage)_\d$/.test(String(code))) return labels[code];
   const year = { bachelor_1: "1re année", bachelor_2: "2e année", bachelor_3: "3e année", master_1: "1re année", master_2: "2e année" }[code];
   if (code === "bachelor" || String(code).startsWith("bachelor_")) return year ? `Bachelor · ${year}` : "Bachelor";
   if (code === "master" || code === "master_1" || code === "master_2") return year ? `Master · ${year}` : "Master";
@@ -1085,6 +1087,34 @@ function kpi(label, value, raw = false) {
   return `<article class="kpi"><button data-go="etudiants" type="button"><span class="muted">${label}</span><p class="value">${raw ? esc(value) : gnf(value)}</p></button></article>`;
 }
 
+const STUDENT_SORTS = [
+  ["nom", "Trier par nom (A → Z)"],
+  ["recent", "Plus récents d'abord"],
+  ["enregistrement", "Ordre d'enregistrement (1er inscrit en haut)"],
+  ["ecole", "Trier par école"],
+];
+
+function stampKey(value) {
+  return String(value || "").replace("T", " ").slice(0, 19);
+}
+
+function shortStamp(value) {
+  const [year, month, day] = stampKey(value).slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : "";
+}
+
+function sortStudents(students, mode) {
+  const byName = (a, b) => a.name.localeCompare(b.name, "fr");
+  const byOrder = (a, b) => stampKey(a.createdAt).localeCompare(stampKey(b.createdAt)) || a.id - b.id;
+  const compare = {
+    recent: (a, b) => byOrder(b, a),
+    enregistrement: byOrder,
+    ecole: (a, b) => String(a.program || "").localeCompare(String(b.program || ""), "fr") || byName(a, b),
+  }[mode];
+  if (compare) students.sort(compare);
+  return students;
+}
+
 async function showStudents(screen) {
   const program = state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("");
   screen.innerHTML = `    <div class="top"><div><p class="mark">Registre</p><h1>Étudiants</h1>
@@ -1093,7 +1123,8 @@ async function showStudents(screen) {
     <div class="filters"><input id="q" placeholder="Nom ou matricule" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
       <select id="niveau"><option value="">Tous les niveaux</option>${(state.catalog.levels || []).map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
-      <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}</select></div>
+      <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}</select>
+      <select id="tri" aria-label="Trier par">${STUDENT_SORTS.map(([code, label]) => `<option value="${code}" ${(state.studentSort || "nom") === code ? "selected" : ""}>${label}</option>`).join("")}</select></div>
     <div id="student-table"></div>
     <dialog id="fiche-dialog" class="sheet" closedby="none"></dialog>`;
   api("/api/etudiants").then((all) => {
@@ -1111,12 +1142,14 @@ async function showStudents(screen) {
       statut: document.querySelector("#statut").value,
     });
     const data = await api(`/api/etudiants?${params}`);
+    state.studentSort = document.querySelector("#tri").value;
+    sortStudents(data.students, state.studentSort);
     const pageSize = 10;
     const pages = Math.max(1, Math.ceil(data.students.length / pageSize));
     if (state.studentPage > pages) state.studentPage = pages;
     const visible = data.students.slice((state.studentPage - 1) * pageSize, state.studentPage * pageSize);
-    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th></tr></thead><tbody>
-      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td></tr>`).join("")}
+    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>Enregistré le</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th></tr></thead><tbody>
+      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td class="when">${esc(shortStamp(student.createdAt))}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td></tr>`).join("")}
     </tbody></table></div>
       <div class="pager"><button type="button" id="page-prev" ${state.studentPage <= 1 ? "disabled" : ""}>Précédent</button><span>${data.students.length} étudiants · page ${state.studentPage} / ${pages}</span><button type="button" id="page-next" ${state.studentPage >= pages ? "disabled" : ""}>Suivant</button></div>
     </article>`;
@@ -1124,7 +1157,7 @@ async function showStudents(screen) {
     document.querySelector("#page-prev").addEventListener("click", () => { state.studentPage -= 1; load(); });
     document.querySelector("#page-next").addEventListener("click", () => { state.studentPage += 1; load(); });
   };
-  ["q", "filiere", "niveau", "statut"].forEach((id) => document.querySelector(`#${id}`).addEventListener("input", () => { state.studentPage = 1; load(); }));
+  ["q", "filiere", "niveau", "statut", "tri"].forEach((id) => document.querySelector(`#${id}`).addEventListener("input", () => { state.studentPage = 1; load(); }));
   document.querySelector("#link-cards")?.addEventListener("click", async () => {
     const button = document.querySelector("#link-cards");
     button.disabled = true;
@@ -1165,7 +1198,15 @@ async function showStudents(screen) {
     const yearOptions = {
       bachelor: [["bachelor_1", "1re année"], ["bachelor_2", "2e année"], ["bachelor_3", "3e année"]],
       master: [["master_1", "1re année"], ["master_2", "2e année"]],
+      cpi: [["cpi_1", "CPI 1"], ["cpi_2", "CPI 2"]],
+      miage: [["miage_1", "MIAGE 1"], ["miage_2", "MIAGE 2"], ["miage_3", "MIAGE 3"]],
     };
+    const trackOptions = {
+      general: [["bachelor", "Bachelor"], ["master", "Master"]],
+      tech: [["cpi", "Cycle Préparatoire Intégré (CPI)"], ["miage", "MIAGE"]],
+    };
+    const yearLabels = { bachelor: "Année de bachelor", master: "Année de master", cpi: "Année de CPI", miage: "Année de MIAGE" };
+    const techSchool = () => String(state.catalog.programs.find((item) => item.id === Number(form.programId.value))?.code || "").toUpperCase() === "TECH";
     const schoolingOf = () => {
       const fee = state.catalog.fees.find((item) => item.program_id === Number(form.programId.value) && item.level === form.studyYear.value);
       return fee ? fee.tuition_amount : 0;
@@ -1173,19 +1214,22 @@ async function showStudents(screen) {
     const registrationOf = () => {
       const fees = state.catalog.registrationFees || { bachelor: 0, master: 0 };
       if (form.studyYear.value.startsWith("master")) return fees.master;
-      const program = state.catalog.programs.find((item) => item.id === Number(form.programId.value));
-      return String(program?.code || "").toUpperCase() === "TECH" ? (fees.techBachelor ?? fees.bachelor) : fees.bachelor;
+      return techSchool() ? (fees.techBachelor ?? fees.bachelor) : fees.bachelor;
     };
     const tuitionOf = () => (schoolingOf() ? schoolingOf() + registrationOf() : 0);
     const isMaster = () => form.studyYear.value.startsWith("master") || form.level.value === "master";
     const cashOf = (tuition) => (isMaster() ? tuition : Math.max(0, tuition - (state.catalog.cashDiscount || 0)));
     const syncFee = () => {
-      const track = form.level.value === "master" ? "master" : "bachelor";
+      const tracks = trackOptions[techSchool() ? "tech" : "general"];
+      if (!tracks.some(([code]) => code === form.level.value)) {
+        form.level.innerHTML = tracks.map(([code, label]) => `<option value="${code}">${label}</option>`).join("");
+      }
+      const track = form.level.value;
       const options = yearOptions[track];
       const previous = form.studyYear.value;
       form.studyYear.innerHTML = options.map(([code, label]) => `<option value="${code}">${label}</option>`).join("");
       if (options.some(([code]) => code === previous)) form.studyYear.value = previous;
-      document.querySelector("#year-label").textContent = track === "master" ? "Année de master" : "Année de bachelor";
+      document.querySelector("#year-label").textContent = yearLabels[track];
       const tuition = tuitionOf();
       const scholar = form.scholarship.checked;
       const discountRow = form.querySelector(".discount-row");
@@ -1304,10 +1348,12 @@ async function showStudent(screen, id) {
       <div class="row-actions">
         <button class="btn" id="pay-this" type="button">Encaisser</button>
         ${allowed("student.write") ? `<button class="btn secondary" id="edit-matricule" type="button">Modifier le matricule</button>` : ""}
+        ${allowed("payment.cancel") && situation.reste > 0 ? `<button class="btn secondary" id="settle-balance" type="button">Mettre le reste à 0</button>` : ""}
+        ${allowed("payment.cancel") && data.settled > 0 ? `<button class="btn secondary" id="reopen-balance" type="button">Rétablir le reste (${gnf(data.settled)})</button>` : ""}
       </div></div>
     ${state.paymentReceipt ? `<div class="banner">Paiement mis à jour. Nouveau reçu <a href="/api/recus/${state.paymentReceipt.id}.pdf" target="_blank">${esc(state.paymentReceipt.number)}</a>${printButton(`/api/recus/${state.paymentReceipt.id}.pdf`)}. L'ancien reçu est annulé.</div>` : ""}
     <section class="kpis">${kpi("Frais dus", situation.due)}${kpi("Total payé", situation.paid)}${kpi("Reste", situation.reste)}${kpi("Statut", situation.statusLabel, true)}</section>
-    ${data.discounts?.length ? `<p class="banner">${data.discounts.map((item) => esc(item.reason || item.label)).join(" · ")}</p>` : ""}
+    ${data.discounts?.length || data.adjustments?.length ? `<p class="banner">${[...(data.discounts || []), ...(data.adjustments || [])].map((item) => esc(item.reason || item.label)).join(" · ")}</p>` : ""}
     <article class="card" style="margin-top:14px"><h2>Paiements</h2>
       <div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th><th></th></tr></thead><tbody>
       ${data.payments.map((payment) => `<tr><td>${esc(frenchDay(payment.paid_on))}${payment.date_unconfirmed ? "<br><span class='muted'>Date à confirmer</span>" : ""}</td><td class="num"><strong>${gnf(payment.amount)}</strong></td><td>${esc(state.catalog.methods.find((item) => item.code === payment.method)?.label || payment.method)}${payment.status === "annule" ? `<br><span class="tag trop_percu">Annulé</span>` : ""}</td><td>${payment.receipt_number ? `<a href="/api/recus/${payment.receipt_id}.pdf" target="_blank">${esc(payment.receipt_number)}</a>${payment.status === "valide" ? printButton(`/api/recus/${payment.receipt_id}.pdf`) : ""}` : ""}</td><td>${payment.status === "annule" ? esc(payment.cancel_reason || "Annulé") : (allowed("payment.cancel") ? `<button class="btn secondary" type="button" data-correct="${payment.id}">Corriger</button>` : "")}</td></tr>`).join("")}
@@ -1380,6 +1426,23 @@ async function showStudent(screen, id) {
     }
   }));
   document.querySelector("#edit-matricule")?.addEventListener("click", () => openMatriculeEdit(student, () => showStudent(screen, id)));
+  const balanceAction = (selector, path, question, done) => document.querySelector(selector)?.addEventListener("click", async () => {
+    const reason = window.prompt(question);
+    if (reason === null) return;
+    try {
+      await api(`/api/etudiants/${id}/${path}`, { method: "POST", body: JSON.stringify({ reason }) });
+      saved(done);
+      showStudent(screen, id);
+    } catch (caught) {
+      saved(caught.message);
+    }
+  });
+  balanceAction("#settle-balance", "solder",
+    `Mettre le reste à payer à 0 pour ${student.name} ? Le reste actuel (${gnf(situation.reste)}) sera considéré comme réglé. Les paiements et reçus ne changent pas.\n\nMotif (au moins 5 caractères) :`,
+    "Reste mis à 0 : l'étudiant est soldé");
+  balanceAction("#reopen-balance", "retablir-reste",
+    `Rétablir le reste de ${gnf(data.settled || 0)} pour ${student.name} ?\n\nMotif (au moins 5 caractères) :`,
+    "Reste rétabli");
   document.querySelectorAll("[data-correct]").forEach((button) => button.addEventListener("click", () => {
     const payment = data.payments.find((item) => String(item.id) === button.dataset.correct);
     if (payment) openPaymentCorrection(payment, student, () => showStudent(screen, id));
@@ -2799,12 +2862,38 @@ function showSettings(screen) {
   const settings = state.catalog.settings;
   const offerLevels = ["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"];
   const yearHeads = ["1re année", "2e année", "3e année", "1re année", "2e année"];
+  const techLevels = ["cpi_1", "cpi_2", "miage_1", "miage_2", "miage_3"];
+  const techHeads = techLevels.map((level) => labels[level]);
+  const isTech = (program) => String(program.code || "").toUpperCase() === "TECH";
   const francs = (amount) => grouped(amount);
+  const feeTable = ([firstGroup, firstSpan, secondGroup, secondSpan], heads, levels, programs) => programs.length ? `<table class="fee-table">
+            <thead>
+              <tr class="fee-group">
+                <th></th>
+                <th colspan="${firstSpan}">${firstGroup}</th>
+                <th colspan="${secondSpan}">${secondGroup}</th>
+              </tr>
+              <tr>
+                <th>École</th>
+                ${heads.map((year) => `<th class="num">${year}</th>`).join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${programs.map((program) => `<tr>
+                <th scope="row">${esc(program.name)}</th>
+                ${levels.map((level) => {
+                  const fee = state.catalog.fees.find((item) => item.program_id === program.id && item.level === level);
+                  const caption = `${program.name}, ${labels[level]}`;
+                  return `<td><input name="tuition" data-fee="${fee?.id || ""}" data-label="${esc(caption)}" inputmode="numeric" required aria-label="${esc(caption)}" value="${fee ? francs(fee.tuition_amount) : ""}"></td>`;
+                }).join("")}
+              </tr>`).join("")}
+            </tbody>
+          </table>` : "";
   screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Tarifs des programmes</h1>
-      <p class="lead">Scolarité annuelle en francs guinéens, répartie en 20 % le 5 octobre, 40 % le 5 décembre et 40 % le 5 mars. Les fiches Bachelor et Master déjà créées suivent le nouveau tarif.</p></div></div>
+      <p class="lead">Scolarité annuelle en francs guinéens, répartie en 20 % le 5 octobre, 40 % le 5 décembre et 40 % le 5 mars. Les fiches Bachelor, Master, CPI et MIAGE déjà créées suivent le nouveau tarif.</p></div></div>
     <div class="stat-row">
       <div class="stat-tile"><span>Inscription Licence et Bachelor</span><strong>${gnf(state.catalog.registrationFees?.bachelor || 0)}</strong></div>
-      <div class="stat-tile"><span>Inscription Bachelor Africaiim Tech</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
+      <div class="stat-tile"><span>Inscription Africaiim Tech (CPI et MIAGE)</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
       <div class="stat-tile"><span>Inscription Master</span><strong>${gnf(state.catalog.registrationFees?.master || 0)}</strong></div>
       <div class="stat-tile alert"><span>Inscription due en entier le</span><strong>5 octobre</strong></div>
       <div class="stat-tile"><span>Costume (prix unique)</span><strong>${Number(settings.costume_price) ? gnf(Number(settings.costume_price)) : "Non fixé"}</strong></div>
@@ -2823,29 +2912,8 @@ function showSettings(screen) {
     <article class="card fee-board">
       <form id="fees">
         <div class="table-scroll">
-          <table class="fee-table">
-            <thead>
-              <tr class="fee-group">
-                <th></th>
-                <th colspan="3">Bachelor</th>
-                <th colspan="2">Master</th>
-              </tr>
-              <tr>
-                <th>École</th>
-                ${yearHeads.map((year) => `<th class="num">${year}</th>`).join("")}
-              </tr>
-            </thead>
-            <tbody>
-              ${state.catalog.programs.map((program) => `<tr>
-                <th scope="row">${esc(program.name)}</th>
-                ${offerLevels.map((level) => {
-                  const fee = state.catalog.fees.find((item) => item.program_id === program.id && item.level === level);
-                  const caption = `${program.name}, ${labels[level]}`;
-                  return `<td><input name="tuition" data-fee="${fee?.id || ""}" data-label="${esc(caption)}" inputmode="numeric" required aria-label="${esc(caption)}" value="${fee ? francs(fee.tuition_amount) : ""}"></td>`;
-                }).join("")}
-              </tr>`).join("")}
-            </tbody>
-          </table>
+          ${feeTable(["Bachelor", 3, "Master", 2], yearHeads, offerLevels, state.catalog.programs.filter((program) => !isTech(program)))}
+          ${feeTable(["Cycle Préparatoire Intégré", 2, "MIAGE", 3], techHeads, techLevels, state.catalog.programs.filter(isTech))}
         </div>
         <div class="fee-foot">
           <p class="muted" data-split>Cliquez un montant pour voir sa répartition 20 % / 40 % / 40 %.</p>

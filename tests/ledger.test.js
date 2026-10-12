@@ -301,6 +301,15 @@ test("bachelor, masters, remise de 1.200.000 au choix et boursier", async () => 
     ["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"].map((level) => tuitionOf("TECH", level)),
     [35_000_000, 35_000_000, 35_000_000, 45_000_000, 45_000_000],
   );
+  const techYears = await db.prepare(`
+    SELECT f.level, f.tuition_amount FROM fee_schedules f JOIN programs p ON p.id = f.program_id
+    WHERE p.code = 'TECH' AND (f.level LIKE 'cpi%' OR f.level LIKE 'miage%') ORDER BY f.level
+  `).all();
+  assert.deepEqual(techYears.map((row) => [row.level, row.tuition_amount]), [
+    ["cpi_1", 35_000_000], ["cpi_2", 35_000_000], ["miage_1", 35_000_000], ["miage_2", 35_000_000], ["miage_3", 35_000_000],
+  ]);
+  const otherCpi = await db.prepare("SELECT count(*)::int AS n FROM fee_schedules f JOIN programs p ON p.id = f.program_id WHERE p.code <> 'TECH' AND f.level LIKE 'cpi%'").get();
+  assert.equal(otherCpi.n, 0);
   const techMaster = grid.find((row) => row.code === "TECH" && row.level === "master_1");
   assert.deepEqual([techMaster.registration_amount, techMaster.installment_1, techMaster.installment_2], [9_000_000, 18_000_000, 18_000_000]);
   const licence = await db.prepare("SELECT id, tuition_amount FROM fee_schedules WHERE level = 'licence' AND program_id = ?").get(program.id);
@@ -313,6 +322,30 @@ test("bachelor, masters, remise de 1.200.000 au choix et boursier", async () => 
   });
   assert.equal(changed.situation.due, 27_000_000);
   assert.equal((await db.prepare("SELECT registration_amount FROM fee_schedules WHERE id = ?").get(bachelor2.id)).registration_amount, 5_200_000);
+});
+
+test("reste mis à 0 par l'admin, avec motif, puis rétabli sans rien effacer", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "SOUMAH", firstName: "Solde", programId: program.id, level: "bachelor_1", paymentAmount: 20_000_000, method: "especes",
+  });
+  const id = created.student.id;
+  assert.equal(created.situation.reste, 5_000_000);
+  await assert.rejects(() => domain.settleBalance(db, comptable, id, "Accord de la direction"), /admin/);
+  await assert.rejects(() => domain.settleBalance(db, agent, id, "ok"), /motif/i);
+  const settled = await domain.settleBalance(db, agent, id, "Accord de la direction");
+  assert.equal(settled.situation.reste, 0);
+  assert.equal(settled.situation.status, "solde");
+  assert.equal(settled.situation.paid, 20_000_000);
+  assert.equal(settled.settled, 5_000_000);
+  await assert.rejects(() => domain.settleBalance(db, agent, id, "Accord de la direction"), /plus rien à payer/);
+  const reopened = await domain.reopenBalance(db, agent, id, "Erreur de saisie");
+  assert.equal(reopened.situation.reste, 5_000_000);
+  assert.equal(domain.settledAmount(reopened), 0);
+  await assert.rejects(() => domain.reopenBalance(db, agent, id, "Erreur de saisie"), /Aucun reste/);
+  const kept = await db.prepare("SELECT (SELECT count(*)::int FROM discounts WHERE student_id = ?) AS discounts, (SELECT count(*)::int FROM payments WHERE student_id = ?) AS payments").get(id, id);
+  assert.deepEqual(kept, { discounts: 1, payments: 1 });
+  assert.equal((await domain.settleBalance(db, agent, id, "Nouvel accord")).situation.reste, 0);
 });
 
 test("compte étudiant créé à l'inscription, et une personne n'est jamais enregistrée deux fois", async () => {
@@ -493,14 +526,18 @@ test("matricule : saisi à l'inscription, unique, modifiable ensuite", async () 
   assert.equal(await domain.suggestMatricule(db, tech.id), `UA${year}AT0001`);
   const nextAbs = await domain.suggestMatricule(db, program.id);
   assert.match(nextAbs, new RegExp(`^UA${year}ABS\\d{4}$`));
-  const first = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Premier", programId: tech.id, level: "bachelor_1" });
+  await assert.rejects(() => domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Bachelor", programId: tech.id, level: "bachelor_1" }), /CPI 1, CPI 2, MIAGE/);
+  await assert.rejects(() => domain.createStudent(db, agent, { lastName: "GESTION", firstName: "Cpi", programId: program.id, level: "cpi_1" }), /réservés à Africaiim Tech/);
+  const first = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Premier", programId: tech.id, level: "cpi_1" });
   assert.equal(first.student.matricule, `UA${year}AT0001`);
-  const second = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Second", programId: tech.id, level: "bachelor_1" });
+  const second = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Second", programId: tech.id, level: "cpi_2" });
   assert.equal(second.student.matricule, `UA${year}AT0002`);
   assert.equal(first.situation.due, 35_000_000 + 2_000_000);
   assert.equal(first.situation.plan.find((item) => item.code === "inscription").amount, 7_000_000 + 2_000_000);
-  const techMaster = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Master", programId: tech.id, level: "master_1" });
-  assert.equal(techMaster.situation.due, 45_000_000 + 3_000_000);
+  const miage = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Miage", programId: tech.id, level: "miage_3" });
+  assert.equal(miage.situation.due, 35_000_000 + 2_000_000);
+  const listed = await domain.listStudents(db, { level: "miage" });
+  assert.deepEqual(listed.map((row) => row.student.id), [miage.student.id]);
   assert.equal(await domain.suggestMatricule(db, program.id), nextAbs);
   assert.equal(domain.matriculePrefix("2026-2027", { code: "DROIT" }), "UA26ADSP");
   assert.equal(domain.matriculePrefix("2027-2028", { code: "SUP" }), "UA27ASC");

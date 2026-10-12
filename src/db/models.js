@@ -11,7 +11,7 @@ const day = (allowNull = false) => ({ type: DataTypes.DATEONLY, allowNull });
 const flag = () => ({ type: DataTypes.SMALLINT, allowNull: false, defaultValue: 0 });
 // Horodatage rempli par PostgreSQL (DEFAULT) : absent des INSERT tant qu'on ne le fournit pas.
 const stamp = () => ({ type: DataTypes.STRING });
-const LEVELS = ["licence", "master", "tech", "bachelor", "bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"];
+const LEVELS = ["licence", "master", "tech", "bachelor", "bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2", "cpi_1", "cpi_2", "miage_1", "miage_2", "miage_3"];
 const INSTALLMENTS = ["inscription", "tranche_1", "tranche_2", "tranche_3"];
 const METHODS = ["especes", "cheque", "virement", "mobile", "orange_money", "marchand", "autre"];
 

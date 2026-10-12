@@ -21,6 +21,9 @@ import {
   cancelCostume,
   cancelPayment,
   correctPayment,
+  settleBalance,
+  reopenBalance,
+  settledAmount,
   cashJournal,
   costumeSituation,
   recordCostume,
@@ -240,6 +243,8 @@ app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) =>
     student: publicStudent(current.student),
     situation: current.situation,
     discounts: current.discounts,
+    adjustments: current.adjustments,
+    settled: settledAmount(current),
     payments,
     reminders,
     costume,
@@ -253,6 +258,14 @@ app.put("/api/etudiants/:id/costume-nombre", requireAction("payment.create"), as
 });
 app.put("/api/etudiants/:id/matricule", requireAction("student.write"), async (req, res) => {
   res.json(await changeMatricule(db, req.user, Number(req.params.id), req.body?.matricule));
+});
+app.post("/api/etudiants/:id/solder", requireAction("payment.cancel"), async (req, res) => {
+  const result = await settleBalance(db, req.user, Number(req.params.id), req.body?.reason);
+  res.json({ situation: result.situation, settled: result.settled });
+});
+app.post("/api/etudiants/:id/retablir-reste", requireAction("payment.cancel"), async (req, res) => {
+  const result = await reopenBalance(db, req.user, Number(req.params.id), req.body?.reason);
+  res.json({ situation: result.situation, settled: result.settled });
 });
 app.post("/api/costumes/:id/annuler", requireAction("payment.cancel"), async (req, res) => {
   res.json(await cancelCostume(db, req.user, Number(req.params.id), req.body?.reason));

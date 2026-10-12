@@ -111,6 +111,11 @@ const TECH_TUITION = {
   bachelor_3: 35_000_000,
   master_1: 45_000_000,
   master_2: 45_000_000,
+  cpi_1: 35_000_000,
+  cpi_2: 35_000_000,
+  miage_1: 35_000_000,
+  miage_2: 35_000_000,
+  miage_3: 35_000_000,
 };
 
 export function offerPlans(programCode) {
