@@ -485,12 +485,36 @@ test("costume : prix, versement lié au reçu et refus du trop-perçu", async ()
   }, "2026-10-06");
   assert.equal(paid.costume.reste, 500_000);
   await assert.rejects(
-    () => domain.recordCostume(db, agent, created.student.id, { amount: 600_000, paidOn: "2026-10-06" }, "2026-10-06"),
+    () => domain.recordCostume(db, agent, created.student.id, { amount: 600_000, paidOn: "2026-10-06", method: "especes" }, "2026-10-06"),
     (error) => error.details?.code === "AMOUNT_TOO_HIGH",
   );
   const situation = await domain.costumeSituation(db, created.student.id);
   assert.equal(situation.paid, 300_000);
   assert.equal(situation.status, "partiel");
+});
+
+test("costume payé seul, sans scolarité : accepté avec son propre reçu, même si la scolarité est soldée", async () => {
+  await domain.updateSettings(db, agent, { costume_price: "800.000" });
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "CISSE", firstName: "Tenueseule", programId: program.id, level: "bachelor_1", paymentAmount: 25_000_000, method: "especes",
+  });
+  assert.equal(created.situation.reste, 0);
+  await assert.rejects(() => domain.recordCostume(db, agent, created.student.id, { amount: 300_000 }), /moyen de paiement/);
+  const preview = await domain.previewPayment(db, { studentId: created.student.id, amount: 0, costumeAmount: 300_000 });
+  assert.equal(preview.costumeOnly, true);
+  assert.equal(preview.costume.resteAfter, 500_000);
+  const first = await domain.recordCostume(db, comptable, created.student.id, { amount: 300_000, method: "especes" });
+  assert.match(first.receipt.number, /^COS-\d{4}-\d{6}$/);
+  assert.equal(first.reste, 500_000);
+  const second = await domain.recordCostume(db, comptable, created.student.id, { amount: 500_000, method: "orange_money" });
+  assert.equal(second.status, "paye");
+  assert.notEqual(second.receipt.number, first.receipt.number);
+  const stored = await db.prepare("SELECT snapshot_json, verify_token FROM costume_payments WHERE id = ?").get(second.receipt.id);
+  const snapshot = JSON.parse(stored.snapshot_json);
+  assert.deepEqual([snapshot.costume.paidBefore, snapshot.costume.today, snapshot.costume.reste], [300_000, 500_000, 0]);
+  assert.ok(stored.verify_token.length > 20);
+  assert.equal((await domain.studentSituation(db, created.student.id)).situation.paid, 25_000_000);
 });
 
 test("costumes : 1.600.000 versés = 2 costumes payés, rien à payer en plus", async () => {
@@ -637,7 +661,7 @@ test("seul l'admin corrige un paiement saisi par erreur : ancien reçu annulé, 
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const created = await domain.createStudent(db, agent, {
     lastName: "SYLLA", firstName: "Correction", programId: program.id, level: "bachelor",
-    paymentAmount: 2_500_000, method: "especes",
+    paymentAmount: 2_500_000, method: "especes", costumeAmount: 400_000,
   });
   const wrong = await db.prepare("SELECT p.id, r.number FROM payments p JOIN receipts r ON r.payment_id = p.id WHERE p.student_id = ?").get(created.student.id);
   await assert.rejects(
@@ -664,6 +688,10 @@ test("seul l'admin corrige un paiement saisi par erreur : ancien reçu annulé, 
   assert.equal(after.paid, 25_000_000);
   assert.equal(after.reste, 0);
   assert.equal((await db.prepare("SELECT method FROM payments WHERE id = ?").get(fixed.paymentId)).method, "virement");
+  const costume = await domain.costumeSituation(db, created.student.id);
+  assert.equal(costume.paid, 400_000);
+  assert.equal(costume.entries[0].payment_id, fixed.paymentId);
+  await assert.rejects(() => db.prepare("UPDATE costume_payments SET amount = 1 WHERE student_id = ?").run(created.student.id), /ne peut pas être modifié/);
   await assert.rejects(() => domain.correctPayment(db, agent, wrong.id, { amount: 1_000, reason: "Deuxième correction", idempotencyKey: "correction-bis-001" }), /déjà annulé/);
 });
 });

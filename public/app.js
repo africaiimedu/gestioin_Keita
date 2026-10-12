@@ -1398,13 +1398,13 @@ async function showStudent(screen, id) {
       const button = costumeForm.querySelector("[type=submit]");
       button.disabled = true;
       try {
-        await api(`/api/etudiants/${id}/costume`, { method: "POST", body: JSON.stringify({
+        const result = await api(`/api/etudiants/${id}/costume`, { method: "POST", body: JSON.stringify({
           amount,
           paidOn: costumeForm.paidOn.value,
           method: costumeForm.method.value,
           note: costumeForm.note.value.trim(),
         }) });
-        saved("Versement du costume enregistré");
+        saved(result.receipt?.number ? `Versement du costume enregistré · reçu ${result.receipt.number}` : "Versement du costume enregistré");
         showStudent(screen, id);
       } catch (caught) {
         if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
@@ -1599,7 +1599,9 @@ function costumeCard(costume) {
     : `<p class="muted">Le prix du costume n'est pas encore fixé. L'administrateur le règle dans Tarifs.</p>`}
     ${costume.entries.length ? `<div class="table-scroll"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Moyen</th><th>Reçu</th><th></th></tr></thead><tbody>
       ${costume.entries.map((entry) => `<tr><td class="when-cell">${esc(frenchDay(entry.paid_on))}</td><td class="num"><strong>${gnf(entry.amount)}</strong></td><td>${esc(methodLabel(entry.method))}</td>
-        <td>${entry.receipt_number ? `<a href="/api/recus/${entry.receipt_id}.pdf" target="_blank">${esc(entry.receipt_number)}</a>` : `<span class="muted">Saisi sur la fiche</span>`}</td>
+        <td>${entry.receipt_number ? `<a href="/api/recus/${entry.receipt_id}.pdf" target="_blank">${esc(entry.receipt_number)}</a>`
+          : entry.costume_receipt_number ? `<a href="/api/costumes/${entry.id}/recu.pdf" target="_blank">${esc(entry.costume_receipt_number)}</a>${entry.counted ? printButton(`/api/costumes/${entry.id}/recu.pdf`) : ""}`
+          : `<span class="muted">Saisi sur la fiche</span>`}</td>
         <td>${!entry.counted ? `<span class="tag trop_percu">Annulé</span>${entry.cancel_reason ? ` <span class="muted">${esc(entry.cancel_reason)}</span>` : ""}` : (!entry.payment_id && allowed("payment.cancel") ? `<button class="btn secondary" type="button" data-costume-cancel="${entry.id}">Annuler</button>` : "")}</td></tr>`).join("")}
     </tbody></table></div>` : ""}
     ${canPay ? `<form id="costume-form" class="costume-form" novalidate>
@@ -1646,7 +1648,7 @@ function openPaymentUpdate(record, onDone) {
       <section class="update-new">
         <h3>Nouveau versement</h3>
         <p class="muted">Il s'ajoute à l'historique, rien n'est effacé. Le nouveau reçu reprend tous les versements précédents : c'est lui qui fait foi.</p>
-        <div class="duo"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="amount" inputmode="numeric" required placeholder="${record.reste ? `Reste ${esc(grouped(record.reste))}` : "Montant"}"></p>
+        <div class="duo"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="amount" inputmode="numeric" placeholder="${record.reste ? `Reste ${esc(grouped(record.reste))} · 0 si costume seul` : "0 si costume seul"}"></p>
         <p><label>Date</label><input name="paidOn" type="date" required value="${new Date().toISOString().slice(0, 10)}"></p></div>
         ${discountField()}
         <div id="update-preview" class="receipt-preview" hidden></div>
@@ -1717,8 +1719,9 @@ function openPaymentUpdate(record, onDone) {
     error.hidden = true;
     const button = form.querySelector("[type=submit]");
     const amountValue = Number(form.amount.value.replace(/\D/g, ""));
+    const costumeOnly = !amountValue && moneyOf(form.costumeAmount) > 0;
     const missing = [];
-    if (!amountValue) missing.push("le montant");
+    if (!amountValue && !costumeOnly) missing.push("la scolarité versée (ou le costume s'il est payé seul)");
     if (!form.paidOn.value) missing.push("la date");
     if (!form.method.value) missing.push("le moyen de paiement");
     if (missing.length) {
@@ -1727,6 +1730,28 @@ function openPaymentUpdate(record, onDone) {
       return;
     }
     button.disabled = true;
+    if (costumeOnly) {
+      try {
+        const result = await api(`/api/etudiants/${record.studentId}/costume`, { method: "POST", body: JSON.stringify({
+          amount: moneyOf(form.costumeAmount),
+          quantity: Number(form.costumeQuantity?.value) || null,
+          paidOn: form.paidOn.value,
+          method: form.method.value,
+          note: form.note.value.trim() || "Costume payé seul",
+        }) });
+        dialog.close();
+        saved("Versement du costume enregistré");
+        const success = document.querySelector("#pay-success");
+        if (success) success.innerHTML = `<div class="banner">Costume enregistré pour ${esc(record.name)}. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}.</div>`;
+        if (onDone) onDone(null);
+      } catch (caught) {
+        if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
+        error.hidden = false;
+        error.textContent = caught.message;
+        button.disabled = false;
+      }
+      return;
+    }
     const payload = {
       amount: amountValue,
       costumeAmount: moneyOf(form.costumeAmount),
@@ -1819,7 +1844,7 @@ async function showPayment(screen) {
         <label>Étudiant</label><input id="search" placeholder="Nom ou matricule" autocomplete="off" value="${esc(state.prefillStudent?.name || "")}" required>
         <div id="results"></div><input type="hidden" name="studentId" value="${esc(state.prefillStudent?.id || "")}">
         <div id="current"></div>
-        <div class="duo"><p><label>Scolarité versée (GNF, sans le costume)</label><input name="amount" inputmode="numeric" required></p>
+        <div class="duo"><p><label>Scolarité versée (GNF, sans le costume)</label><input name="amount" inputmode="numeric" placeholder="0 si seul le costume est payé"></p>
         <p><label>Date</label><input name="paidOn" type="date" required></p></div>
         ${discountField()}
         ${costumeField()}
@@ -1888,7 +1913,7 @@ async function refreshPreview() {
   const amount = Number(document.querySelector("[name=amount]").value.replace(/\D/g, ""));
   const costumeAmount = moneyOf(document.querySelector("#pay-form [name=costumeAmount]"));
   const costumeQuantity = Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null;
-  if (!studentId || !amount) return;
+  if (!studentId || (!amount && !costumeAmount)) return;
   try {
     const data = await api("/api/paiements/apercu", { method: "POST", body: JSON.stringify({
       studentId: Number(studentId), amount, costumeAmount, costumeQuantity, paidOn: document.querySelector("[name=paidOn]").value,
@@ -1896,6 +1921,13 @@ async function refreshPreview() {
       reference: document.querySelector("[name=reference]").value,
     }) });
     const costume = data.costume;
+    if (data.costumeOnly) {
+      document.querySelector("#preview").innerHTML = `<p><strong>Costume seul</strong> : aucune scolarité versée aujourd'hui, un reçu costume sera émis.</p>
+        <p>Costume${costume.quantity > 1 ? ` : ${costume.quantity} × ${gnf(costume.unitPrice)} = ${gnf(costume.price)}` : ` : prix ${gnf(costume.price)}`} · versé ce jour <strong>${gnf(costume.today || 0)}</strong> · déjà versé ${gnf(costume.paid)} · reste après ${gnf(costume.resteAfter)}</p>
+        <p class="muted">Scolarité inchangée : reste ${gnf(data.after.reste)}.</p>
+        ${data.warnings.map((warning) => `<p class="limited">${esc(warning)}</p>`).join("")}`;
+      return;
+    }
     document.querySelector("#preview").innerHTML = `<p>Scolarité versée ce jour : <strong>${gnf(amount)}</strong></p>
       <p>Montant dû : <strong>${gnf(data.after.due)}</strong></p>
       <p>Cumul versé : <strong>${gnf(data.after.paid)}</strong></p>
@@ -1921,10 +1953,35 @@ async function submitPayment(event) {
     return;
   }
   const amount = Number(document.querySelector("[name=amount]").value.replace(/\D/g, ""));
-  if (!amount) {
+  const costumeOnly = !amount && moneyOf(document.querySelector("#pay-form [name=costumeAmount]")) > 0;
+  if (!amount && !costumeOnly) {
     error.hidden = false;
-    error.textContent = "Indiquez le montant versé, en francs entiers.";
+    error.textContent = "Indiquez la scolarité versée, ou le montant du costume s'il est payé seul.";
     button.disabled = false;
+    return;
+  }
+  if (costumeOnly) {
+    try {
+      const result = await api(`/api/etudiants/${document.querySelector("[name=studentId]").value}/costume`, { method: "POST", body: JSON.stringify({
+        amount: moneyOf(document.querySelector("#pay-form [name=costumeAmount]")),
+        quantity: Number(document.querySelector("#pay-form [name=costumeQuantity]")?.value) || null,
+        paidOn: document.querySelector("[name=paidOn]").value,
+        method: document.querySelector("[name=method]").value,
+        note: document.querySelector("[name=note]").value.trim() || "Costume payé seul",
+      }) });
+      document.querySelector("#pay-dialog")?.close();
+      saved("Versement du costume enregistré");
+      const success = document.querySelector("#pay-success");
+      if (success) success.innerHTML = `<div class="banner">Costume enregistré. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}.</div>`;
+      document.querySelector("#pay-form [name=costumeAmount]").value = "";
+      await loadCashPayments();
+    } catch (caught) {
+      if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
+      error.hidden = false;
+      error.textContent = caught.message;
+    } finally {
+      button.disabled = false;
+    }
     return;
   }
   const file = document.querySelector("[name=file]").files[0];
@@ -2143,6 +2200,12 @@ function longFrenchDate(iso) {
   const [year, month, day] = String(iso || "").slice(0, 10).split("-").map(Number);
   if (!year) return "";
   return `${day === 1 ? "1er" : day} ${months[month - 1].toLowerCase()} ${year}`;
+}
+
+function costumeReceiptLink(receipt) {
+  if (!receipt?.number) return "";
+  const url = `/api/costumes/${receipt.id}/recu.pdf`;
+  return `Reçu <a href="${url}" target="_blank">${esc(receipt.number)}</a>${printButton(url)}.`;
 }
 
 function printButton(url) {

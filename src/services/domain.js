@@ -106,7 +106,7 @@ export async function costumeSituation(db, studentId, quantityOverride = null) {
   const price = unitPrice * quantity;
   const entries = (await db.prepare(`
     SELECT c.id, c.amount, c.paid_on, c.method, c.note, c.status, c.cancel_reason, c.payment_id,
-           r.number AS receipt_number, r.id AS receipt_id, p.status AS payment_status
+           r.number AS receipt_number, r.id AS receipt_id, p.status AS payment_status, c.receipt_number AS costume_receipt_number
     FROM costume_payments c
     LEFT JOIN payments p ON p.id = c.payment_id
     LEFT JOIN receipts r ON r.payment_id = c.payment_id
@@ -182,16 +182,52 @@ export async function recordCostume(db, user, studentId, input, asOf = todayInCo
   const paidOn = /^\d{4}-\d{2}-\d{2}$/.test(input.paidOn || "") ? input.paidOn : asOf;
   if (paidOn > asOf) throw new HttpError(400, "La date de paiement ne peut pas être dans le futur");
   if (input.method && !METHODS.has(input.method)) throw new HttpError(400, "Moyen de paiement inconnu");
+  if (!input.paymentId && !METHODS.has(input.method)) throw new HttpError(400, "Choisissez le moyen de paiement du costume");
   return transaction(db, async () => {
-    const student = await db.prepare("SELECT id, matricule FROM students WHERE id = ?").get(Number(studentId));
+    const student = await db.prepare(`${STUDENT_SELECT} WHERE s.id = ?`).get(Number(studentId));
     if (!student) throw new HttpError(404, "Étudiant introuvable");
-    assertCostumeRoom(await costumeFor(db, student.id, amount, input.quantity, { write: true }), amount);
+    const before = await costumeFor(db, student.id, amount, input.quantity, { write: true });
+    assertCostumeRoom(before, amount);
+    let number = null;
+    let snapshot = null;
+    if (!input.paymentId) {
+      const year = Number(paidOn.slice(0, 4));
+      const seq = await nextDocumentNumber(db, "COS", year);
+      number = `COS-${year}-${String(seq).padStart(6, "0")}`;
+      snapshot = {
+        studentName: `${student.last_name} ${student.first_name}`.trim(),
+        matricule: student.matricule,
+        program: student.program_name,
+        level: student.level,
+        year: student.year_label,
+        amount,
+        amountInWords: amountInWords(amount),
+        costume: {
+          unitPrice: before.unitPrice,
+          quantity: before.quantity,
+          price: before.price,
+          paidBefore: before.paid,
+          today: amount,
+          paidAfter: before.paid + amount,
+          reste: Math.max(0, before.reste - amount),
+        },
+        method: input.method,
+        methodLabel: METHOD_LABELS[input.method],
+        note: clean(input.note),
+        paidOn,
+        recordedAt: new Date().toISOString(),
+        agentName: user.full_name,
+      };
+    }
     const inserted = await db.prepare(`
-      INSERT INTO costume_payments(student_id, payment_id, amount, paid_on, method, note, received_by)
-      VALUES(?, ?, ?, ?, ?, ?, ?) RETURNING id
-    `).run(student.id, input.paymentId || null, amount, paidOn, input.method || null, clean(input.note), user.id);
-    await audit(db, user.id, "costume.verser", "costume_payments", inserted.lastInsertRowid, null, { matricule: student.matricule, amount, paidOn, paymentId: input.paymentId || null });
-    return costumeSituation(db, student.id);
+      INSERT INTO costume_payments(student_id, payment_id, amount, paid_on, method, note, received_by, receipt_number, verify_token, snapshot_json)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+    `).run(student.id, input.paymentId || null, amount, paidOn, input.method || null, clean(input.note), user.id,
+      number, number ? crypto.randomBytes(24).toString("base64url") : null, snapshot ? JSON.stringify(snapshot) : null);
+    const entryId = inserted.lastInsertRowid;
+    const receipt = number ? { id: entryId, number } : null;
+    await audit(db, user.id, "costume.verser", "costume_payments", entryId, null, { matricule: student.matricule, amount, paidOn, paymentId: input.paymentId || null, receiptNumber: receipt?.number || null });
+    return { ...(await costumeSituation(db, student.id)), receipt };
   });
 }
 
@@ -531,11 +567,12 @@ function assertCanPay(student) {
 
 export async function previewPayment(db, input, asOf = todayInConakry()) {
   assertGnf(input.amount, "Montant");
-  if (input.amount <= 0) throw new HttpError(400, "Le montant doit être supérieur à zéro");
+  const costumeAmount = costumeAmountOf(input.costumeAmount);
+  const costumeOnly = input.amount === 0 && costumeAmount > 0;
+  if (input.amount <= 0 && !costumeOnly) throw new HttpError(400, "Le montant doit être supérieur à zéro");
   const current = await studentSituation(db, input.studentId, asOf);
   const warnings = [];
-  if (isScholar(current.discounts)) throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
-  const costumeAmount = costumeAmountOf(input.costumeAmount);
+  if (!costumeOnly && isScholar(current.discounts)) throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
   let costume = await costumeSituation(db, current.student.id);
   try {
     costume = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity);
@@ -546,6 +583,12 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
   costume.today = costumeAmount;
   costume.resteAfter = Math.max(0, costume.reste - costumeAmount);
   if (input.paidOn && input.paidOn > asOf) warnings.push("La date est dans le futur");
+  if (costumeOnly) {
+    return {
+      warnings, before: current.situation, after: current.situation, recordedAmount: 0,
+      limited: false, refused: false, costumeOnly: true, student: publicStudent(current.student), costume,
+    };
+  }
   if (input.reference) {
     const duplicate = await db.prepare(`
       SELECT id FROM payments WHERE reference = ? AND status = 'valide' AND length(trim(reference)) > 0 LIMIT 1
@@ -1045,6 +1088,10 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
     ? await db.prepare(`${STUDENT_SELECT} WHERE s.id IN (SELECT DISTINCT student_id FROM payments)`).all()
     : [];
   const ledger = await loadLedger(db, students);
+  const loose = new Map((await db.prepare(`
+    SELECT student_id, SUM(amount)::bigint AS amount FROM costume_payments
+    WHERE payment_id IS NULL AND status = 'valide' GROUP BY student_id
+  `).all()).map((row) => [row.student_id, Number(row.amount)]));
   const rows = students.map((student) => {
     const history = groups.get(student.id).slice().reverse();
     const valid = history.filter((item) => item.status === "valide");
@@ -1061,7 +1108,7 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
       count: valid.length,
       cancelled: history.length - valid.length,
       tuitionPaid: valid.reduce((sum, item) => sum + item.amount, 0),
-      costumePaid: valid.reduce((sum, item) => sum + Number(item.costume_amount || 0), 0),
+      costumePaid: valid.reduce((sum, item) => sum + Number(item.costume_amount || 0), 0) + (loose.get(student.id) || 0),
       due: situation.due,
       reste: situation.reste,
       status: situation.status,
@@ -1079,7 +1126,8 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
     payments: rows.reduce((sum, row) => sum + row.count, 0),
     cancelled: rows.reduce((sum, row) => sum + row.cancelled, 0),
     tuition: rows.reduce((sum, row) => sum + row.tuitionPaid, 0),
-    costume: rows.reduce((sum, row) => sum + row.costumePaid, 0),
+    costume: rows.reduce((sum, row) => sum + row.costumePaid, 0)
+      + [...loose.entries()].filter(([id]) => !groups.has(id)).reduce((sum, [, amount]) => sum + amount, 0),
   };
   return { students: rows, totals };
 }

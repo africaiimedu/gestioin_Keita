@@ -417,6 +417,49 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
   return done;
 }
 
+/** Reçu d'un costume payé seul : la scolarité n'y figure pas. */
+export async function renderCostumeReceiptPdf({ snapshot, number, school, format = "a4", cancelled = null, verifyUrl }) {
+  const qr = await QRCode.toBuffer(verifyUrl, { margin: 0, width: 240 });
+  const { doc, done } = openDoc(format);
+  const costume = snapshot.costume;
+  const settled = Number(costume.reste || 0) <= 0 && !cancelled;
+  const sealTitle = cancelled ? "ANNULÉ" : (settled ? "PAYÉ" : "ACOMPTE REÇU");
+  const sealColor = cancelled ? GREEN : (settled ? LEAF : GOLD_TEXT);
+  drawHead(doc, { school, number, dateIso: snapshot.paidOn, title: "REÇU DE PAIEMENT", subtitle: "Costume — hors frais de scolarité", kind: "REÇU COSTUME" });
+  let y = drawIdentity(doc, snapshot, 181);
+  y = drawHero(doc, y, "COSTUME VERSÉ CE JOUR", Number(snapshot.amount || 0)) + 22;
+  const quantity = Math.max(1, Number(costume.quantity || 1));
+  const rows = [
+    [quantity > 1 ? `Prix des costumes (${quantity} × ${money(costume.unitPrice)})` : "Prix du costume", money(costume.price)],
+    ["Déjà versé avant ce jour", money(costume.paidBefore)],
+    ["Total versé pour le costume", money(costume.paidAfter)],
+  ];
+  rows.forEach(([label, value]) => {
+    write(doc, label, LEFT + 12, y, 11, "Helvetica", MUTED, 320);
+    write(doc, value, RIGHT - 230, y, 11, "Helvetica-Bold", INK, 218, "right");
+    y += 26.5;
+  });
+  doc.rect(LEFT, y - 8, WIDTH, 28).fill(settled ? "#e6efe9" : "#fbf2dc");
+  const resteColor = settled ? LEAF : GOLD_TEXT;
+  write(doc, "Reste à payer pour le costume", LEFT + 12, y, 12, "Helvetica-Bold", resteColor, 320);
+  write(doc, money(costume.reste), RIGHT - 230, y, 12, "Helvetica-Bold", resteColor, 218, "right");
+  y += 44;
+  write(doc, "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE POUR LE COSTUME À", LEFT, y, 7.5, "Helvetica-Bold", GREEN, WIDTH);
+  doc.fillColor(INK).font("Times-Italic").fontSize(13);
+  doc.text(filled(snapshot.amountInWords, amountInWords(Number(snapshot.amount || 0))), LEFT, y + 16, { width: WIDTH, height: 30 });
+  y += 52;
+  write(doc, "Mode de paiement", LEFT, y, 10, "Helvetica", MUTED, 250);
+  write(doc, filled(snapshot.methodLabel, "Espèces"), LEFT, y + 17, 11, "Helvetica-Bold", INK, 250);
+  y += 40;
+  write(doc, "Ce reçu ne concerne que le costume. Les frais de scolarité figurent sur les reçus REC.", LEFT, Math.min(y, 660), 8.5, "Helvetica", MUTED, WIDTH);
+  if (cancelled) write(doc, `Annulé : ${cancelled.reason}`, LEFT, Math.min(y + 16, 676), 9, "Helvetica-Bold", GOLD_TEXT, WIDTH);
+  drawFoot(doc, qr, number);
+  drawWatermark(doc, W, 505);
+  drawSeal(doc, RIGHT - 66, 136, 40, sealTitle, filled(snapshot.year, "2026-2027").slice(0, 9), sealColor);
+  doc.end();
+  return done;
+}
+
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 function longDate(iso) {

@@ -56,7 +56,7 @@ import {
   suggestMatricule,
 } from "./services/domain.js";
 import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseForPrint, listExpenses, markExpenseHanded } from "./services/expenses.js";
-import { renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
+import { renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { syncStudentsToCard } from "./services/cardSync.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
@@ -311,6 +311,21 @@ app.get("/api/caisse/paiements", requireAction("payment.create"), async (req, re
 app.get("/api/caisse/etudiants", requireAction("payment.create"), async (_req, res) => {
   res.json(await listCashStudents(db));
 });
+app.get("/api/costumes/:id/recu.pdf", requireAction("receipt.read"), async (req, res) => {
+  const entry = await db.prepare("SELECT * FROM costume_payments WHERE id = ? AND receipt_number IS NOT NULL").get(Number(req.params.id));
+  if (!entry) throw new HttpError(404, "Reçu de costume introuvable");
+  const pdf = await renderCostumeReceiptPdf({
+    snapshot: JSON.parse(entry.snapshot_json),
+    number: entry.receipt_number,
+    school: await schoolBlock(),
+    format: req.query.format === "a5" ? "a5" : "a4",
+    cancelled: entry.status === "annule" ? { reason: entry.cancel_reason || "Versement annulé" } : null,
+    verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${entry.verify_token}`,
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${entry.receipt_number}.pdf"`);
+  res.send(pdf);
+});
 app.get("/api/recus/:id.pdf", requireAction("receipt.read"), async (req, res) => {
   const receipt = await db.prepare(`
     UPDATE receipts r SET print_count = r.print_count + 1
@@ -544,7 +559,10 @@ app.get("/v/:token", async (req, res) => {
     FROM receipts r JOIN payments p ON p.id = r.payment_id
     LEFT JOIN cancellations c ON c.payment_id = p.id
     WHERE r.verify_token = ?
-  `).get(req.params.token);
+    UNION ALL
+    SELECT k.receipt_number, k.snapshot_json, k.status, NULL
+    FROM costume_payments k WHERE k.verify_token = ?
+  `).get(req.params.token, req.params.token);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   if (!receipt) {
     res.status(404).send("<!doctype html><meta charset='utf-8'><title>Reçu</title><p>Reçu introuvable.</p>");
