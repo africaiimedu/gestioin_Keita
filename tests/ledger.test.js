@@ -536,7 +536,9 @@ test("costume payé seul, sans scolarité : accepté avec son propre reçu, mêm
   assert.equal(preview.costumeOnly, true);
   assert.equal(preview.costume.resteAfter, 500_000);
   const first = await domain.recordCostume(db, comptable, created.student.id, { amount: 300_000, method: "especes" });
-  assert.match(first.receipt.number, /^COS-\d{4}-\d{6}$/);
+  assert.match(first.receipt.number, /^REC-\d{4}-\d{6}$/);
+  const [paidReceipt] = await db.prepare("SELECT r.number FROM receipts r JOIN payments p ON p.id = r.payment_id WHERE p.student_id = ?").all(created.student.id);
+  assert.ok(first.receipt.number > paidReceipt.number);
   assert.equal(first.reste, 500_000);
   const second = await domain.recordCostume(db, comptable, created.student.id, { amount: 500_000, method: "orange_money" });
   assert.equal(second.status, "paye");
@@ -544,18 +546,21 @@ test("costume payé seul, sans scolarité : accepté avec son propre reçu, mêm
   const stored = await db.prepare("SELECT snapshot_json, verify_token FROM costume_payments WHERE id = ?").get(second.receipt.id);
   const snapshot = JSON.parse(stored.snapshot_json);
   assert.deepEqual([snapshot.costume.paidBefore, snapshot.costume.today, snapshot.costume.reste], [300_000, 500_000, 0]);
+  assert.deepEqual([snapshot.amount, snapshot.due, snapshot.paidAfter, snapshot.resteAfter, snapshot.history.length], [0, 25_000_000, 25_000_000, 0, 1]);
+  assert.equal(snapshot.history[0].receiptNumber, paidReceipt.number);
   assert.ok(stored.verify_token.length > 20);
   assert.equal((await domain.studentSituation(db, created.student.id)).situation.paid, 25_000_000);
   await assert.rejects(
     () => domain.recordCostume(db, comptable, created.student.id, { amount: 800_000, method: "virement" }),
-    (error) => error.details?.code === "AMOUNT_TOO_HIGH" && /déjà entièrement payé \(reçu COS-/.test(error.message),
+    (error) => error.details?.code === "AMOUNT_TOO_HIGH" && /déjà entièrement payé \(reçu REC-/.test(error.message),
   );
   assert.equal((await domain.costumeSituation(db, created.student.id)).quantity, 1);
   const extra = await domain.recordCostume(db, comptable, created.student.id, { amount: 800_000, quantity: 2, method: "virement" });
   assert.deepEqual([extra.quantity, extra.price, extra.reste], [2, 1_600_000, 0]);
   const listed = (await domain.listCashStudents(db)).students.find((row) => row.studentId === created.student.id);
   assert.equal(listed.costumeOnly.length, 3);
-  assert.equal(listed.costumeReceiptNumber, extra.receipt.number);
+  assert.equal(listed.receiptNumber, extra.receipt.number);
+  assert.equal(listed.receiptUrl, `/api/costumes/${extra.receipt.id}/recu.pdf`);
   assert.equal(listed.costumePaid, 1_600_000);
 });
 

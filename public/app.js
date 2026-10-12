@@ -1628,7 +1628,7 @@ function costumeCard(costume) {
         <button class="btn" type="submit">Enregistrer le versement</button>
         <p class="error" data-costume-error hidden></p>
       </form>
-      <p class="muted">Pour qu'il figure sur un reçu de paiement, saisissez plutôt le costume dans Encaissement, avec le versement de scolarité.</p>` : ""}
+      <p class="muted">Un reçu de paiement est émis : il reprend la scolarité et le costume.</p>` : ""}
   </article>`;
 }
 
@@ -1765,7 +1765,7 @@ function openPaymentUpdate(record, onDone) {
         dialog.close();
         saved("Versement du costume enregistré");
         const success = document.querySelector("#pay-success");
-        if (success) success.innerHTML = `<div class="banner">Costume enregistré pour ${esc(record.name)}. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}. Le costume payé seul figure sur ce reçu costume, pas sur le reçu de scolarité.</div>`;
+        if (success) success.innerHTML = `<div class="banner">Costume enregistré pour ${esc(record.name)}. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}. Ce reçu reprend la scolarité et le costume.</div>`;
         if (onDone) onDone(null);
       } catch (caught) {
         if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
@@ -1829,8 +1829,7 @@ async function loadCashPayments() {
       <td><div class="who-cell"><strong>${esc(row.name)}</strong><span class="muted">${esc(row.matricule)}</span></div></td>
       <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">Costume à part : ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
       <td class="num">${row.reste ? gnf(row.reste) : `<span class="tag solde">Soldé</span>`}</td>
-      <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>${printButton(`/api/recus/${row.receiptId}.pdf`)}` : `<span class="muted">Avant l'application</span>`}
-        ${row.costumeReceiptNumber ? `<br><span class="muted">Costume :</span> <a href="/api/costumes/${row.costumeReceiptId}/recu.pdf" target="_blank">${esc(row.costumeReceiptNumber)}</a>${printButton(`/api/costumes/${row.costumeReceiptId}/recu.pdf`)}` : ""}</td>
+      <td class="receipt">${row.receiptNumber ? `<a href="${row.receiptUrl}" target="_blank">${esc(row.receiptNumber)}</a>${printButton(row.receiptUrl)}` : `<span class="muted">Avant l'application</span>`}</td>
       <td class="actions"><div class="row-actions">${row.lastPaymentId && allowed("payment.create") ? `<button data-update="${row.studentId}" class="btn secondary" type="button">Mettre à jour</button>` : ""}</div></td>
     </tr>`).join("")}
   </tbody></table></div>
@@ -2018,7 +2017,7 @@ async function submitPayment(event) {
       document.querySelector("#pay-dialog")?.close();
       saved("Versement du costume enregistré");
       const success = document.querySelector("#pay-success");
-      if (success) success.innerHTML = `<div class="banner">Costume enregistré. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}. Le costume payé seul figure sur ce reçu costume, pas sur le reçu de scolarité.</div>`;
+      if (success) success.innerHTML = `<div class="banner">Costume enregistré. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}. Ce reçu reprend la scolarité et le costume.</div>`;
       form.costumeAmount.value = "";
       await loadCashPayments();
     } catch (caught) {

@@ -319,14 +319,17 @@ app.get("/api/caisse/etudiants", requireAction("payment.create"), async (_req, r
 app.get("/api/costumes/:id/recu.pdf", requireAction("receipt.read"), async (req, res) => {
   const entry = await db.prepare("SELECT * FROM costume_payments WHERE id = ? AND receipt_number IS NOT NULL").get(Number(req.params.id));
   if (!entry) throw new HttpError(404, "Reçu de costume introuvable");
-  const pdf = await renderCostumeReceiptPdf({
-    snapshot: JSON.parse(entry.snapshot_json),
-    number: entry.receipt_number,
+  const snapshot = JSON.parse(entry.snapshot_json);
+  const common = {
+    snapshot,
     school: await schoolBlock(),
     format: req.query.format === "a5" ? "a5" : "a4",
     cancelled: entry.status === "annule" ? { reason: entry.cancel_reason || "Versement annulé" } : null,
     verifyUrl: `${process.env.PUBLIC_BASE_URL || ""}/v/${entry.verify_token}`,
-  });
+  };
+  const pdf = snapshot.costumeOnly
+    ? await renderReceiptPdf({ ...common, receipt: { number: entry.receipt_number } })
+    : await renderCostumeReceiptPdf({ ...common, number: entry.receipt_number });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${entry.receipt_number}.pdf"`);
   res.send(pdf);
@@ -581,7 +584,7 @@ app.get("/v/:token", async (req, res) => {
     <main class="verify"><p class="mark">AfricaIIM</p><h1>Vérification de reçu</h1>
     <p class="state ${receipt.status === "annule" ? "bad" : "ok"}">${state}</p>
     <p>Numéro : <strong>${escapeHtml(receipt.number)}</strong></p>
-    <p>Montant : <strong>${escapeHtml(formatGnf(snap.amount))}</strong></p>
+    <p>Montant : <strong>${escapeHtml(formatGnf(Number(snap.amount || 0) + (snap.due === undefined ? 0 : Number(snap.costume?.today || 0))))}</strong></p>
     <p>Date : ${escapeHtml(snap.paidOn)}</p>
     <p>Étudiant : ${escapeHtml(snap.studentName)} · ${escapeHtml(snap.matricule)}</p>
     <p class="muted">Aucune autre donnée personnelle n'est affichée sur cette page.</p></main></html>`);

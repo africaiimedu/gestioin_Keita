@@ -347,6 +347,8 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
   const history = !costume && Array.isArray(snapshot.history) ? snapshot.history : [];
   const compact = Boolean(costume) || history.length > 0;
   const tuitionToday = Number(snapshot.amount || 0);
+  const costumeToday = Number(costume?.today || 0);
+  const totalToday = tuitionToday + costumeToday;
   const paidBefore = Math.max(0, Number(snapshot.paidAfter || 0) - Number(snapshot.amount || 0));
   const settled = Number(snapshot.resteAfter || 0) <= 0 && !cancelled;
   const sealTitle = cancelled ? "ANNULÉ" : (settled ? "PAYÉ" : "ACOMPTE REÇU");
@@ -359,10 +361,11 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
     number: receipt.number,
     dateIso: snapshot.paidOn,
     title: "REÇU DE PAIEMENT",
-    subtitle: costume ? "Frais de scolarité — le costume est compté à part" : "Frais de scolarité",
+    subtitle: costume ? "Frais de scolarité et costume" : "Frais de scolarité",
   });
   let y = drawIdentity(doc, snapshot, 181);
-  y = drawHero(doc, y, costume ? "SCOLARITÉ VERSÉE CE JOUR" : "VERSÉ CE JOUR", tuitionToday) + (compact ? 18 : 22);
+  const split = costumeToday > 0 ? [["Scolarité", money(tuitionToday)], ["Costume", money(costumeToday)]] : [];
+  y = drawHero(doc, y, "VERSÉ CE JOUR", totalToday, split) + (compact ? 18 : 22);
 
   const step = compact ? 23 : 26.5;
   const rows = [
@@ -386,9 +389,9 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
 
   if (costume) y = drawCostume(doc, y, costume) + 14;
 
-  write(doc, costume ? "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE POUR LA SCOLARITÉ À" : "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE À", LEFT, y, 7.5, "Helvetica-Bold", GREEN, WIDTH);
+  write(doc, costumeToday > 0 ? "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE (SCOLARITÉ ET COSTUME) À" : "ARRÊTÉ LA PRÉSENTE SOMME VERSÉE À", LEFT, y, 7.5, "Helvetica-Bold", GREEN, WIDTH);
   doc.fillColor(INK).font("Times-Italic").fontSize(compact ? 12 : 13);
-  doc.text(tuitionToday > 0 ? amountInWords(tuitionToday) : filled(snapshot.amountInWords, "Montant en lettres non disponible"), LEFT, y + 16, { width: WIDTH, height: 30 });
+  doc.text(totalToday > 0 ? amountInWords(totalToday) : filled(snapshot.amountInWords, "Montant en lettres non disponible"), LEFT, y + 16, { width: WIDTH, height: 30 });
   y += compact ? 44 : 52;
 
   write(doc, "Mode de paiement", LEFT, y, 10, "Helvetica", MUTED, 250);

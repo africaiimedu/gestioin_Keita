@@ -199,16 +199,37 @@ export async function recordCostume(db, user, studentId, input, asOf = todayInCo
     let snapshot = null;
     if (!input.paymentId) {
       const year = Number(paidOn.slice(0, 4));
-      const seq = await nextDocumentNumber(db, "COS", year);
-      number = `COS-${year}-${String(seq).padStart(6, "0")}`;
+      const seq = await nextDocumentNumber(db, "REC", year);
+      number = `REC-${year}-${String(seq).padStart(6, "0")}`;
+      const tuition = (await studentSituation(db, student.id, asOf)).situation;
+      const earlier = await db.prepare(`
+        SELECT p.amount, p.paid_on, p.method, r.number AS receipt_number
+        FROM payments p LEFT JOIN receipts r ON r.payment_id = p.id
+        WHERE p.student_id = ? AND p.status = 'valide'
+        ORDER BY p.paid_on, p.id
+      `).all(student.id);
       snapshot = {
+        costumeOnly: true,
+        history: earlier.map((item) => ({
+          paidOn: String(item.paid_on).slice(0, 10),
+          amount: item.amount,
+          methodLabel: METHOD_LABELS[item.method] || item.method,
+          receiptNumber: item.receipt_number || null,
+        })),
         studentName: `${student.last_name} ${student.first_name}`.trim(),
         matricule: student.matricule,
         program: student.program_name,
         level: student.level,
         year: student.year_label,
-        amount,
+        amount: 0,
+        costumeAmount: amount,
         amountInWords: amountInWords(amount),
+        due: tuition.due,
+        paidAfter: tuition.paid,
+        resteAfter: tuition.reste,
+        creditAfter: tuition.credit,
+        status: tuition.status,
+        statusLabel: STATUS_LABELS[tuition.status],
         costume: {
           unitPrice: before.unitPrice,
           quantity: before.quantity,
@@ -1095,7 +1116,7 @@ export async function listCashPayments(db, date = null) {
   return (await db.prepare(`
     SELECT p.id, p.student_id, p.amount, p.paid_on, p.method, p.reference, p.note, p.status,
            s.matricule, s.last_name, s.first_name,
-           r.id AS receipt_id, r.number AS receipt_number,
+           r.id AS receipt_id, r.number AS receipt_number, r.created_at AS receipt_at,
            COALESCE((SELECT SUM(k.amount) FROM costume_payments k WHERE k.payment_id = p.id AND k.status = 'valide'), 0) AS costume_amount,
            COALESCE(c.updates_used, 0) AS updates_used,
            COALESCE(c.cancel_used, 0) AS cancel_used,
@@ -1115,6 +1136,21 @@ export async function listCashPayments(db, date = null) {
   }));
 }
 
+/** Le reçu le plus récent de l'étudiant, qu'il vienne d'un versement de scolarité ou d'un costume payé seul. */
+function latestReceipt(payment, costume) {
+  const fromPayment = payment?.receipt_id
+    ? { receiptId: payment.receipt_id, receiptNumber: payment.receipt_number, receiptUrl: `/api/recus/${payment.receipt_id}.pdf`, at: String(payment.receipt_at || "") }
+    : null;
+  const fromCostume = costume?.costume_receipt_number
+    ? { receiptId: null, receiptNumber: costume.costume_receipt_number, receiptUrl: `/api/costumes/${costume.id}/recu.pdf`, at: String(costume.created_at || "") }
+    : null;
+  const chosen = [fromPayment, fromCostume].filter(Boolean)
+    .sort((a, b) => b.at.localeCompare(a.at) || b.receiptNumber.localeCompare(a.receiptNumber))[0];
+  if (!chosen) return { receiptId: null, receiptNumber: null, receiptUrl: null };
+  const { at: _ignored, ...rest } = chosen;
+  return rest;
+}
+
 /** Une ligne par étudiant : l'historique complet de ses versements, du plus ancien au plus récent. */
 export async function listCashStudents(db, asOf = todayInConakry()) {
   const payments = await listCashPayments(db);
@@ -1128,7 +1164,7 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
     : [];
   const ledger = await loadLedger(db, students);
   const looseEntries = groupBy(await db.prepare(`
-    SELECT id, student_id, amount, paid_on, method, receipt_number AS costume_receipt_number
+    SELECT id, student_id, amount, paid_on, method, receipt_number AS costume_receipt_number, created_at
     FROM costume_payments WHERE payment_id IS NULL AND status = 'valide' ORDER BY paid_on, id
   `).all(), "student_id");
   const loose = new Map([...looseEntries].map(([id, entries]) => [id, entries.reduce((sum, entry) => sum + Number(entry.amount), 0)]));
@@ -1159,11 +1195,8 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
       lastPaymentId: last?.id || null,
       lastPaidOn: (last || history.at(-1)).paid_on,
       lastSortId: (last || history.at(-1)).id,
-      receiptId: withReceipt?.receipt_id || null,
-      receiptNumber: withReceipt?.receipt_number || null,
+      ...latestReceipt(withReceipt, lastCostume),
       costumeOnly,
-      costumeReceiptId: lastCostume?.id || null,
-      costumeReceiptNumber: lastCostume?.costume_receipt_number || null,
     };
   });
   rows.sort((a, b) => String(b.lastPaidOn).localeCompare(String(a.lastPaidOn)) || b.lastSortId - a.lastSortId);
