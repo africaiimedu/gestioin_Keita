@@ -1659,6 +1659,13 @@ function openPaymentUpdate(record, onDone) {
             <td>${item.receipt_number ? `<a href="/api/recus/${item.receipt_id}.pdf" target="_blank">${esc(item.receipt_number)}</a>` : `<span class="muted">Avant l'application</span>`}</td>
             ${allowed("payment.cancel") ? `<td>${item.status === "valide" ? `<button class="btn secondary" type="button" data-correct="${item.id}">Corriger</button>` : ""}</td>` : ""}
           </tr>`).join("")}
+          ${(record.costumeOnly || []).map((item) => `<tr>
+            <td class="when-cell">${esc(frenchDay(item.paid_on))}</td>
+            <td class="num"><span class="muted">Costume payé seul :</span> <strong>${gnf(item.amount)}</strong></td>
+            <td>${esc(methodLabel(item.method))}</td>
+            <td>${item.costume_receipt_number ? `<a href="/api/costumes/${item.id}/recu.pdf" target="_blank">${esc(item.costume_receipt_number)}</a>${printButton(`/api/costumes/${item.id}/recu.pdf`)}` : `<span class="muted">Saisi sur la fiche</span>`}</td>
+            ${allowed("payment.cancel") ? "<td></td>" : ""}
+          </tr>`).join("")}
         </tbody></table></div>
       </section>
       <section class="update-new">
@@ -1758,7 +1765,7 @@ function openPaymentUpdate(record, onDone) {
         dialog.close();
         saved("Versement du costume enregistré");
         const success = document.querySelector("#pay-success");
-        if (success) success.innerHTML = `<div class="banner">Costume enregistré pour ${esc(record.name)}. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}.</div>`;
+        if (success) success.innerHTML = `<div class="banner">Costume enregistré pour ${esc(record.name)}. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}. Le costume payé seul figure sur ce reçu costume, pas sur le reçu de scolarité.</div>`;
         if (onDone) onDone(null);
       } catch (caught) {
         if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
@@ -1817,12 +1824,13 @@ async function loadCashPayments() {
     </div>
     <p class="muted cash-legend">Total des versements validés, toutes dates confondues : scolarité ${gnf(totals.tuition)}${totals.costume ? ` ; costumes, comptés à part : ${gnf(totals.costume)}` : ""}. Les versements saisis à l'import comptent aussi.${totals.cancelled ? ` ${plural(totals.cancelled, "versement annulé")} non compté${totals.cancelled > 1 ? "s" : ""}.` : ""}</p>
     <div class="table-scroll"><table class="cash-table"><thead><tr><th>Dernier versement</th><th>Étudiant</th><th class="num">Total versé</th><th class="num">Reste à payer</th><th>Dernier reçu</th><th class="actions">Action</th></tr></thead><tbody>
-    ${data.students.map((row) => `<tr hidden data-find="${esc(`${row.name} ${row.matricule} ${row.history.map((item) => item.receipt_number || "").join(" ")}`.toLowerCase())}">
+    ${data.students.map((row) => `<tr hidden data-find="${esc(`${row.name} ${row.matricule} ${row.history.map((item) => item.receipt_number || "").join(" ")} ${(row.costumeOnly || []).map((item) => item.costume_receipt_number || "").join(" ")}`.toLowerCase())}">
       <td class="when-cell">${esc(frenchDay(row.lastPaidOn))}</td>
       <td><div class="who-cell"><strong>${esc(row.name)}</strong><span class="muted">${esc(row.matricule)}</span></div></td>
       <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">Costume à part : ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
       <td class="num">${row.reste ? gnf(row.reste) : `<span class="tag solde">Soldé</span>`}</td>
-      <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>${printButton(`/api/recus/${row.receiptId}.pdf`)}` : `<span class="muted">Avant l'application</span>`}</td>
+      <td class="receipt">${row.receiptNumber ? `<a href="/api/recus/${row.receiptId}.pdf" target="_blank">${esc(row.receiptNumber)}</a>${printButton(`/api/recus/${row.receiptId}.pdf`)}` : `<span class="muted">Avant l'application</span>`}
+        ${row.costumeReceiptNumber ? `<br><span class="muted">Costume :</span> <a href="/api/costumes/${row.costumeReceiptId}/recu.pdf" target="_blank">${esc(row.costumeReceiptNumber)}</a>${printButton(`/api/costumes/${row.costumeReceiptId}/recu.pdf`)}` : ""}</td>
       <td class="actions"><div class="row-actions">${row.lastPaymentId && allowed("payment.create") ? `<button data-update="${row.studentId}" class="btn secondary" type="button">Mettre à jour</button>` : ""}</div></td>
     </tr>`).join("")}
   </tbody></table></div>
@@ -2010,7 +2018,7 @@ async function submitPayment(event) {
       document.querySelector("#pay-dialog")?.close();
       saved("Versement du costume enregistré");
       const success = document.querySelector("#pay-success");
-      if (success) success.innerHTML = `<div class="banner">Costume enregistré. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}.</div>`;
+      if (success) success.innerHTML = `<div class="banner">Costume enregistré. ${costumeReceiptLink(result.receipt)} Reste costume : ${gnf(result.reste)}. Le costume payé seul figure sur ce reçu costume, pas sur le reçu de scolarité.</div>`;
       form.costumeAmount.value = "";
       await loadCashPayments();
     } catch (caught) {

@@ -124,7 +124,9 @@ export async function costumeSituation(db, studentId, quantityOverride = null) {
   else if (reste === 0) status = "paye";
   else if (paid > 0) status = "partiel";
   const labels = { non_fixe: "Prix non fixé", paye: "Payé", partiel: "Partiellement payé", non_paye: "Non payé" };
-  return { unitPrice, quantity, price, paid, reste, status, statusLabel: labels[status], entries };
+  const counted = entries.filter((row) => row.counted);
+  const lastReceipt = counted.map((row) => row.costume_receipt_number || row.receipt_number).filter(Boolean).at(-1) || null;
+  return { unitPrice, quantity, price, paid, reste, status, statusLabel: labels[status], entries, lastReceipt };
 }
 
 function costumeQuantityOf(value) {
@@ -136,9 +138,13 @@ function costumeQuantityOf(value) {
   return quantity;
 }
 
-/** Nombre de costumes retenu : celui choisi, sinon celui que le montant paie exactement (2 × prix = 2 costumes). */
+/**
+ * Nombre de costumes retenu : celui choisi, sinon celui que le montant paie exactement (2 × prix = 2 costumes).
+ * Un costume déjà soldé n'en devient jamais un deuxième sans que l'agent choisisse le nombre : c'est un doublon probable.
+ */
 function costumeQuantityFor(costume, amount, requested) {
   if (requested) return requested;
+  if (costume.paid > 0 && costume.reste <= 0) return costume.quantity;
   const total = costume.paid + amount;
   if (!costume.unitPrice || total <= costume.price || total % costume.unitPrice !== 0) return costume.quantity;
   return Math.min(COSTUME_MAX, total / costume.unitPrice);
@@ -170,7 +176,7 @@ function assertCostumeRoom(costume, amount) {
   if (amount > costume.reste) {
     const several = costume.quantity > 1 ? `les ${costume.quantity} costumes` : "le costume";
     const message = costume.reste <= 0
-      ? `${several[0].toUpperCase()}${several.slice(1)} ${costume.quantity > 1 ? "sont" : "est"} déjà entièrement payé${costume.quantity > 1 ? "s" : ""}. Pour un costume de plus, augmentez le nombre de costumes.`
+      ? `${several[0].toUpperCase()}${several.slice(1)} ${costume.quantity > 1 ? "sont" : "est"} déjà entièrement payé${costume.quantity > 1 ? "s" : ""}${costume.lastReceipt ? ` (reçu ${costume.lastReceipt})` : ""}. Le versement n'a pas été enregistré. Pour un costume de plus, choisissez le nombre de costumes.`
       : `Le montant du costume (${formatGnf(amount)}) est supérieur au reste à payer pour ${several} (${formatGnf(costume.reste)}). Pour plusieurs costumes, choisissez le nombre de costumes. Le versement n'a pas été enregistré.`;
     throw new HttpError(400, message, { code: "AMOUNT_TOO_HIGH", reste: costume.reste });
   }
@@ -1121,12 +1127,15 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
     ? await db.prepare(`${STUDENT_SELECT} WHERE s.id IN (SELECT DISTINCT student_id FROM payments)`).all()
     : [];
   const ledger = await loadLedger(db, students);
-  const loose = new Map((await db.prepare(`
-    SELECT student_id, SUM(amount)::bigint AS amount FROM costume_payments
-    WHERE payment_id IS NULL AND status = 'valide' GROUP BY student_id
-  `).all()).map((row) => [row.student_id, Number(row.amount)]));
+  const looseEntries = groupBy(await db.prepare(`
+    SELECT id, student_id, amount, paid_on, method, receipt_number AS costume_receipt_number
+    FROM costume_payments WHERE payment_id IS NULL AND status = 'valide' ORDER BY paid_on, id
+  `).all(), "student_id");
+  const loose = new Map([...looseEntries].map(([id, entries]) => [id, entries.reduce((sum, entry) => sum + Number(entry.amount), 0)]));
   const rows = students.map((student) => {
     const history = groups.get(student.id).slice().reverse();
+    const costumeOnly = (looseEntries.get(student.id) || []).map(({ student_id: _ignored, ...entry }) => entry);
+    const lastCostume = costumeOnly.filter((entry) => entry.costume_receipt_number).at(-1) || null;
     const valid = history.filter((item) => item.status === "valide");
     const last = valid.at(-1) || null;
     const withReceipt = valid.filter((item) => item.receipt_id).at(-1) || null;
@@ -1152,6 +1161,9 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
       lastSortId: (last || history.at(-1)).id,
       receiptId: withReceipt?.receipt_id || null,
       receiptNumber: withReceipt?.receipt_number || null,
+      costumeOnly,
+      costumeReceiptId: lastCostume?.id || null,
+      costumeReceiptNumber: lastCostume?.costume_receipt_number || null,
     };
   });
   rows.sort((a, b) => String(b.lastPaidOn).localeCompare(String(a.lastPaidOn)) || b.lastSortId - a.lastSortId);

@@ -546,6 +546,17 @@ test("costume payé seul, sans scolarité : accepté avec son propre reçu, mêm
   assert.deepEqual([snapshot.costume.paidBefore, snapshot.costume.today, snapshot.costume.reste], [300_000, 500_000, 0]);
   assert.ok(stored.verify_token.length > 20);
   assert.equal((await domain.studentSituation(db, created.student.id)).situation.paid, 25_000_000);
+  await assert.rejects(
+    () => domain.recordCostume(db, comptable, created.student.id, { amount: 800_000, method: "virement" }),
+    (error) => error.details?.code === "AMOUNT_TOO_HIGH" && /déjà entièrement payé \(reçu COS-/.test(error.message),
+  );
+  assert.equal((await domain.costumeSituation(db, created.student.id)).quantity, 1);
+  const extra = await domain.recordCostume(db, comptable, created.student.id, { amount: 800_000, quantity: 2, method: "virement" });
+  assert.deepEqual([extra.quantity, extra.price, extra.reste], [2, 1_600_000, 0]);
+  const listed = (await domain.listCashStudents(db)).students.find((row) => row.studentId === created.student.id);
+  assert.equal(listed.costumeOnly.length, 3);
+  assert.equal(listed.costumeReceiptNumber, extra.receipt.number);
+  assert.equal(listed.costumePaid, 1_600_000);
 });
 
 test("costumes : 1.600.000 versés = 2 costumes payés, rien à payer en plus", async () => {
