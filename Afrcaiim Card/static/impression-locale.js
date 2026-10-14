@@ -3,11 +3,15 @@
  * (au clic, donc jamais bloqué), puis le dialogue d'impression du système propose les imprimantes
  * installées sur ce poste. Un cadre caché ne suffit pas : Edge, Chrome et Firefox sous Windows
  * refusent d'y imprimer un PDF.
+ * Safari ignore print() sur un onglet PDF : l'onglet s'ouvre et l'utilisateur lance ⌘ P lui-même.
  */
 (function () {
+  const SAFARI = /^((?!chrome|chromium|crios|fxios|edg|opr|android).)*safari/i.test(navigator.userAgent);
+
   function imprimerPdf(url) {
     const onglet = window.open(url, "_blank");
     if (!onglet) return false;
+    if (SAFARI) return true;
     let essais = 0;
     const minuteur = setInterval(function () {
       essais += 1;
@@ -42,9 +46,13 @@
     const note = bouton.dataset.note ? document.getElementById(bouton.dataset.note) : null;
     if (!note) return;
     note.hidden = false;
-    note.textContent = ouvert
-      ? "Le document est ouvert dans un nouvel onglet et le dialogue d'impression s'ouvre. S'il ne s'affiche pas, cliquez sur l'icône d'imprimante du lecteur PDF (ou Ctrl+P sous Windows, Cmd+P sur Mac)."
-      : "Le navigateur a bloqué le nouvel onglet. Autorisez les fenêtres pour ce site, puis recommencez.";
+    if (!ouvert) {
+      note.textContent = "Le navigateur a bloqué le nouvel onglet. Autorisez les fenêtres pour ce site, puis recommencez.";
+    } else if (SAFARI) {
+      note.textContent = "Safari ne lance pas l'impression d'un PDF tout seul : dans l'onglet qui vient de s'ouvrir, appuyez sur ⌘ + P (Cmd + P), choisissez l'imprimante et gardez l'échelle à 100 %. Avec Google Chrome, la fenêtre d'impression s'ouvre automatiquement.";
+    } else {
+      note.textContent = "Le document est ouvert dans un nouvel onglet et le dialogue d'impression s'ouvre. S'il ne s'affiche pas, cliquez sur l'icône d'imprimante du lecteur PDF (ou Ctrl+P sous Windows, Cmd+P sur Mac).";
+    }
   });
 
   window.imprimerPdf = imprimerPdf;
