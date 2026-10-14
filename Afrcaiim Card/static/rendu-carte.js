@@ -108,7 +108,7 @@ function rendreFace(carte, objets, ctx) {
       trait.style.background = obj.couleur || "#1A1A1A";
       el.appendChild(trait);
     } else if (obj.type === "image") {
-      const src = obj.id === "logo" ? "/static/marque-blanc.png?v=2" : "/static/marque.png";
+      const src = obj.id === "logo" ? "/static/marque-blanc.png?v=3" : "/static/marque.png";
       el.innerHTML = `<img alt="Université AFRICAIIM" src="${src}" style="width:100%;height:100%;object-fit:contain;pointer-events:none">`;
     } else if (obj.type === "photo") {
       el.style.background = obj.couleur || "#C5F0DC";

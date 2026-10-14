@@ -52,7 +52,7 @@
           {% endfor %}
         </select>
       </label>
-      <p class="aide">Année académique : {{ annee_courante() }}. Valide trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <p class="aide">Année académique : {{ annee_courante() }}. Valide un an, jusqu'au {{ validite_courante() | datefr }}.</p>
       <label>E-mail étudiant
         <input name="email" type="email" value="{{ etudiant.email or compte or '' }}" maxlength="120" placeholder="prenom.nom@univ-africaiim.com" data-auto="{{ 'non' if (etudiant.email or compte) else 'oui' }}">
       </label>

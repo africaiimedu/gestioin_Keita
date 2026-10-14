@@ -62,8 +62,8 @@ def test_annee_scolaire_commence_en_septembre():
         pass
 
 
-def test_validite_trois_ans_apres_la_rentree():
-    assert validite_par_defaut("2026-2027") == date(2029, 8, 31)
+def test_validite_une_annee_apres_la_rentree():
+    assert validite_par_defaut("2026-2027") == date(2027, 8, 31)
 
 
 def test_carte_active_perimee_s_affiche_expiree():
@@ -470,8 +470,9 @@ def test_impression_recto_verso_et_couleurs():
     assert "orientation-requested=5" in paysage
     assert "Resolution=600dpi" in paysage
     assert "Resolution=1200dpi" not in paysage
-    assert "FColorContrast=VAL16" in paysage
-    assert "BColorContrast=VAL16" in paysage
+    assert "FColorContrast=VAL10" in paysage
+    assert "BColorContrast=VAL10" in paysage
+    assert "FColorContrast=VAL16" not in paysage
     assert "FColorBrightness=VAL10" in paysage
     assert "BColorBrightness=VAL10" in paysage
     assert "GDuplexType=DUPLEX_CC" in paysage

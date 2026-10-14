@@ -44,7 +44,7 @@
           {% endfor %}
         </select>
       </label>
-      <p class="aide">Année académique automatique : {{ annee_courante() }}. Validité : trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <p class="aide">Année académique automatique : {{ annee_courante() }}. Validité : un an, jusqu'au {{ validite_courante() | datefr }}.</p>
       <label class="photo">Photo (optionnel) <input name="photo" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"></label>
       <button type="submit">Créer la fiche et la carte</button>
     </form>

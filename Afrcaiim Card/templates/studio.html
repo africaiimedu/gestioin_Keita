@@ -154,7 +154,7 @@
           {% endfor %}
         </select>
       </label>
-      <p class="aide-photo">Année académique : {{ annee_courante() }}. Validité : trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <p class="aide-photo">Année académique : {{ annee_courante() }}. Validité : un an, jusqu'au {{ validite_courante() | datefr }}.</p>
       <label>Photo d'identité
         <input id="photo-fiche" name="photo" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
       </label>
@@ -168,7 +168,7 @@
   </dialog>
 
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
-  <script src="/static/rendu-carte.js?v=30"></script>
+  <script src="/static/rendu-carte.js?v=31"></script>
   <script src="/static/studio.js?v=25"></script>
 </body>
 </html>

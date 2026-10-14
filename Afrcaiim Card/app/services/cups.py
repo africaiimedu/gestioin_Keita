@@ -155,9 +155,8 @@ def commande_lp(
             if voulu in choix.get(cle, []):
                 commande += ["-o", f"{cle}={voulu}"]
                 break
-    for cle in ("FColorContrast", "BColorContrast"):
-        _poser_option(commande, choix, cle, "VAL16")
-    for cle in ("FColorBrightness", "BColorBrightness"):
+    # Contraste et luminosité neutres : les couleurs sortent comme dans le modèle de la carte.
+    for cle in ("FColorContrast", "BColorContrast", "FColorBrightness", "BColorBrightness"):
         _poser_option(commande, choix, cle, "VAL10")
     _poser_option(commande, choix, "GDuplexType", "DUPLEX_CC")
     # Le noir pur (#000000) part sur le panneau K en résine : petits textes, QR et code-barres nets.

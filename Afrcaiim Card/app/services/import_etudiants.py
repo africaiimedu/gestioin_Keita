@@ -83,9 +83,9 @@ def _propre(texte: str) -> str:
 
 
 def validite_par_defaut(annee: str) -> date:
-    """Trois ans à compter du 1er septembre. 2026-2027 est valable jusqu'au 31/08/2029."""
+    """Une année académique. 2026-2027 est valable jusqu'au 31/08/2027."""
     debut = int(str(annee).split("-")[0])
-    return date(debut + 3, 8, 31)
+    return date(debut + 1, 8, 31)
 
 
 def _lire_date(texte: str) -> date | None:
