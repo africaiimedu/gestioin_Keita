@@ -10,29 +10,43 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from app.config import ROOT
 
-Image.MAX_IMAGE_PIXELS = 20_000_000
+Image.MAX_IMAGE_PIXELS = 30_000_000
 
 _DOSSIER = ROOT / "data" / "photos"
 _EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+_FORMATS = {"JPEG", "PNG", "WEBP", "MPO"}
+POIDS_MAX = 25_000_000
+
+
+def _en_rgb(image: Image.Image) -> Image.Image:
+    """Ramène JPG, PNG (palette, 16 bits, transparence) ou WebP en RGB sur fond clair."""
+    if image.mode in ("I;16", "I;16B", "I;16L", "I;16N", "I"):
+        image = image.convert("I").point(lambda v: v * (1 / 256)).convert("L")
+    elif image.mode == "F":
+        image = image.convert("L")
+    if image.mode in ("RGBA", "LA", "PA", "RGBa", "La") or "transparency" in image.info:
+        image = image.convert("RGBA")
+        fond = Image.new("RGB", image.size, (244, 241, 234))
+        fond.paste(image, mask=image.getchannel("A"))
+        return fond
+    return image.convert("RGB")
 
 
 def normaliser_photo(blob: bytes) -> bytes:
-    if len(blob) > 8_000_000:
-        raise ValueError("Photo trop lourde (maximum 8 Mo).")
+    if len(blob) > POIDS_MAX:
+        raise ValueError("Photo trop lourde (maximum 25 Mo).")
     try:
         Image.open(io.BytesIO(blob)).verify()
         image = Image.open(io.BytesIO(blob))
+        if image.format not in _FORMATS:
+            raise ValueError(image.format)
         image.load()
+    except Image.DecompressionBombError as exc:
+        raise ValueError("Photo trop grande en pixels. Réduisez-la sous 60 mégapixels.") from exc
     except Exception as exc:
         raise ValueError("Ce fichier n'est pas une image lisible (JPG, PNG ou WebP).") from exc
 
-    image = ImageOps.exif_transpose(image)
-    if image.mode in ("RGBA", "LA"):
-        fond = Image.new("RGB", image.size, (244, 241, 234))
-        fond.paste(image, mask=image.split()[-1])
-        image = fond
-    else:
-        image = image.convert("RGB")
+    image = _en_rgb(ImageOps.exif_transpose(image))
 
     if image.width < 150 or image.height < 150:
         raise ValueError("Photo trop petite. Il faut au moins 150 pixels de côté.")
@@ -92,8 +106,8 @@ def lire_photo(photo_chemin: str | None) -> bytes | None:
 
 
 def photos_depuis_zip(blob: bytes) -> dict[str, bytes]:
-    if len(blob) > 15_000_000:
-        raise ValueError("Le ZIP dépasse 15 Mo.")
+    if len(blob) > 100_000_000:
+        raise ValueError("Le ZIP dépasse 100 Mo.")
     try:
         archive = zipfile.ZipFile(io.BytesIO(blob))
     except zipfile.BadZipFile as exc:
@@ -106,11 +120,11 @@ def photos_depuis_zip(blob: bytes) -> dict[str, bytes]:
         if len(fichiers) > 300:
             raise ValueError("Le ZIP contient trop de fichiers (maximum 300).")
         for info in fichiers:
-            if info.file_size > 8_000_000:
-                raise ValueError(f"{Path(info.filename).name} dépasse 8 Mo.")
+            if info.file_size > POIDS_MAX:
+                raise ValueError(f"{Path(info.filename).name} dépasse 25 Mo.")
             total += info.file_size
-            if total > 80_000_000:
-                raise ValueError("Le contenu décompressé du ZIP dépasse 80 Mo.")
+            if total > 250_000_000:
+                raise ValueError("Le contenu décompressé du ZIP dépasse 250 Mo.")
             nom = Path(info.filename).name
             if not nom or nom.startswith("."):
                 continue

@@ -20,7 +20,8 @@ from app.services.pdf_carte import (
     positions_lot,
     url_qr,
 )
-from app.services.photos import photos_depuis_zip
+from app.services.pdf_liste import pdf_liste_etudiants
+from app.services.photos import normaliser_photo, photos_depuis_zip
 from app.services.statut import statut_effectif
 
 
@@ -108,6 +109,62 @@ def test_zip_ne_sort_pas_du_fichier():
     assert photos["AIIM-2026-0143"] == b"photo"
     assert "SECRET" in photos
     assert all("/" not in cle for cle in photos)
+
+
+def _png(image) -> bytes:
+    tampon = io.BytesIO()
+    image.save(tampon, "PNG")
+    return tampon.getvalue()
+
+
+def test_photo_png_acceptee_sous_toutes_ses_formes():
+    from PIL import Image
+
+    def proche(blob: bytes, attendu: tuple[int, int, int]) -> bool:
+        sortie = Image.open(io.BytesIO(normaliser_photo(blob)))
+        assert sortie.format == "JPEG" and sortie.size == (1200, 1600)
+        return all(abs(a - b) <= 3 for a, b in zip(sortie.getpixel((20, 20)), attendu))
+
+    assert proche(_png(Image.new("RGB", (600, 800), (10, 120, 60))), (10, 120, 60))
+    seize_bits = Image.new("I;16", (600, 800))
+    seize_bits.putdata([32768] * (600 * 800))
+    assert proche(_png(seize_bits), (128, 128, 128))
+    transparent = Image.new("RGBA", (600, 800), (0, 0, 0, 0))
+    assert proche(_png(transparent), (244, 241, 234))
+    assert proche(_png(transparent.convert("P")), (244, 241, 234))
+    assert proche(_png(Image.new("RGB", (4000, 3000), (200, 30, 30))), (200, 30, 30))
+
+    try:
+        tampon = io.BytesIO()
+        Image.new("RGB", (400, 400)).save(tampon, "GIF")
+        normaliser_photo(tampon.getvalue())
+        raise AssertionError("aurait dû refuser")
+    except ValueError as exc:
+        assert "PNG" in str(exc)
+
+
+def test_liste_des_etudiants_en_pdf():
+    lignes = [
+        {
+            "etudiant": SimpleNamespace(
+                nom=f"Diallo{rang}", prenom="Aïssatou", matricule=f"UA26AT{rang:04d}",
+                filiere="AFRICAIIM Tech", annee_academique="2026-2027",
+                photo_chemin="data/photos/1.jpg" if rang % 2 else None,
+            ),
+            "statut": "active" if rang % 3 else None,
+        }
+        for rang in range(1, 81)
+    ]
+    lecteur = PdfReader(io.BytesIO(pdf_liste_etudiants(lignes, ["AFRICAIIM Tech", "2026-2027"])))
+    assert len(lecteur.pages) >= 2
+    texte = "".join(page.extract_text() for page in lecteur.pages)
+    assert "Liste des étudiants" in texte
+    assert "80 étudiants" in texte and "AFRICAIIM Tech" in texte
+    assert "UA26AT0001" in texte and "UA26AT0080" in texte
+    assert "Aïssatou" in texte and "Sans carte" in texte and "Valide" in texte
+
+    vide = PdfReader(io.BytesIO(pdf_liste_etudiants([], [])))
+    assert "Aucun étudiant" in vide.pages[0].extract_text()
 
 
 def test_huit_cartes_tiennent_sur_la_feuille():

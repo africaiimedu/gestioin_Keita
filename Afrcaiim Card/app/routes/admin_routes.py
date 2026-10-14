@@ -41,6 +41,7 @@ from app.services.metier import (
     reinitialiser_mot_de_passe,
 )
 from app.services.pdf_carte import charger_modele, code_controle, pdf_individuel, pdf_primacy, url_affichee
+from app.services.pdf_liste import pdf_liste_etudiants
 from app.services.photos import lire_photo, normaliser_photo, photos_depuis_zip
 from app.services.statut import libelle_statut, statut_effectif
 from app.ui import csrf_valide, flash, render, retour_sur
@@ -137,15 +138,7 @@ def atelier(request: Request, admin: Utilisateur = Depends(exiger_bureau)):
     return render(request, "studio.html", user=admin)
 
 
-@router.get("/etudiants")
-def liste(
-    request: Request,
-    q: str = "",
-    filiere: str = "",
-    annee: str = "",
-    admin: Utilisateur = Depends(exiger_bureau),
-    db: Session = Depends(get_db),
-):
+def _lignes_etudiants(db: Session, q: str, filiere: str, annee: str) -> list[dict]:
     requete = select(Etudiant).options(selectinload(Etudiant.cartes)).order_by(Etudiant.nom, Etudiant.prenom)
     if filiere:
         requete = requete.where(Etudiant.filiere == filiere)
@@ -166,6 +159,19 @@ def liste(
                 "statut": statut_effectif(carte.statut, carte.date_validite) if carte else None,
             }
         )
+    return lignes
+
+
+@router.get("/etudiants")
+def liste(
+    request: Request,
+    q: str = "",
+    filiere: str = "",
+    annee: str = "",
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    lignes = _lignes_etudiants(db, q, filiere, annee)
     filieres, annees = filieres_et_annees(db)
     return render(
         request,
@@ -177,6 +183,27 @@ def liste(
         q=q,
         filiere=filiere,
         annee=annee,
+    )
+
+
+@router.get("/etudiants.pdf")
+def liste_pdf(
+    q: str = "",
+    filiere: str = "",
+    annee: str = "",
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    lignes = _lignes_etudiants(db, q, filiere, annee)
+    filtres = [texte for texte in (filiere, annee, f"recherche « {q.strip()} »" if q.strip() else "") if texte]
+    nom = "-".join(_slug(texte) for texte in ("etudiants", filiere, annee) if texte)
+    return Response(
+        pdf_liste_etudiants(lignes, filtres),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nom}.pdf"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

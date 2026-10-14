@@ -3,6 +3,9 @@
 {% block contenu %}
 <section class="bloc">
   <h1>Étudiants</h1>
+  <p class="actions">
+    <a class="bouton bouton-secondaire" href="/admin/etudiants.pdf?{{ {'q': q, 'filiere': filiere, 'annee': annee} | urlencode }}" download>Télécharger la liste (PDF)</a>
+  </p>
   <form method="get" class="filtres">
     <input name="q" value="{{ q }}" placeholder="Nom ou matricule" maxlength="80">
     <select name="filiere">
@@ -42,7 +45,7 @@
         </select>
       </label>
       <p class="aide">Année académique automatique : {{ annee_courante() }}. Validité : trois ans, jusqu'au {{ validite_courante() | datefr }}.</p>
-      <label class="photo">Photo (optionnel) <input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+      <label class="photo">Photo (optionnel) <input name="photo" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"></label>
       <button type="submit">Créer la fiche et la carte</button>
     </form>
   </details>

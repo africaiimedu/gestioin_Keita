@@ -28,7 +28,7 @@
       <form method="post" action="/admin/etudiants/{{ etudiant.id }}/photo" enctype="multipart/form-data">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label>Nouvelle photo
-          <input name="fichier" type="file" accept="image/jpeg,image/png,image/webp" required>
+          <input name="fichier" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" required>
         </label>
         <button type="submit">Recadrer et enregistrer</button>
       </form>
