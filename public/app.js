@@ -2297,41 +2297,19 @@ function openPrintTab() {
 }
 
 /**
- * Le PDF s'ouvre dans un onglet puis le dialogue d'impression du système s'affiche, avec les imprimantes
- * installées sur ce poste, sous Windows comme sous macOS. Un cadre caché ne marche pas : Edge, Chrome
- * et Firefox sous Windows n'y impriment pas un PDF.
+ * Le document s'ouvre dans un onglet d'impression (imprimer.html) qui l'affiche comme une page web, puis
+ * la fenêtre d'impression du système propose toutes les imprimantes installées sur ce poste. Imprimer
+ * directement le PDF échoue sous Safari et, selon les versions, sous Windows.
  */
 function printDocument(url, tab = null) {
-  const win = tab && !tab.closed ? tab : window.open(url, "_blank");
+  const page = `/imprimer.html?src=${encodeURIComponent(url)}`;
+  const win = tab && !tab.closed ? tab : window.open(page, "_blank");
   if (!win) {
     saved("Le navigateur a bloqué l'onglet d'impression. Autorisez les fenêtres pour ce site, puis recommencez.");
     return;
   }
-  if (win === tab) win.location.href = url;
-  let tries = 0;
-  const timer = setInterval(() => {
-    tries += 1;
-    if (win.closed || tries > 80) {
-      clearInterval(timer);
-      return;
-    }
-    let ready = false;
-    try {
-      ready = win.location.href !== "about:blank" && win.document.readyState === "complete";
-    } catch {
-      clearInterval(timer);
-      return;
-    }
-    if (!ready) return;
-    clearInterval(timer);
-    setTimeout(() => {
-      try {
-        win.focus();
-        win.print();
-      } catch { /* le bouton Imprimer du lecteur PDF reste disponible */ }
-    }, 1200);
-  }, 250);
-  saved("Document ouvert dans un nouvel onglet. Si le dialogue d'impression ne s'affiche pas, utilisez l'icône d'imprimante du lecteur PDF (Ctrl+P sous Windows, Cmd+P sur Mac).");
+  if (win === tab) win.location.href = page;
+  saved("Le document s'ouvre dans un nouvel onglet avec la fenêtre d'impression : choisissez l'imprimante parmi celles installées sur cet ordinateur.");
 }
 
 function dischargeText(values) {
