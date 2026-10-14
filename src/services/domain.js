@@ -489,6 +489,39 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
     .sort((a, b) => a.student.last_name.localeCompare(b.student.last_name, "fr") || a.student.first_name.localeCompare(b.student.first_name, "fr"));
 }
 
+/** Effectifs par cycle : Bachelor (et ancienne Licence), Master, CPI et MIAGE d'Africaiim Tech. */
+function cycleCounts(rows) {
+  const counts = { bachelor: 0, master: 0, tech: 0 };
+  for (const { student } of rows) {
+    const level = String(student.level || "");
+    if (level.startsWith("master")) counts.master += 1;
+    else if (TECH_LEVELS.has(level) || level === "tech") counts.tech += 1;
+    else counts.bachelor += 1;
+  }
+  return counts;
+}
+
+/** Étudiants dont le costume est entièrement payé, partiellement payé, et total versé pour les costumes. */
+async function costumeCounts(db, rows) {
+  const unitPrice = await costumePrice(db);
+  const paidBy = new Map((await db.prepare(`
+    SELECT c.student_id, SUM(c.amount)::bigint AS paid
+    FROM costume_payments c LEFT JOIN payments p ON p.id = c.payment_id
+    WHERE c.status = 'valide' AND (c.payment_id IS NULL OR p.status = 'valide')
+    GROUP BY c.student_id
+  `).all()).map((row) => [row.student_id, Number(row.paid)]));
+  const counts = { paid: 0, partial: 0, none: 0, amount: 0 };
+  for (const { student } of rows) {
+    const paid = paidBy.get(student.id) || 0;
+    const price = unitPrice * Math.max(1, Number(student.costume_quantity || 1));
+    counts.amount += paid;
+    if (price > 0 && paid >= price) counts.paid += 1;
+    else if (paid > 0) counts.partial += 1;
+    else counts.none += 1;
+  }
+  return counts;
+}
+
 export async function dashboard(db, filters, asOf = todayInConakry()) {
   const rows = await listStudents(db, {
     yearId: filters.yearId,
@@ -571,6 +604,8 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
   return {
     asOf,
     students: rows.length,
+    cycles: cycleCounts(rows),
+    costume: await costumeCounts(db, rows),
     due,
     paid: paidFiltered,
     paidAll,

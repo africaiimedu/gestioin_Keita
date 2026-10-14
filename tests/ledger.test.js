@@ -79,6 +79,12 @@ test("cohérence : somme des étudiants = total général", async () => {
   assert.equal(dashboard.due, report.due);
   assert.equal(dashboard.reste, report.reste);
   assert.equal(dashboard.controlOk, true);
+  const { bachelor, master, tech } = dashboard.cycles;
+  assert.equal(bachelor + master + tech, dashboard.students);
+  const levels = await db.prepare("SELECT level FROM students").all();
+  assert.equal(master, levels.filter((row) => row.level.startsWith("master")).length);
+  const { paid, partial, none } = dashboard.costume;
+  assert.equal(paid + partial + none, dashboard.students);
 });
 
 test("idempotence, refus des montants invalides, deux paiements, annulation, reçus sans trou", async () => {
@@ -749,5 +755,21 @@ test("seul l'admin corrige un paiement saisi par erreur : ancien reçu annulé, 
   assert.equal(costume.entries[0].payment_id, fixed.paymentId);
   await assert.rejects(() => db.prepare("UPDATE costume_payments SET amount = 1 WHERE student_id = ?").run(created.student.id), /ne peut pas être modifié/);
   await assert.rejects(() => domain.correctPayment(db, agent, wrong.id, { amount: 1_000, reason: "Deuxième correction", idempotencyKey: "correction-bis-001" }), /déjà annulé/);
+});
+
+test("tableau de bord : un costume entièrement payé compte, un costume partiel compte à part", async () => {
+  await domain.updateSettings(db, agent, { costume_price: "800.000" });
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const before = await domain.dashboard(db, {});
+  const full = await domain.createStudent(db, agent, { lastName: "TABLEAU", firstName: "Complet", programId: program.id, level: "master_1" });
+  await domain.recordCostume(db, agent, full.student.id, { amount: 800_000, method: "especes" });
+  const half = await domain.createStudent(db, agent, { lastName: "TABLEAU", firstName: "Moitie", programId: program.id, level: "bachelor_2" });
+  await domain.recordCostume(db, agent, half.student.id, { amount: 400_000, method: "especes" });
+  const after = await domain.dashboard(db, {});
+  assert.equal(after.costume.paid, before.costume.paid + 1);
+  assert.equal(after.costume.partial, before.costume.partial + 1);
+  assert.equal(after.costume.amount, before.costume.amount + 1_200_000);
+  assert.equal(after.cycles.master, before.cycles.master + 1);
+  assert.equal(after.cycles.bachelor, before.cycles.bachelor + 1);
 });
 });

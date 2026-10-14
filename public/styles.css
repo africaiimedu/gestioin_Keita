@@ -1122,6 +1122,10 @@ tr.clickable:hover { background: #f3f8f4; }
 .dash-kpi .muted, .dash-kpi .value { white-space: nowrap; }
 .dash-kpi .value { margin: 0; font-size: clamp(1.02rem, 1.25vw, 1.35rem); font-weight: 700; font-variant-numeric: tabular-nums; color: #0c3d2e; line-height: 1.2; }
 .dash-kpi.tone-left .value { color: #9a6a0a; }
+.dash-people { margin: 14px 0 0; }
+.dash-people .stat-tile { font: inherit; text-align: left; cursor: pointer; white-space: normal; }
+.dash-people .stat-tile strong { font-size: 1.6rem; }
+.dash-people .stat-tile .muted { font-size: 0.8rem; color: #5b7a68; }
 .dash-track { display: block; height: 6px; margin-top: 10px; border-radius: 999px; background: #d9ebe0; overflow: hidden; }
 .dash-track i { display: block; height: 100%; border-radius: inherit; background: #1b7a45; }
 .tone-left .dash-track i { background: #e2a31a; }

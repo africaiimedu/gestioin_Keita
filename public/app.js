@@ -903,6 +903,12 @@ function patchDashboard(root, data, control) {
     badge.className = `coherence ${control.ok ? "ok" : "bad"}`;
     badge.textContent = control.ok ? "Cohérence OK" : "Écart de cohérence";
   }
+  for (const [key, , value, note] of peopleFigures(data)) {
+    const tile = root.querySelector(`[data-people="${key}"]`);
+    if (!tile) continue;
+    tile.querySelector("strong").textContent = value;
+    tile.querySelector(".muted").textContent = note;
+  }
   const count = root.querySelector(".dash-count");
   if (count) count.textContent = String(data.students);
   const plural = root.querySelector(".dash-plural");
@@ -948,6 +954,26 @@ function patchDashboard(root, data, control) {
     row.querySelector(".who .muted").textContent = item.program;
     row.querySelector(".due").textContent = gnf(item.reste);
   });
+}
+
+function peopleFigures(data) {
+  const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
+  const costume = data.costume || { paid: 0, partial: 0, amount: 0 };
+  const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
+  return [
+    ["bachelor", "Étudiants en Bachelor", String(cycles.bachelor), "Toutes écoles, 1re à 3e année"],
+    ["master", "Étudiants en Master", String(cycles.master), "Master 1 et Master 2"],
+    ["tech", "CPI et MIAGE (Africaiim Tech)", String(cycles.tech), "Cycle préparatoire et MIAGE"],
+    ["costume", "Costume payé", String(costume.paid), `${plural(costume.partial, "paiement partiel")} · ${gnf(costume.amount)} versés`],
+  ];
+}
+
+function peopleHtml(data) {
+  return `<section class="stat-row dash-people" aria-label="Effectifs et costumes">
+    ${peopleFigures(data).map(([key, label, value, note]) => `<button class="stat-tile" data-people="${key}" data-go="etudiants" type="button">
+      <span>${esc(label)}</span><strong>${esc(value)}</strong><span class="muted">${esc(note)}</span>
+    </button>`).join("")}
+  </section>`;
 }
 
 function dashboardHtml(data, control) {
@@ -1001,6 +1027,7 @@ function dashboardHtml(data, control) {
       ${kpiCard("Reste à payer", gnf(data.reste), resteShare, "tone-left")}
       ${kpiCard("Taux de recouvrement", esc(data.rate.label), rate, "tone-rate")}
     </section>
+    ${peopleHtml(data)}
     <section class="dash-split">
       <article class="card">
         <h2>Encaissements par école</h2>
