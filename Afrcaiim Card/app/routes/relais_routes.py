@@ -14,7 +14,7 @@ from app.models import Etudiant, PosteImpression
 from app.services import relais
 from app.services.limite import autoriser
 from app.services.metier import carte_courante, journaliser, marquer_imprimee
-from app.services.pdf_carte import pdf_individuel
+from app.services.pdf_carte import pdf_feuille_a4, pdf_individuel
 from app.services.photos import lire_photo
 from app.services.statut import statut_effectif
 
@@ -62,10 +62,17 @@ def _pdf_du_travail(db: Session, travail) -> tuple[bytes | None, str]:
     photo = lire_photo(etudiant.photo_chemin)
     if photo is None:
         return None, "La photo de l'étudiant est introuvable."
+    if _sur_a4(travail):
+        element = (etudiant, photo, carte.jeton, carte.numero_edition)
+        return pdf_feuille_a4([element], base_url(), f"Carte {etudiant.matricule}"), ""
     contenu = pdf_individuel(
         etudiant, photo, carte.jeton, carte.numero_edition, base_url(), travail.recto_verso, retourner_verso=False,
     )
     return contenu, ""
+
+
+def _sur_a4(travail) -> bool:
+    return travail.media == "A4"
 
 
 @router.post("/travail")
@@ -85,8 +92,8 @@ def travail_suivant(request: Request, db: Session = Depends(get_db)):
             "id": travail.id,
             "imprimante": travail.imprimante,
             "copies": travail.copies,
-            "recto_verso": travail.recto_verso,
-            "sens": travail.sens,
+            "recto_verso": travail.recto_verso and not _sur_a4(travail),
+            "sens": "portrait" if _sur_a4(travail) else travail.sens,
             "media": travail.media,
             "libelle": travail.libelle,
             "pdf": base64.b64encode(contenu).decode("ascii"),

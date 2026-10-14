@@ -98,8 +98,10 @@
       · émise le {{ carte.date_emission|datefr }}
     </p>
     <div class="actions">
-      <button type="button" class="bouton" data-imprimer-pdf="/admin/etudiants/{{ etudiant.id }}/pdf?inline=1" data-note="note-impression">Imprimer depuis cet ordinateur</button>
-      <a class="bouton bouton-secondaire" href="/admin/etudiants/{{ etudiant.id }}/pdf">Télécharger le PDF</a>
+      <button type="button" class="bouton" data-imprimer-pdf="/admin/etudiants/{{ etudiant.id }}/pdf?inline=1&amp;format=a4" data-note="note-impression">Imprimer sur feuille A4 (toute imprimante)</button>
+      <button type="button" class="bouton" data-imprimer-pdf="/admin/etudiants/{{ etudiant.id }}/pdf?inline=1" data-note="note-impression">Imprimer sur carte PVC (Primacy 2)</button>
+      <a class="bouton bouton-secondaire" href="/admin/etudiants/{{ etudiant.id }}/pdf?format=a4">PDF feuille A4</a>
+      <a class="bouton bouton-secondaire" href="/admin/etudiants/{{ etudiant.id }}/pdf">PDF carte</a>
       <form method="post" action="/admin/etudiants/{{ etudiant.id }}/imprimee">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button type="submit" class="bouton-secondaire">Marquer comme imprimée</button>

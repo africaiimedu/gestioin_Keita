@@ -112,7 +112,10 @@ def commande_lp(
         "-o", "print-quality=5",
         "-o", "orientation-requested=5" if paysage else "orientation-requested=3",
     ]
-    if "Card" in choix.get("PageSize", []):
+    if media == "A4":
+        commande += ["-o", "media=A4"]
+        _poser_option(commande, choix, "PageSize", "A4")
+    elif "Card" in choix.get("PageSize", []):
         commande += ["-o", "PageSize=Card"]
     elif "CR80" in choix.get("PageSize", []):
         commande += ["-o", "PageSize=CR80"]

@@ -1040,6 +1040,76 @@ def pdf_primacy(elements: list[tuple], base: str, titre: str) -> bytes:
     return tampon.getvalue()
 
 
+def positions_paires(largeur: float, hauteur: float) -> list[tuple[float, float]]:
+    """Coin bas gauche de chaque paire recto | verso sur une feuille A4, du haut vers le bas."""
+    marge, ecart, reserve_bas = mm(12), mm(9), mm(16)
+    lignes = max(1, int((A4_H - 2 * marge - reserve_bas + ecart) // (hauteur + ecart)))
+    x = (A4_W - 2 * largeur) / 2
+    return [(x, A4_H - marge - hauteur - ligne * (hauteur + ecart)) for ligne in range(lignes)]
+
+
+def _reperes_paire(c, x: float, y: float, largeur: float, hauteur: float) -> None:
+    c.saveState()
+    c.setStrokeColor(HexColor("#C8C8C8"))
+    c.setLineWidth(0.25)
+    c.rect(x, y, 2 * largeur, hauteur, fill=0, stroke=1)
+    c.setStrokeColor(HexColor("#222222"))
+    c.setLineWidth(0.35)
+    longueur, ecart = mm(3.2), mm(1.15)
+    droite = x + 2 * largeur
+    for cx, cy, sx, sy in ((x, y, -1, -1), (droite, y, 1, -1), (x, y + hauteur, -1, 1), (droite, y + hauteur, 1, 1)):
+        c.line(cx + sx * ecart, cy, cx + sx * (ecart + longueur), cy)
+        c.line(cx, cy + sy * ecart, cx, cy + sy * (ecart + longueur))
+    pli = x + largeur
+    c.setDash(1.5, 1.5)
+    c.line(pli, y - ecart, pli, y - ecart - longueur)
+    c.line(pli, y + hauteur + ecart, pli, y + hauteur + ecart + longueur)
+    c.restoreState()
+
+
+def _face_decoupee(c, face: str, x: float, y: float, largeur: float, hauteur: float, element: tuple, base: str) -> None:
+    etu, photo, jeton, edition = element
+    c.saveState()
+    c.translate(x, y)
+    cadre = c.beginPath()
+    cadre.rect(0, 0, largeur, hauteur)
+    c.clipPath(cadre, stroke=0, fill=0)
+    dessiner_face(c, face, etu, photo, jeton, edition, base)
+    c.restoreState()
+
+
+def pdf_feuille_a4(elements: list[tuple], base: str, titre: str) -> bytes:
+    """Pour toute imprimante : chaque carte en recto | verso côte à côte, taille réelle, à découper et plier.
+
+    Pas de recto-verso ni de format spécial : une feuille A4 ordinaire suffit.
+    """
+    if not elements:
+        raise ValueError("Aucune carte à imprimer.")
+    largeur, hauteur = taille_carte()
+    places = positions_paires(largeur, hauteur)
+    c, tampon = _nouveau_canvas((A4_W, A4_H), recto_verso=False)
+    c.setTitle(f"Université AFRICAIIM — {titre}")
+    c.setSubject("Feuille A4, toute imprimante. Imprimer à 100 % (taille réelle), recto seul.")
+    pages = [elements[i : i + len(places)] for i in range(0, len(elements), len(places))]
+    for index, page in enumerate(pages, start=1):
+        for element, (x, y) in zip(page, places):
+            _face_decoupee(c, "recto", x, y, largeur, hauteur, element, base)
+            _face_decoupee(c, "verso", x + largeur, y, largeur, hauteur, element, base)
+            _reperes_paire(c, x, y, largeur, hauteur)
+        c.setFillColor(HexColor("#222222"))
+        c.setFont("DejaVu", 7.5)
+        c.drawString(
+            mm(12), mm(9),
+            "Imprimez à 100 % (taille réelle). Découpez sur les repères, pliez sur le pointillé : "
+            "recto devant, verso derrière.",
+        )
+        suite = f" · feuille {index}/{len(pages)}" if len(pages) > 1 else ""
+        c.drawString(mm(12), mm(5.5), f"AFRICAIIM · {titre}{suite}")
+        c.showPage()
+    c.save()
+    return tampon.getvalue()
+
+
 def pdf_lot(elements: list[tuple], base: str, titre: str) -> bytes:
     """elements : (etudiant, photo, jeton, edition)."""
     if not elements:

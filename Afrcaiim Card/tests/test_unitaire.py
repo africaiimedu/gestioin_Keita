@@ -241,6 +241,45 @@ def test_pdf_carte_a_la_taille_cr80():
     assert "t=jeton-test" in url_qr("https://africaiim.com", etudiant.matricule, "jeton-test")
 
 
+def test_feuille_a4_pour_toute_imprimante():
+    from app.services.pdf_carte import pdf_feuille_a4, positions_paires, taille_carte
+    from app.services.photos import portrait_initiales
+
+    etudiant = SimpleNamespace(
+        prenom="Amina", nom="Diop", matricule="AIIM-2026-0142", filiere="AFRICAIIM Business School",
+        annee_academique="2026-2027", date_validite=date(2027, 7, 31), email="", sexe="F",
+    )
+    element = (etudiant, portrait_initiales("Amina", "Diop"), "jeton-test", 1)
+    lecteur = PdfReader(io.BytesIO(pdf_feuille_a4([element], "https://africaiim.com", "Carte AIIM-2026-0142")))
+    assert len(lecteur.pages) == 1
+    boite = lecteur.pages[0].mediabox
+    assert abs(float(boite.width) - A4_W) < 0.2 and abs(float(boite.height) - A4_H) < 0.2
+    texte = lecteur.pages[0].extract_text()
+    assert "DIOP" in texte and "100 %" in texte
+    assert "Simplex" in str(lecteur.trailer["/Root"]["/ViewerPreferences"]["/Duplex"])
+
+    for modele in ({"orientation": "paysage"}, {"orientation": "portrait"}):
+        largeur, hauteur = taille_carte(modele)
+        places = positions_paires(largeur, hauteur)
+        assert len(places) >= 2
+        for x, y in places:
+            assert x >= mm(5) and x + 2 * largeur <= A4_W - mm(5)
+            assert y >= mm(16)
+
+    lot = PdfReader(io.BytesIO(pdf_feuille_a4([element] * 9, "https://africaiim.com", "Lot")))
+    assert len(lot.pages) == 3
+
+
+def test_imprimante_ordinaire_recoit_du_a4():
+    from app.routes.admin_routes import _commande_lp
+
+    bureau = {"PageSize": ["A4", "Letter", "Card"], "Duplex": ["None", "DuplexNoTumble"]}
+    commande = _commande_lp("HP_Bureau", 1, False, "A4", bureau, "portrait")
+    assert "media=A4" in commande and "PageSize=A4" in commande
+    assert "PageSize=Card" not in commande
+    assert "orientation-requested=3" in commande and "sides=one-sided" in commande
+
+
 def test_sexe_choisit_etudiant_ou_etudiante():
     from app.services.import_etudiants import controler_fiche, lire_sexe
     from app.services.photos import portrait_initiales

@@ -150,12 +150,15 @@ document.getElementById("titre").textContent = data.filiere;
 document.getElementById("compte").textContent = `${data.annee} · ${data.cartes.length} carte(s) · règle en millimètres, non imprimée`;
 const pdf = document.getElementById("pdf");
 const imprimer = document.getElementById("imprimer");
+const pdfA4 = document.getElementById("pdf-a4");
+const imprimerA4 = document.getElementById("imprimer-a4");
 if (data.cartes.length) {
   pdf.href = `/admin/lot.pdf?filiere=${encodeURIComponent(data.filiere)}&annee=${encodeURIComponent(data.annee)}`;
   imprimer.dataset.imprimerPdf = `${pdf.href}&inline=1`;
+  pdfA4.href = `${pdf.href}&format=a4`;
+  imprimerA4.dataset.imprimerPdf = `${pdf.href}&format=a4&inline=1`;
 } else {
-  pdf.hidden = true;
-  imprimer.hidden = true;
+  [pdf, imprimer, pdfA4, imprimerA4].forEach((el) => { el.hidden = true; });
   const message = document.getElementById("message");
   message.hidden = false;
   message.textContent = data.exclus.length

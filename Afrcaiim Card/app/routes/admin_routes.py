@@ -40,7 +40,14 @@ from app.services.metier import (
     reediter,
     reinitialiser_mot_de_passe,
 )
-from app.services.pdf_carte import charger_modele, code_controle, pdf_individuel, pdf_primacy, url_affichee
+from app.services.pdf_carte import (
+    charger_modele,
+    code_controle,
+    pdf_feuille_a4,
+    pdf_individuel,
+    pdf_primacy,
+    url_affichee,
+)
 from app.services.pdf_liste import pdf_liste_etudiants
 from app.services.photos import lire_photo, normaliser_photo, photos_depuis_zip
 from app.services.statut import libelle_statut, statut_effectif
@@ -64,6 +71,7 @@ def _etudiant(db: Session, etudiant_id: int) -> Etudiant:
 
 _analyser_imprimantes = cups.analyser_imprimantes
 _commande_lp = cups.commande_lp
+MEDIA_A4 = "A4"
 
 
 def _media_cr80() -> str:
@@ -564,17 +572,20 @@ def pdf(
         flash(request, "erreur", raison)
         raise Redirection(f"/admin/etudiants/{etudiant_id}")
     photo = lire_photo(etudiant.photo_chemin)
-    contenu = pdf_individuel(etudiant, photo, carte.jeton, carte.numero_edition, base_url())
-    noter_generation(db, carte, admin.id, "PDF individuel")
+    if request.query_params.get("format") == "a4":
+        element = (etudiant, photo, carte.jeton, carte.numero_edition)
+        contenu = pdf_feuille_a4([element], base_url(), f"Carte {etudiant.matricule}")
+        nom = f"carte-{etudiant.matricule}-a4.pdf"
+        noter_generation(db, carte, admin.id, "PDF A4 (toute imprimante)")
+    else:
+        contenu = pdf_individuel(etudiant, photo, carte.jeton, carte.numero_edition, base_url())
+        nom = f"carte-{etudiant.matricule}.pdf"
+        noter_generation(db, carte, admin.id, "PDF individuel")
     return Response(
         contenu,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": (
-                f'inline; filename="carte-{etudiant.matricule}.pdf"'
-                if request.query_params.get("inline")
-                else f'attachment; filename="carte-{etudiant.matricule}.pdf"'
-            ),
+            "Content-Disposition": f'{"inline" if request.query_params.get("inline") else "attachment"}; filename="{nom}"',
             "Cache-Control": "no-store",
         },
     )
@@ -600,12 +611,16 @@ def _format_carte() -> str:
 def _imprimer(
     db: Session, admin: Utilisateur, etudiant: Etudiant, carte, cle: str, copies: int, recto_verso: bool, sens: str,
 ) -> tuple[bool, str]:
-    """Imprime sur ce serveur, ou confie la carte au relais de l'ordinateur du bureau."""
+    """Imprime sur ce serveur, ou confie la carte au relais de l'ordinateur du bureau.
+
+    Une imprimante qui n'est pas une Primacy reçoit la feuille A4 (recto | verso à plier).
+    """
     face = "recto-verso, bord long" if recto_verso else "recto seul"
     if cle.startswith("poste:"):
         cible = next((imp for imp in relais.imprimantes_relais(db) if imp["cle"] == cle), None)
         if cible is None:
             return False, "Cette imprimante n'est plus en ligne. Vérifiez que l'ordinateur du bureau est allumé, puis rechargez la page."
+        a4 = not cible.get("primacy")
         relais.mettre_en_file(
             db,
             cible["poste_id"],
@@ -614,16 +629,27 @@ def _imprimer(
             carte_id=carte.id,
             libelle=f"{etudiant.nom} {etudiant.prenom} · {etudiant.matricule}",
             copies=copies,
-            recto_verso=recto_verso,
+            recto_verso=recto_verso and not a4,
             sens=sens,
-            media=_media_cr80(),
+            media=MEDIA_A4 if a4 else _media_cr80(),
             cree_par=admin.id,
         )
+        if a4:
+            return True, f"Feuille A4 confiée à {cible['nom']} ({cible['lieu']}) : découpez la carte sur les repères et pliez-la."
         return True, f"Carte confiée à {cible['nom']} ({cible['lieu']}, {face}, {sens}). Elle sort dans quelques secondes."
     nom = cle.split(":", 1)[1] if cle.startswith("local:") else cle
-    if nom not in {imp["nom"] for imp in cups.lister_imprimantes()}:
+    locale = next((imp for imp in cups.lister_imprimantes() if imp["nom"] == nom), None)
+    if locale is None:
         return False, "Cette imprimante n'est pas installée."
     photo = lire_photo(etudiant.photo_chemin)
+    if not locale.get("primacy"):
+        element = (etudiant, photo, carte.jeton, carte.numero_edition)
+        contenu = pdf_feuille_a4([element], base_url(), f"Carte {etudiant.matricule}")
+        ok, detail = cups.envoyer(contenu, nom, False, copies, MEDIA_A4, "portrait")
+        if not ok:
+            return False, detail
+        marquer_imprimee(db, carte, admin.id, f"{nom} · {copies} copie(s) · feuille A4")
+        return True, f"Feuille A4 envoyée à {nom} : découpez la carte sur les repères et pliez-la."
     contenu = pdf_individuel(
         etudiant, photo, carte.jeton, carte.numero_edition, base_url(),
         recto_verso, retourner_verso=False,
@@ -1003,8 +1029,9 @@ def lot_pdf(
         carte = ligne["carte"]
         elements.append((ligne["etudiant"], photo, carte.jeton, carte.numero_edition))
     titre = f"{filiere} {annee}"
+    a4 = request.query_params.get("format") == "a4"
     try:
-        contenu = pdf_primacy(elements, base_url(), titre)
+        contenu = (pdf_feuille_a4 if a4 else pdf_primacy)(elements, base_url(), titre)
     except ValueError as exc:
         flash(request, "erreur", str(exc))
         raise Redirection("/admin/lot") from exc
@@ -1024,7 +1051,7 @@ def lot_pdf(
         headers={
             "Content-Disposition": (
                 f'{"inline" if request.query_params.get("inline") else "attachment"}; '
-                f'filename="lot-{_slug(filiere)}-{annee}.pdf"'
+                f'filename="lot-{_slug(filiere)}-{annee}{"-a4" if a4 else ""}.pdf"'
             ),
             "Cache-Control": "no-store",
         },

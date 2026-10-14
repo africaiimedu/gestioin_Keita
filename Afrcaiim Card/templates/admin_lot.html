@@ -39,9 +39,11 @@
     {% endif %}
     {% if inclus %}
       <div class="actions">
-        <button type="button" class="bouton" data-imprimer-pdf="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}&inline=1" data-note="note-lot">Imprimer depuis cet ordinateur</button>
+        <button type="button" class="bouton" data-imprimer-pdf="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}&format=a4&inline=1" data-note="note-lot">Imprimer sur feuilles A4 (toute imprimante)</button>
+        <button type="button" class="bouton" data-imprimer-pdf="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}&inline=1" data-note="note-lot">Imprimer sur cartes PVC (Primacy 2)</button>
         <a class="bouton" href="/admin/lot/apercu?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">Voir le lot avec la règle</a>
-        <a class="bouton bouton-secondaire" href="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">Télécharger le PDF du lot</a>
+        <a class="bouton bouton-secondaire" href="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}&format=a4">PDF feuilles A4</a>
+        <a class="bouton bouton-secondaire" href="/admin/lot.pdf?filiere={{ filiere|urlencode }}&annee={{ annee|urlencode }}">PDF cartes PVC</a>
         <form method="post" action="/admin/lot/imprime">
           <input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="filiere" value="{{ filiere }}">

@@ -18,8 +18,10 @@
       <span id="zoom-valeur">100 %</span>
       <button type="button" id="zoom-plus" aria-label="Agrandir">+</button>
     </div>
-    <button class="bouton" id="imprimer" type="button" data-note="message">Imprimer</button>
-    <a class="bouton" id="pdf" href="#">Télécharger le PDF</a>
+    <button class="bouton" id="imprimer-a4" type="button" data-note="message">Imprimer · feuilles A4</button>
+    <button class="bouton" id="imprimer" type="button" data-note="message">Imprimer · Primacy 2</button>
+    <a class="bouton" id="pdf-a4" href="#">PDF A4</a>
+    <a class="bouton" id="pdf" href="#">PDF cartes</a>
   </header>
   <p id="message" class="message" hidden></p>
   <div class="espace">
@@ -33,6 +35,6 @@
   <script id="donnees" type="application/json">{{ donnees | tojson }}</script>
   <script src="/static/rendu-carte.js?v=30"></script>
   <script src="/static/impression-locale.js?v=1"></script>
-  <script src="/static/lot-apercu.js?v=5"></script>
+  <script src="/static/lot-apercu.js?v=6"></script>
 </body>
 </html>

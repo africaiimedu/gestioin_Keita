@@ -5,7 +5,7 @@
   <header class="impression-entete">
     <p class="surtitre">Cartes étudiantes</p>
     <h1>Impression</h1>
-    <p class="intro">La carte part à taille réelle, en couleur. Depuis n'importe quel ordinateur, Windows ou Mac, « Imprimer depuis cet ordinateur » ouvre le dialogue d'impression avec les imprimantes installées sur ce poste. Le relais du bureau reste disponible à droite.</p>
+    <p class="intro">Depuis n'importe quel ordinateur, Windows ou Mac. Imprimante ordinaire (jet d'encre, laser) : choisissez « Feuille A4 », la carte sort à taille réelle, recto et verso côte à côte, à découper et plier. Imprimante à cartes Primacy 2 : choisissez « Carte PVC ». Le relais du bureau reste disponible à droite.</p>
     {% if user.role == "admin" %}<p class="actions"><a class="bouton bouton-secondaire" href="/admin/postes">Ordinateurs d'impression</a></p>{% endif %}
   </header>
 
@@ -40,8 +40,11 @@
         </ul>
         {% if not raison %}
           <div class="impression-locale">
-            <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1" data-note="note-locale">Imprimer depuis cet ordinateur</button>
-            <p class="impression-note">Windows ou Mac : choisissez l'imprimante installée sur ce poste (Primacy 2 pour les cartes), couleur, recto-verso bord long, taille réelle 100 %, sans « ajuster à la page ».</p>
+            <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
+            <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
+            <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
+            <p class="impression-note">Choisissez la Primacy 2, couleur, recto-verso bord long, taille réelle 100 %, sans « ajuster à la page ».</p>
+            <p class="impression-note"><a href="/admin/etudiants/{{ choisi.id }}/pdf?format=a4">Télécharger la feuille A4</a> · <a href="/admin/etudiants/{{ choisi.id }}/pdf">Télécharger le PDF carte</a></p>
             <p id="note-locale" class="impression-note note-locale" hidden></p>
             <form method="post" action="/admin/etudiants/{{ choisi.id }}/imprimee">
               <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -81,7 +84,7 @@
             Aucun relais en ligne : utilisez « Imprimer depuis cet ordinateur », à gauche. Pour passer par le relais, l'ordinateur du bureau où la Primacy 2 est branchée doit être allumé, avec le relais d'impression en marche{% if postes %} ({% for poste in postes if poste.actif %}{{ poste.nom }} : {{ "en ligne" if en_ligne(poste) else "hors ligne" }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}. Rechargez ensuite cette page.
           </p>
         {% else %}
-          <p id="note-primacy" class="impression-note" {% if not preferee %}hidden{% endif %}>Pilote Evolis reconnu. Le travail part en recto-verso, bord long.</p>
+          <p id="note-primacy" class="impression-note">{% if preferee %}Pilote Evolis reconnu. Le travail part en recto-verso, bord long.{% else %}Imprimante ordinaire : la carte part sur une feuille A4, recto et verso côte à côte, à découper et plier.{% endif %}</p>
         {% endif %}
 
         <fieldset class="sens">
@@ -168,7 +171,11 @@
       const option = liste.selectedOptions[0];
       const primacy = option && option.dataset.primacy === "1";
       if (primacy) duplex.checked = true;
-      if (note) note.hidden = !primacy;
+      if (note) {
+        note.textContent = primacy
+          ? "Pilote Evolis reconnu. Le travail part en recto-verso, bord long."
+          : "Imprimante ordinaire : la carte part sur une feuille A4, recto et verso côte à côte, à découper et plier.";
+      }
       decrireDuplex();
     });
     duplex.addEventListener("change", decrireDuplex);
