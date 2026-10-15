@@ -836,6 +836,23 @@ test("changement d'école et de programme après l'inscription : nouveaux frais,
   assert.equal(shown.resteAfter, changed.situation.due - 5_000_000);
   const stored = await db.prepare("SELECT snapshot_json FROM receipts WHERE id = ?").get(receipt.id);
   assert.equal(JSON.parse(stored.snapshot_json).program, original.program);
+
+  const leaver = await domain.createStudent(db, agent, {
+    lastName: "DEPART", firstName: "Ecole", programId: abs.id, level: "bachelor_1", paymentAmount: "2000000", method: "especes",
+  });
+  const freed = leaver.student.matricule;
+  await domain.changeProgram(db, agent, leaver.student.id, {
+    programId: droit.id, level: "bachelor_1", matricule: await domain.suggestMatricule(db, droit.id), reason,
+  });
+  assert.notEqual(await domain.suggestMatricule(db, abs.id), freed);
+  await assert.rejects(() => domain.createStudent(db, agent, {
+    lastName: "NOUVELLE", firstName: "Fiche", programId: abs.id, level: "master_1", matricule: freed, paymentAmount: "1000000", method: "especes",
+  }), /était celui de DEPART/);
+  const newcomer = await domain.createStudent(db, agent, {
+    lastName: "NOUVELLE", firstName: "Fiche", programId: abs.id, level: "master_1", paymentAmount: "1000000", method: "especes",
+  });
+  assert.notEqual(newcomer.student.matricule, freed);
+  assert.equal(newcomer.situation.paid, 1_000_000);
 });
 
 test("tableau de bord : étudiants n'ayant pas payé la première tranche", async () => {

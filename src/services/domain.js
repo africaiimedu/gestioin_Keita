@@ -1495,7 +1495,7 @@ export async function createStudent(db, user, input) {
         amount: paymentAmount,
         paidOn,
         method: input.method,
-        idempotencyKey: `fiche-${matricule}`,
+        idempotencyKey: `inscription:${studentId}`,
         note: "Versement du jour à l'inscription",
         costumeAmount,
         costumeQuantity,
@@ -1528,6 +1528,26 @@ async function refuseTakenMatricule(db, matricule, exceptId = null) {
     SELECT matricule, last_name, first_name FROM students WHERE upper(matricule) = ? AND id <> COALESCE(?::int, 0)
   `).get(matricule, exceptId);
   if (other) throw new HttpError(409, `Le matricule ${matricule} est déjà attribué à ${other.last_name} ${other.first_name}.`);
+  const former = await db.prepare(`
+    SELECT s.matricule, s.last_name, s.first_name
+    FROM audit_logs a JOIN students s ON s.id::text = a.entity_id
+    WHERE a.action IN ${FORMER_MATRICULE_ACTIONS} AND upper((a.before_json::jsonb)->>'matricule') = ? AND s.id <> COALESCE(?::int, 0)
+    LIMIT 1
+  `).get(matricule, exceptId);
+  if (former) {
+    throw new HttpError(409, `Le matricule ${matricule} était celui de ${former.last_name} ${former.first_name} (aujourd'hui ${former.matricule}) : ses anciens reçus le portent encore. Choisissez-en un autre.`);
+  }
+}
+
+/** Un matricule déjà porté par un étudiant (avant un changement) n'est jamais redonné : ses anciens reçus et sa carte le portent. */
+const FORMER_MATRICULE_ACTIONS = "('etudiant.matricule', 'etudiant.programme')";
+
+async function formerMatricules(db, prefix) {
+  const rows = await db.prepare(`
+    SELECT (before_json::jsonb)->>'matricule' AS matricule FROM audit_logs
+    WHERE action IN ${FORMER_MATRICULE_ACTIONS} AND upper((before_json::jsonb)->>'matricule') LIKE ?
+  `).all(`${prefix}%`);
+  return rows.map((row) => row.matricule);
 }
 
 /** Matricule proposé pour une nouvelle fiche : la scolarité peut le remplacer. */
@@ -1626,8 +1646,8 @@ export async function nextMatricule(db, yearLabel, program) {
   const prefix = matriculePrefix(yearLabel, program);
   const rows = await db.prepare("SELECT matricule FROM students WHERE upper(matricule) LIKE ?").all(`${prefix}%`);
   let max = 0;
-  for (const row of rows) {
-    const rest = String(row.matricule).toUpperCase().slice(prefix.length);
+  for (const matricule of [...rows.map((row) => row.matricule), ...await formerMatricules(db, prefix)]) {
+    const rest = String(matricule).toUpperCase().slice(prefix.length);
     if (/^\d{4,6}$/.test(rest)) max = Math.max(max, Number(rest));
   }
   return `${prefix}${String(max + 1).padStart(4, "0")}`;
