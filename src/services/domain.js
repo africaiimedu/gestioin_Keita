@@ -459,6 +459,9 @@ async function refreshCard(db, student, situation) {
   return card;
 }
 
+/** Filtre de la liste des étudiants : première tranche pas entièrement payée. */
+export const FIRST_INSTALLMENT_UNPAID = "premiere_tranche";
+
 export async function listStudents(db, filters, asOf = todayInConakry()) {
   const year = await yearById(db, filters.yearId);
   if (!year) return [];
@@ -481,7 +484,9 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
     .filter((row) => {
       if (family && !family.includes(row.student.level)) return false;
       if (!family && filters.level && row.student.level !== filters.level) return false;
-      if (filters.paymentStatus && row.situation.status !== filters.paymentStatus) return false;
+      if (filters.paymentStatus === FIRST_INSTALLMENT_UNPAID) {
+        if (firstInstallmentLeft(row.situation).left <= 0) return false;
+      } else if (filters.paymentStatus && row.situation.status !== filters.paymentStatus) return false;
       if (!query) return true;
       const blob = `${row.student.matricule} ${row.student.last_name} ${row.student.first_name}`.toLowerCase();
       return blob.includes(query);
@@ -501,8 +506,8 @@ function cycleCounts(rows) {
   return counts;
 }
 
-/** Étudiants dont le costume est entièrement payé, partiellement payé, et total versé pour les costumes. */
-async function costumeCounts(db, rows) {
+/** Prix (nombre de costumes × prix unitaire), versé et reste de chaque étudiant, au même calcul que sa fiche. */
+async function costumeLines(db, rows) {
   const unitPrice = await costumePrice(db);
   const paidBy = new Map((await db.prepare(`
     SELECT c.student_id, SUM(c.amount)::bigint AS paid
@@ -510,14 +515,74 @@ async function costumeCounts(db, rows) {
     WHERE c.status = 'valide' AND (c.payment_id IS NULL OR p.status = 'valide')
     GROUP BY c.student_id
   `).all()).map((row) => [row.student_id, Number(row.paid)]));
-  const counts = { paid: 0, partial: 0, none: 0, amount: 0 };
-  for (const { student } of rows) {
+  const lines = rows.map(({ student }) => {
+    const quantity = Math.max(1, Number(student.costume_quantity || 1));
+    const price = unitPrice * quantity;
     const paid = paidBy.get(student.id) || 0;
-    const price = unitPrice * Math.max(1, Number(student.costume_quantity || 1));
-    counts.amount += paid;
-    if (price > 0 && paid >= price) counts.paid += 1;
-    else if (paid > 0) counts.partial += 1;
-    else counts.none += 1;
+    return { student, quantity, price, paid, reste: Math.max(0, price - paid) };
+  });
+  return { unitPrice, lines };
+}
+
+/**
+ * Totaux des costumes : un étudiant peut en commander plusieurs, le montant attendu est donc
+ * la somme des nombres de costumes × prix unitaire, pas le nombre d'étudiants × prix.
+ */
+function costumeTotals(unitPrice, lines) {
+  const totals = { unitPrice, students: lines.length, costumes: 0, costumesPaid: 0, expected: 0, amount: 0, reste: 0, paid: 0, partial: 0, none: 0, unpaid: 0 };
+  for (const line of lines) {
+    totals.costumes += line.quantity;
+    totals.expected += line.price;
+    totals.amount += line.paid;
+    totals.reste += line.reste;
+    if (unitPrice > 0) totals.costumesPaid += Math.min(line.quantity, Math.floor(line.paid / unitPrice));
+    if (line.price > 0 && line.reste === 0) totals.paid += 1;
+    else if (line.paid > 0) totals.partial += 1;
+    else totals.none += 1;
+  }
+  totals.unpaid = totals.partial + totals.none;
+  return totals;
+}
+
+async function costumeCounts(db, rows) {
+  const { unitPrice, lines } = await costumeLines(db, rows);
+  return costumeTotals(unitPrice, lines);
+}
+
+/** Étudiants de l'année dont le costume n'est pas soldé, avec les totaux attendu, versé et reste de toute l'année. */
+export async function unpaidCostumes(db, asOf = todayInConakry()) {
+  const { unitPrice, lines } = await costumeLines(db, await listStudents(db, {}, asOf));
+  return {
+    totals: costumeTotals(unitPrice, lines),
+    students: lines
+      .filter((line) => line.reste > 0)
+      .sort((a, b) => b.reste - a.reste || a.student.last_name.localeCompare(b.student.last_name, "fr") || a.student.first_name.localeCompare(b.student.first_name, "fr"))
+      .map((line) => ({
+        student: publicStudent(line.student),
+        quantity: line.quantity,
+        price: line.price,
+        paid: line.paid,
+        reste: line.reste,
+        status: line.paid > 0 ? "partiel" : "non_paye",
+      })),
+  };
+}
+
+/** Première échéance du plan (inscription, 5 octobre) : ce qu'il en reste à payer. */
+function firstInstallmentLeft(situation) {
+  const first = situation.plan.find((item) => item.amount > 0);
+  if (!first) return { amount: 0, left: 0 };
+  return { amount: first.amount, left: Math.max(0, first.amount - (situation.covered[first.code] || 0)) };
+}
+
+function firstInstallmentCounts(rows) {
+  const counts = { unpaid: 0, none: 0, reste: 0 };
+  for (const { situation } of rows) {
+    const { amount, left } = firstInstallmentLeft(situation);
+    if (left <= 0) continue;
+    counts.unpaid += 1;
+    counts.reste += left;
+    if (left === amount) counts.none += 1;
   }
   return counts;
 }
@@ -606,6 +671,7 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
     students: rows.length,
     cycles: cycleCounts(rows),
     costume: await costumeCounts(db, rows),
+    firstInstallment: firstInstallmentCounts(rows),
     due,
     paid: paidFiltered,
     paidAll,

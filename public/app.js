@@ -173,6 +173,7 @@ function financeGroups() {
       (allowed("student.read") || allowed("student.write")) && ["etudiants", "Étudiants"],
       allowed("payment.create") && ["paiement", "Encaisser"],
       allowed("student.read") && ["retards", "Relances"],
+      allowed("student.read") && ["costumes", "Costumes impayés"],
     ]],
     ["Caisse", [
       allowed("report.read") && ["journal", "Journal de caisse"],
@@ -240,6 +241,7 @@ const MENU_INFO = {
   "screen:etudiants": ["people", "Fiches et situation de paiement"],
   "screen:paiement": ["cash", "Enregistrer un paiement"],
   "screen:retards": ["bell", "Étudiants à relancer"],
+  "screen:costumes": ["bag", "Montant à payer et reste des costumes"],
   "screen:journal": ["book", "Encaissements du jour"],
   "screen:audit": ["shield", "Qui a fait quoi, et quand"],
   "screen:parametres": ["tag", "Frais par école et par niveau"],  "carte:etudiants": ["card", "Fiches et statut des cartes"],
@@ -300,7 +302,7 @@ function restorePlace() {
   }
   if (!raw.startsWith("finances/")) return;
   const [screen, id] = raw.slice("finances/".length).split("/");
-  const known = ["tableau", "etudiants", "paiement", "journal", "retards", "audit", "parametres", "depenses", "comptes", "fiche"];
+  const known = ["tableau", "etudiants", "paiement", "journal", "retards", "costumes", "audit", "parametres", "depenses", "comptes", "fiche"];
   if (!known.includes(screen)) return;
   state.suite = "finances";
   state.screen = screen;
@@ -785,6 +787,7 @@ async function openScreen() {
     else if (state.screen === "paiement") await showPayment(screen);
     else if (state.screen === "journal") await showJournal(screen);
     else if (state.screen === "retards") await showLate(screen);
+    else if (state.screen === "costumes") await showCostumes(screen);
     else if (state.screen === "audit") await showAudit(screen);
     else if (state.screen === "parametres") showSettings(screen);
     else if (state.screen === "depenses") await showExpenses(screen);
@@ -817,9 +820,9 @@ function frenchMoment(stamp) {
 
 function bindDashboard(screen) {
   screen.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => {
-    state.status = "";
+    state.status = button.dataset.filter || "";
     state.studentPage = 1;
-    state.screen = "etudiants";
+    state.screen = button.dataset.go;
     render();
   }));
   screen.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => {
@@ -958,19 +961,22 @@ function patchDashboard(root, data, control) {
 
 function peopleFigures(data) {
   const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
-  const costume = data.costume || { paid: 0, partial: 0, amount: 0 };
+  const costume = { paid: 0, partial: 0, unpaid: 0, amount: 0, expected: 0, reste: 0, costumesPaid: 0, ...data.costume };
+  const first = { unpaid: 0, none: 0, reste: 0, ...data.firstInstallment };
   const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
   return [
     ["bachelor", "Étudiants en Bachelor", String(cycles.bachelor), "Toutes écoles, 1re à 3e année"],
     ["master", "Étudiants en Master", String(cycles.master), "Master 1 et Master 2"],
     ["tech", "CPI et MIAGE (Africaiim Tech)", String(cycles.tech), "Cycle préparatoire et MIAGE"],
-    ["costume", "Costume payé", String(costume.paid), `${plural(costume.partial, "paiement partiel")} · ${gnf(costume.amount)} versés`],
+    ["costume", "Costume payé (étudiants)", String(costume.paid), `${plural(costume.costumesPaid, "costume")} payé${costume.costumesPaid > 1 ? "s" : ""} · ${gnf(costume.amount)} versés sur ${gnf(costume.expected)}`, "costumes"],
+    ["costume-reste", "Costume non payé (étudiants)", String(costume.unpaid), `Reste à payer ${gnf(costume.reste)}${costume.partial ? ` · dont ${costume.partial} payé${costume.partial > 1 ? "s" : ""} en partie` : ""}`, "costumes"],
+    ["tranche", "1re tranche non payée (étudiants)", String(first.unpaid), `${first.none} sans aucun versement · reste ${gnf(first.reste)}`, "etudiants", "premiere_tranche"],
   ];
 }
 
 function peopleHtml(data) {
-  return `<section class="stat-row dash-people" aria-label="Effectifs et costumes">
-    ${peopleFigures(data).map(([key, label, value, note]) => `<button class="stat-tile" data-people="${key}" data-go="etudiants" type="button">
+  return `<section class="stat-row dash-people" aria-label="Effectifs, costumes et première tranche">
+    ${peopleFigures(data).map(([key, label, value, note, go = "etudiants", filter = ""]) => `<button class="stat-tile" data-people="${key}" data-go="${go}" ${filter ? `data-filter="${filter}"` : ""} type="button">
       <span>${esc(label)}</span><strong>${esc(value)}</strong><span class="muted">${esc(note)}</span>
     </button>`).join("")}
   </section>`;
@@ -1150,7 +1156,7 @@ async function showStudents(screen) {
     <div class="filters"><input id="q" placeholder="Nom ou matricule" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
       <select id="niveau"><option value="">Tous les niveaux</option>${(state.catalog.levels || []).map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
-      <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}</select>
+      <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}<option value="premiere_tranche" ${state.status === "premiere_tranche" ? "selected" : ""}>1re tranche non payée</option></select>
       <select id="tri" aria-label="Trier par">${STUDENT_SORTS.map(([code, label]) => `<option value="${code}" ${(state.studentSort || "nom") === code ? "selected" : ""}>${label}</option>`).join("")}</select></div>
     <div id="student-table"></div>
     <dialog id="fiche-dialog" class="sheet" closedby="none"></dialog>`;
@@ -2625,6 +2631,67 @@ async function showLate(screen) {
       button.textContent = caught.message;
     }
   }));
+}
+
+async function showCostumes(screen) {
+  const data = await api("/api/costumes/impayes");
+  const totals = data.totals;
+  const rows = data.students;
+  const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
+  const statusTag = (row) => row.status === "partiel"
+    ? `<span class="tag partiel">Partiellement payé</span>`
+    : `<span class="tag en_retard">Non payé</span>`;
+  screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Costumes impayés</h1>
+      <p class="lead">Étudiants de l'année dont le costume n'est pas entièrement payé. Le montant d'un étudiant est son nombre de costumes × ${esc(gnf(totals.unitPrice))}.</p></div></div>
+    ${totals.unitPrice ? `<div class="stat-row">
+      <div class="stat-tile"><span>Montant total à payer</span><strong>${gnf(totals.expected)}</strong><span class="muted">${plural(totals.costumes, "costume")} × ${esc(gnf(totals.unitPrice))} · ${plural(totals.students, "étudiant")}</span></div>
+      <div class="stat-tile ok"><span>Déjà versé</span><strong>${gnf(totals.amount)}</strong><span class="muted">${plural(totals.costumesPaid, "costume")} payé${totals.costumesPaid > 1 ? "s" : ""} · ${plural(totals.paid, "étudiant")} soldé${totals.paid > 1 ? "s" : ""}</span></div>
+      <div class="stat-tile alert"><span>Reste à payer</span><strong>${gnf(totals.reste)}</strong><span class="muted">${plural(totals.unpaid, "étudiant")} · ${totals.none} sans versement, ${totals.partial} en partie</span></div>
+    </div>
+    ${rows.length ? `<div class="late-tools">
+      <input class="late-search" id="costume-search" type="search" placeholder="Nom, matricule ou école" aria-label="Filtrer les costumes impayés">
+      <select id="costume-filter" aria-label="Situation du costume"><option value="">Non payés et partiels</option><option value="non_paye">Non payés</option><option value="partiel">Partiellement payés</option></select>
+      <p class="muted" id="costume-count"></p>
+    </div>
+    <article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>École</th><th class="num">Costumes</th><th class="num">À payer</th><th class="num">Versé</th><th class="num">Reste</th><th>Situation</th></tr></thead><tbody>
+      ${rows.map((row) => `<tr class="clickable" data-student="${row.student.id}" data-costume-status="${row.status}" data-find="${esc(`${row.student.name} ${row.student.matricule} ${row.student.program}`.toLowerCase())}">
+        <td>${esc(row.student.matricule)}</td><td class="name">${esc(row.student.name)}</td>
+        <td class="school">${esc(row.student.program)}<br><span class="muted">${esc(levelLabel(row.student.level))}</span></td>
+        <td class="num">${row.quantity}</td><td class="num">${gnf(row.price)}</td><td class="num">${gnf(row.paid)}</td><td class="num"><strong>${gnf(row.reste)}</strong></td><td>${statusTag(row)}</td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="late-none" id="costume-none" hidden>Aucun étudiant ne correspond à cette recherche.</p>
+    <p class="costume-sum" id="costume-sum"></p></article>`
+    : `<article class="late-card late-empty"><h2>Tous les costumes sont payés</h2><p>Aucun reste à payer sur les costumes cette année.</p></article>`}`
+    : `<article class="card"><p class="muted">Le prix du costume n'est pas encore fixé. L'administrateur le règle dans Tarifs.</p></article>`}`;
+  const search = document.querySelector("#costume-search");
+  const filter = document.querySelector("#costume-filter");
+  const refresh = () => {
+    const query = (search?.value || "").trim().toLowerCase();
+    const wanted = filter?.value || "";
+    const sums = { quantity: 0, price: 0, paid: 0, reste: 0 };
+    let visible = 0;
+    screen.querySelectorAll("tr[data-find]").forEach((line, index) => {
+      const show = (!query || line.dataset.find.includes(query)) && (!wanted || line.dataset.costumeStatus === wanted);
+      line.hidden = !show;
+      if (!show) return;
+      visible += 1;
+      const row = rows[index];
+      sums.quantity += row.quantity;
+      sums.price += row.price;
+      sums.paid += row.paid;
+      sums.reste += row.reste;
+    });
+    const sum = document.querySelector("#costume-sum");
+    if (sum) sum.innerHTML = `Total de la liste : <strong>${plural(sums.quantity, "costume")}</strong> · à payer <strong>${gnf(sums.price)}</strong> · versé <strong>${gnf(sums.paid)}</strong> · reste <strong>${gnf(sums.reste)}</strong>`;
+    const count = document.querySelector("#costume-count");
+    if (count) count.textContent = visible === rows.length ? plural(rows.length, "étudiant") : `${visible} sur ${plural(rows.length, "étudiant")}`;
+    const none = document.querySelector("#costume-none");
+    if (none) none.hidden = visible !== 0;
+  };
+  search?.addEventListener("input", refresh);
+  filter?.addEventListener("change", refresh);
+  refresh();
+  screen.querySelectorAll("tr[data-student]").forEach((line) => line.addEventListener("click", () => openStudent(line.dataset.student)));
 }
 
 async function showAudit(screen) {

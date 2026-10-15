@@ -56,6 +56,7 @@ import {
   changeMatricule,
   setCostumeQuantity,
   suggestMatricule,
+  unpaidCostumes,
 } from "./services/domain.js";
 import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseForPrint, listExpenses, markExpenseHanded } from "./services/expenses.js";
 import { renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
@@ -392,6 +393,7 @@ app.get("/api/journal", requireAction("report.read"), async (req, res) => {
   res.json(await cashJournal(db, req.query.date || todayInConakry()));
 });
 app.get("/api/retards", requireAction("student.read"), async (_req, res) => res.json({ students: await lateStudents(db) }));
+app.get("/api/costumes/impayes", requireAction("student.read"), async (_req, res) => res.json(await unpaidCostumes(db)));
 app.post("/api/relances", requireAction("reminder.create"), async (req, res) => {
   res.status(201).json(await createReminder(db, req.user, Number(req.body?.studentId), req.body?.channel || "copie"));
 });

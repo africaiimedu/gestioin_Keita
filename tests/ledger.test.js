@@ -772,4 +772,36 @@ test("tableau de bord : un costume entièrement payé compte, un costume partiel
   assert.equal(after.cycles.master, before.cycles.master + 1);
   assert.equal(after.cycles.bachelor, before.cycles.bachelor + 1);
 });
+
+test("costumes impayés : le montant attendu est le nombre de costumes × le prix, pas le nombre d'étudiants × le prix", async () => {
+  await domain.updateSettings(db, agent, { costume_price: "800.000" });
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const before = await domain.unpaidCostumes(db);
+  const pair = await domain.createStudent(db, agent, { lastName: "COSTUMES", firstName: "Deux", programId: program.id, level: "bachelor_2" });
+  await domain.setCostumeQuantity(db, agent, pair.student.id, 2);
+  await domain.recordCostume(db, agent, pair.student.id, { amount: 800_000, method: "especes" });
+  const after = await domain.unpaidCostumes(db);
+  assert.equal(after.totals.costumes, before.totals.costumes + 2);
+  assert.equal(after.totals.expected, before.totals.expected + 1_600_000);
+  assert.equal(after.totals.amount, before.totals.amount + 800_000);
+  assert.equal(after.totals.reste, before.totals.reste + 800_000);
+  assert.equal(after.totals.costumesPaid, before.totals.costumesPaid + 1);
+  const line = after.students.find((row) => row.student.id === pair.student.id);
+  assert.deepEqual([line.quantity, line.price, line.paid, line.reste, line.status], [2, 1_600_000, 800_000, 800_000, "partiel"]);
+  const board = await domain.dashboard(db, {});
+  assert.deepEqual([board.costume.expected, board.costume.amount, board.costume.reste], [after.totals.expected, after.totals.amount, after.totals.reste]);
+});
+
+test("tableau de bord : étudiants n'ayant pas payé la première tranche", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const before = await domain.dashboard(db, {});
+  const created = await domain.createStudent(db, agent, { lastName: "TRANCHE", firstName: "Aucune", programId: program.id, level: "bachelor_2" });
+  const after = await domain.dashboard(db, {});
+  assert.equal(after.firstInstallment.unpaid, before.firstInstallment.unpaid + 1);
+  assert.equal(after.firstInstallment.none, before.firstInstallment.none + 1);
+  assert.ok(after.firstInstallment.reste > before.firstInstallment.reste);
+  const listed = await domain.listStudents(db, { paymentStatus: domain.FIRST_INSTALLMENT_UNPAID });
+  assert.ok(listed.some((row) => row.student.id === created.student.id));
+  assert.equal(listed.length, after.firstInstallment.unpaid);
+});
 });

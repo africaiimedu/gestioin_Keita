@@ -1036,6 +1036,9 @@ tr.clickable:hover { background: #f3f8f4; }
 .late-card .btn.is-done { background: #e7f6ee; color: #146046; border-color: #b7dcc6; }
 .late-card.is-noted { border-color: #b7dcc6; animation: noted 0.55s ease; }
 .late-empty { max-width: 460px; }
+.late-tools select { width: auto; margin: 0; }
+.costume-sum { margin: 12px 4px 2px; color: var(--muted); line-height: 1.6; }
+.costume-sum strong { color: #0c3d2e; font-variant-numeric: tabular-nums; }
 @keyframes late-in {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: none; }
@@ -1575,6 +1578,7 @@ tbody tr:last-child td { border-bottom: 0; }
   table.rows-as-cards, .fee-table.rows-as-cards { min-width: 0 !important; width: 100%; display: block; border: 0; background: none; }
   table.rows-as-cards thead { display: none; }
   table.rows-as-cards tbody { display: grid; gap: 10px; }
+  table.rows-as-cards tr[hidden] { display: none; }
   table.rows-as-cards tr {
     display: block; padding: 6px 14px; border: 1px solid #e3efe8; border-radius: 18px; background: #fff;
     box-shadow: 0 6px 18px rgba(12, 61, 46, 0.05);
