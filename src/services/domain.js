@@ -879,6 +879,7 @@ function publicStudent(student) {
     firstName: student.first_name,
     name: `${student.last_name} ${student.first_name}`.trim(),
     program: student.program_name,
+    programId: student.program_id,
     programCode: student.program_code,
     level: student.level,
     year: student.year_label,
@@ -1519,6 +1520,46 @@ export async function changeMatricule(db, user, studentId, value) {
     ? await pushStudentToCard(result.situation.student, { previous: result.previous })
     : null;
   return { ...result.situation, previousMatricule: result.previous, card };
+}
+
+/**
+ * Change l'école et le programme d'un étudiant déjà inscrit. Les frais suivent le barème de la nouvelle école ;
+ * les paiements et reçus déjà émis ne changent pas. La remise « paiement comptant » est retirée si le nouveau
+ * niveau n'y a pas droit (Master).
+ */
+export async function changeProgram(db, user, studentId, input = {}) {
+  if (!can(user, "payment.cancel")) throw new HttpError(403, "Seul l'admin ou le super admin peut changer l'école ou le programme d'un étudiant");
+  const reason = String(input.reason || "").trim();
+  if (reason.length < 5) throw new HttpError(400, "Le motif est obligatoire (au moins 5 caractères)");
+  const programId = Number(input.programId);
+  const level = String(input.level || "");
+  if (!OFFER_LEVELS.has(level)) throw new HttpError(400, "Choisissez le programme (année d'études)");
+  const result = await transaction(db, async () => {
+    const current = await studentSituation(db, Number(studentId));
+    const before = current.student;
+    if (before.status === "archive") throw new HttpError(400, "Cet étudiant est archivé. Réactivez la fiche avant de changer son programme.");
+    const program = await db.prepare("SELECT * FROM programs WHERE id = ?").get(programId);
+    if (!program) throw new HttpError(400, "École inconnue");
+    const fee = await db.prepare("SELECT id FROM fee_schedules WHERE program_id = ? AND academic_year_id = ? AND level = ?")
+      .get(program.id, before.academic_year_id, level);
+    if (!fee) throw new HttpError(400, `Ce programme n'existe pas dans ${program.name} : aucun tarif pour cette année d'études.`);
+    const matricule = input.matricule ? matriculeOf(input.matricule) : before.matricule;
+    if (program.id === before.program_id && level === before.level && matricule === before.matricule) {
+      throw new HttpError(400, "L'école et le programme sont déjà ceux-là : rien à changer");
+    }
+    if (matricule !== before.matricule) await refuseTakenMatricule(db, matricule, before.id);
+    const discountRemoved = cashDiscountFor(level) === 0 && current.discounts.some((item) => item.label === CASH_LABEL);
+    if (discountRemoved) await db.prepare("DELETE FROM discounts WHERE student_id = ? AND label = ?").run(before.id, CASH_LABEL);
+    await db.prepare("UPDATE students SET program_id = ?, level = ?, matricule = ? WHERE id = ?").run(program.id, level, matricule, before.id);
+    const after = await studentSituation(db, before.id);
+    await refreshCard(db, after.student, after.situation);
+    await audit(db, user.id, "etudiant.programme", "students", before.id,
+      { program: before.program_name, level: before.level, matricule: before.matricule, due: current.situation.due, reste: current.situation.reste },
+      { program: program.name, level, matricule, due: after.situation.due, reste: after.situation.reste, remiseRetiree: discountRemoved, reason });
+    return { after, previous: matricule !== before.matricule ? before.matricule : null, discountRemoved };
+  });
+  const card = await pushStudentToCard(result.after.student, { previous: result.previous }).catch(() => ({ ok: false }));
+  return { ...result.after, previousMatricule: result.previous, discountRemoved: result.discountRemoved, card };
 }
 
 export async function setCostumeQuantity(db, user, studentId, value) {

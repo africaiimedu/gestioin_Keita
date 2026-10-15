@@ -1381,6 +1381,7 @@ async function showStudent(screen, id) {
       <div class="row-actions">
         <button class="btn" id="pay-this" type="button">Encaisser</button>
         ${allowed("student.write") ? `<button class="btn secondary" id="edit-matricule" type="button">Modifier le matricule</button>` : ""}
+        ${allowed("payment.cancel") && student.status !== "archive" ? `<button class="btn secondary" id="change-program" type="button">Changer d'école ou de programme</button>` : ""}
         ${allowed("payment.cancel") && situation.reste > 0 ? `<button class="btn secondary" id="settle-balance" type="button">Mettre le reste à 0</button>` : ""}
         ${allowed("payment.cancel") && data.settled > 0 ? `<button class="btn secondary" id="reopen-balance" type="button">Rétablir le reste (${gnf(data.settled)})</button>` : ""}
         ${allowed("payment.cancel") ? `<button class="btn secondary" id="custom-fee" type="button">${student.customFee !== null ? "Modifier le prix exceptionnel" : "Prix exceptionnel"}</button>` : ""}
@@ -1461,6 +1462,7 @@ async function showStudent(screen, id) {
     }
   }));
   document.querySelector("#edit-matricule")?.addEventListener("click", () => openMatriculeEdit(student, () => showStudent(screen, id)));
+  document.querySelector("#change-program")?.addEventListener("click", () => openProgramChange(student, situation, () => showStudent(screen, id)));
   const balanceAction = (selector, path, question, done) => document.querySelector(selector)?.addEventListener("click", async () => {
     const reason = window.prompt(question);
     if (reason === null) return;
@@ -1557,6 +1559,133 @@ function openMatriculeEdit(student, onDone) {
   });
   dialog.showModal();
   form.matricule.select();
+}
+
+function openProgramChange(student, situation, onDone) {
+  const yearOptions = {
+    bachelor: [["bachelor_1", "1re année"], ["bachelor_2", "2e année"], ["bachelor_3", "3e année"]],
+    master: [["master_1", "1re année"], ["master_2", "2e année"]],
+    cpi: [["cpi_1", "CPI 1"], ["cpi_2", "CPI 2"]],
+    miage: [["miage_1", "MIAGE 1"], ["miage_2", "MIAGE 2"], ["miage_3", "MIAGE 3"]],
+  };
+  const trackOptions = {
+    general: [["bachelor", "Bachelor"], ["master", "Master"]],
+    tech: [["cpi", "Cycle Préparatoire Intégré (CPI)"], ["miage", "MIAGE"]],
+  };
+  const trackOf = (level) => String(level || "").split("_")[0];
+  const dialog = document.createElement("dialog");
+  dialog.className = "sheet notice";
+  dialog.setAttribute("closedby", "none");
+  const programs = sortSchools(state.catalog.programs.map((item) => ({ ...item, program: item.name })))
+    .map((item) => `<option value="${item.id}" ${item.id === student.programId ? "selected" : ""}>${esc(item.name)}</option>`).join("");
+  dialog.innerHTML = `<form class="matricule-form" novalidate>
+      <div class="dialog-head"><div><p class="mark">Fiche de ${esc(student.name)}</p><h2>Changer d'école ou de programme</h2></div>
+        <button class="dialog-close" type="button" data-close>Fermer</button></div>
+      <p class="muted">Actuellement : <strong>${esc(student.program)}</strong> · ${esc(levelLabel(student.level))}. Les frais suivent le tarif de la nouvelle école et du nouveau programme. Les paiements et les reçus déjà émis ne changent pas.</p>
+      <label>Nouvelle école</label><select name="programId" required>${programs}</select>
+      <div class="duo"><p><label>Cycle</label><select name="track" required></select></p>
+        <p><label>Année</label><select name="level" required></select></p></div>
+      <p class="banner" data-fee></p>
+      <label>Matricule</label>
+      <input name="matricule" value="${esc(student.matricule)}" maxlength="31" autocomplete="off" required>
+      <p class="muted" data-matricule-hint>Le matricule reste ${esc(student.matricule)}.</p>
+      <label>Motif du changement</label><textarea name="reason" rows="2" required placeholder="Ex. : l'étudiant passe de la Business School à l'École de Droit, Master 1"></textarea>
+      <p class="error" data-error hidden></p>
+      <div class="row-actions"><button class="btn secondary" type="button" data-close>Annuler</button><button class="btn" type="submit">Enregistrer le changement</button></div>
+    </form>`;
+  document.body.appendChild(dialog);
+  const form = dialog.querySelector("form");
+  const close = () => { dialog.close(); dialog.remove(); };
+  dialog.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", close));
+  const program = () => state.catalog.programs.find((item) => item.id === Number(form.programId.value));
+  const techSchool = () => String(program()?.code || "").toUpperCase() === "TECH";
+  let proposed = student.matricule;
+  const syncTracks = () => {
+    const tracks = trackOptions[techSchool() ? "tech" : "general"];
+    const previous = form.track.value || trackOf(student.level);
+    form.track.innerHTML = tracks.map(([code, label]) => `<option value="${code}">${label}</option>`).join("");
+    if (tracks.some(([code]) => code === previous)) form.track.value = previous;
+  };
+  const syncYears = () => {
+    const options = yearOptions[form.track.value] || [];
+    const previous = form.level.value || student.level;
+    form.level.innerHTML = options.map(([code, label]) => `<option value="${code}">${label}</option>`).join("");
+    if (options.some(([code]) => code === previous)) form.level.value = previous;
+  };
+  const syncFee = () => {
+    const box = form.querySelector("[data-fee]");
+    if (student.customFee !== null) {
+      box.textContent = `Prix exceptionnel conservé : ${gnf(student.customFee)} pour l'année. Les frais ne changent pas avec le programme.`;
+      return;
+    }
+    const fee = state.catalog.fees.find((item) => item.program_id === Number(form.programId.value) && item.level === form.level.value);
+    if (!fee) {
+      box.textContent = "Aucun tarif pour ce programme dans cette école.";
+      return;
+    }
+    const fees = state.catalog.registrationFees || { bachelor: 0, master: 0 };
+    const registration = form.level.value.startsWith("master") ? fees.master : (techSchool() ? (fees.techBachelor ?? fees.bachelor) : fees.bachelor);
+    const total = fee.tuition_amount + registration;
+    const over = situation.paid - total;
+    box.textContent = `Nouveaux frais annuels : ${gnf(total)} (scolarité ${gnf(fee.tuition_amount)} + inscription ${gnf(registration)}), avant remise ou bourse. Frais dus actuellement : ${gnf(situation.due)}. Déjà versé : ${gnf(situation.paid)}.${over > 0 ? ` Le déjà versé dépasse les nouveaux frais de ${gnf(over)} : ce sera un trop-perçu.` : ""}${form.level.value.startsWith("master") ? " Pas de remise de paiement comptant en Master : si elle était appliquée, elle sera retirée." : ""}`;
+  };
+  const matriculeHint = () => {
+    form.querySelector("[data-matricule-hint]").textContent = form.matricule.value === student.matricule
+      ? `Le matricule reste ${student.matricule}.`
+      : `Nouveau matricule. La carte sera renommée ; les reçus déjà émis gardent ${student.matricule}. Remettez ${student.matricule} pour garder l'ancien.`;
+  };
+  const proposeMatricule = async () => {
+    const untouched = form.matricule.value === proposed;
+    if (Number(form.programId.value) === student.programId) {
+      proposed = student.matricule;
+    } else {
+      try {
+        proposed = (await api(`/api/etudiants/prochain-matricule?ecole=${encodeURIComponent(form.programId.value)}`)).matricule;
+      } catch {
+        proposed = student.matricule;
+      }
+    }
+    if (untouched) form.matricule.value = proposed;
+    matriculeHint();
+  };
+  form.programId.addEventListener("change", () => { syncTracks(); syncYears(); syncFee(); proposeMatricule(); });
+  form.track.addEventListener("change", () => { syncYears(); syncFee(); });
+  form.level.addEventListener("change", syncFee);
+  form.matricule.addEventListener("input", () => {
+    form.matricule.value = form.matricule.value.toUpperCase().replace(/\s+/g, "");
+    matriculeHint();
+  });
+  syncTracks();
+  syncYears();
+  syncFee();
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = form.querySelector("[data-error]");
+    const button = form.querySelector("[type=submit]");
+    error.hidden = true;
+    button.disabled = true;
+    try {
+      const result = await api(`/api/etudiants/${student.id}/programme`, { method: "PUT", body: JSON.stringify({
+        programId: Number(form.programId.value),
+        level: form.level.value,
+        matricule: form.matricule.value,
+        reason: form.reason.value.trim(),
+      }) });
+      close();
+      const parts = [`${result.student.program} · ${levelLabel(result.student.level)} enregistré. Frais dus : ${gnf(result.situation.due)}, reste ${gnf(result.situation.reste)}.`];
+      if (result.discountRemoved) parts.push("La remise de paiement comptant a été retirée (pas de remise en Master).");
+      if (result.situation.credit) parts.push(`Trop-perçu : ${gnf(result.situation.credit)}.`);
+      if (result.previousMatricule) parts.push(`Nouveau matricule ${result.student.matricule}.`);
+      parts.push(result.card?.ok === false ? "La carte sera mise à jour à la prochaine synchronisation." : "Réimprimez la carte.");
+      saved(parts.join(" "));
+      onDone();
+    } catch (caught) {
+      error.hidden = false;
+      error.textContent = caught.message;
+      button.disabled = false;
+    }
+  });
+  dialog.showModal();
 }
 
 function openPaymentCorrection(payment, student, onDone) {

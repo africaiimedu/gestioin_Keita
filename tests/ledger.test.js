@@ -792,6 +792,39 @@ test("costumes impayés : le montant attendu est le nombre de costumes × le pri
   assert.deepEqual([board.costume.expected, board.costume.amount, board.costume.reste], [after.totals.expected, after.totals.amount, after.totals.reste]);
 });
 
+test("changement d'école et de programme après l'inscription : nouveaux frais, paiements gardés, remise Master retirée", async () => {
+  const abs = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const droit = await db.prepare("SELECT id FROM programs WHERE code = 'DROIT'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "PROGRAMME", firstName: "Change", programId: abs.id, level: "bachelor_2", paymentAmount: 0, cashDiscount: true,
+  });
+  const id = created.student.id;
+  assert.ok(created.discounts.some((item) => item.label === "Paiement comptant"));
+  await domain.createPayment(db, agent, {
+    studentId: id, amount: 5_000_000, paidOn: "2026-10-06", method: "especes", idempotencyKey: "changement-programme-01",
+  }, "2026-10-06");
+  const reason = "Demande de l'étudiant";
+  await assert.rejects(() => domain.changeProgram(db, comptable, id, { programId: droit.id, level: "master_1", reason }), /admin/);
+  await assert.rejects(() => domain.changeProgram(db, agent, id, { programId: droit.id, level: "master_1", reason: "" }), /motif/);
+  await assert.rejects(() => domain.changeProgram(db, agent, id, { programId: abs.id, level: "cpi_1", reason }), /aucun tarif/);
+
+  const matricule = await domain.suggestMatricule(db, droit.id);
+  const changed = await domain.changeProgram(db, agent, id, { programId: droit.id, level: "master_1", matricule, reason });
+  assert.equal(changed.student.program_code, "DROIT");
+  assert.equal(changed.student.level, "master_1");
+  assert.equal(changed.student.matricule, matricule);
+  assert.equal(changed.previousMatricule, created.student.matricule);
+  assert.equal(changed.discountRemoved, true);
+  assert.equal(changed.discounts.some((item) => item.label === "Paiement comptant"), false);
+  const fee = await db.prepare("SELECT tuition_amount FROM fee_schedules WHERE program_id = ? AND level = 'master_1'").get(droit.id);
+  assert.equal(changed.situation.due, fee.tuition_amount + 3_000_000);
+  assert.equal(changed.situation.paid, 5_000_000);
+  assert.equal(changed.situation.reste, changed.situation.due - 5_000_000);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS n FROM payments WHERE student_id = ? AND status = 'valide'").get(id)).n, 1);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS n FROM audit_logs WHERE action = 'etudiant.programme' AND entity_id = ?").get(String(id))).n, 1);
+  await assert.rejects(() => domain.changeProgram(db, agent, id, { programId: droit.id, level: "master_1", matricule, reason }), /rien à changer/);
+});
+
 test("tableau de bord : étudiants n'ayant pas payé la première tranche", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const before = await domain.dashboard(db, {});
