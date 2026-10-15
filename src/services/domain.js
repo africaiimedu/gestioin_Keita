@@ -1238,6 +1238,42 @@ export async function listCashPayments(db, date = null) {
   }));
 }
 
+/**
+ * Un reçu imprimé porte l'identité actuelle de l'étudiant (nom, matricule, école, programme), même après un changement.
+ * Si l'école ou le programme ont changé, les frais dus et le reste suivent le nouveau tarif ;
+ * le montant versé ce jour-là, le numéro et la date du reçu ne changent jamais. Un reçu annulé garde ses chiffres.
+ */
+export async function receiptForCurrentStudent(db, snapshot, { studentId, paymentId = null, cancelled = false }) {
+  const student = await db.prepare(`${STUDENT_SELECT} WHERE s.id = ?`).get(Number(studentId));
+  if (!student) return snapshot;
+  const current = {
+    ...snapshot,
+    studentName: `${student.last_name} ${student.first_name}`.trim(),
+    matricule: student.matricule,
+    program: student.program_name,
+    level: student.level,
+    year: student.year_label,
+  };
+  const moved = snapshot.program !== student.program_name || snapshot.level !== student.level;
+  if (!moved || cancelled) return current;
+  const { situation, payments } = await studentSituation(db, student.id);
+  let paidAfter = Number(snapshot.paidAfter || 0);
+  if (paymentId) {
+    const ordered = payments
+      .filter((item) => item.status === "valide")
+      .sort((a, b) => String(a.paidOn).localeCompare(String(b.paidOn)) || a.id - b.id);
+    const index = ordered.findIndex((item) => item.id === Number(paymentId));
+    if (index >= 0) paidAfter = ordered.slice(0, index + 1).reduce((sum, item) => sum + item.amount, 0);
+  }
+  return {
+    ...current,
+    due: situation.due,
+    paidAfter,
+    resteAfter: Math.max(0, situation.due - paidAfter),
+    creditAfter: Math.max(0, paidAfter - situation.due),
+  };
+}
+
 /** Reçu émis après celui-ci pour le même étudiant (versement de scolarité ou costume payé seul) : c'est lui qui fait foi. */
 export async function laterReceipt(db, receipt) {
   return db.prepare(`

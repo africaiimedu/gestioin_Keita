@@ -55,6 +55,7 @@ import {
   updateStudent,
   changeMatricule,
   changeProgram,
+  receiptForCurrentStudent,
   setCostumeQuantity,
   suggestMatricule,
   unpaidCostumes,
@@ -332,7 +333,10 @@ app.get("/api/caisse/etudiants", requireAction("payment.create"), async (_req, r
 app.get("/api/costumes/:id/recu.pdf", requireAction("receipt.read"), async (req, res) => {
   const entry = await db.prepare("SELECT * FROM costume_payments WHERE id = ? AND receipt_number IS NOT NULL").get(Number(req.params.id));
   if (!entry) throw new HttpError(404, "Reçu de costume introuvable");
-  const snapshot = JSON.parse(entry.snapshot_json);
+  const snapshot = await receiptForCurrentStudent(db, JSON.parse(entry.snapshot_json), {
+    studentId: entry.student_id,
+    cancelled: entry.status === "annule",
+  });
   const common = {
     snapshot,
     school: await schoolBlock(),
@@ -359,7 +363,11 @@ app.get("/api/recus/:id.pdf", requireAction("receipt.read"), async (req, res) =>
   const replacedBy = receipt.payment_status === "valide" ? await laterReceipt(db, receipt) : null;
   const format = req.query.format === "a5" ? "a5" : "a4";
   const pdf = await renderReceiptPdf({
-    snapshot: JSON.parse(receipt.snapshot_json),
+    snapshot: await receiptForCurrentStudent(db, JSON.parse(receipt.snapshot_json), {
+      studentId: receipt.student_id,
+      paymentId: receipt.payment_id,
+      cancelled: receipt.payment_status === "annule",
+    }),
     receipt,
     school: await schoolBlock(),
     format,
@@ -570,12 +578,12 @@ app.get("/v/:token", async (req, res) => {
     return;
   }
   const receipt = await db.prepare(`
-    SELECT r.number, r.snapshot_json, p.status, c.cancelled_at
+    SELECT r.number, r.snapshot_json, p.status, c.cancelled_at, p.student_id
     FROM receipts r JOIN payments p ON p.id = r.payment_id
     LEFT JOIN cancellations c ON c.payment_id = p.id
     WHERE r.verify_token = ?
     UNION ALL
-    SELECT k.receipt_number, k.snapshot_json, k.status, NULL
+    SELECT k.receipt_number, k.snapshot_json, k.status, NULL, k.student_id
     FROM costume_payments k WHERE k.verify_token = ?
   `).get(req.params.token, req.params.token);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -583,7 +591,7 @@ app.get("/v/:token", async (req, res) => {
     res.status(404).send("<!doctype html><meta charset='utf-8'><title>Reçu</title><p>Reçu introuvable.</p>");
     return;
   }
-  const snap = JSON.parse(receipt.snapshot_json);
+  const snap = await receiptForCurrentStudent(db, JSON.parse(receipt.snapshot_json), { studentId: receipt.student_id, cancelled: true });
   const state = receipt.status === "annule" ? "ANNULÉ" : "AUTHENTIQUE";
   res.send(`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Vérification ${escapeHtml(receipt.number)}</title>

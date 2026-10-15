@@ -800,9 +800,10 @@ test("changement d'école et de programme après l'inscription : nouveaux frais,
   });
   const id = created.student.id;
   assert.ok(created.discounts.some((item) => item.label === "Paiement comptant"));
-  await domain.createPayment(db, agent, {
+  const paid = await domain.createPayment(db, agent, {
     studentId: id, amount: 5_000_000, paidOn: "2026-10-06", method: "especes", idempotencyKey: "changement-programme-01",
   }, "2026-10-06");
+  const receipt = await db.prepare("SELECT * FROM receipts WHERE payment_id = ?").get(paid.paymentId);
   const reason = "Demande de l'étudiant";
   await assert.rejects(() => domain.changeProgram(db, comptable, id, { programId: droit.id, level: "master_1", reason }), /admin/);
   await assert.rejects(() => domain.changeProgram(db, agent, id, { programId: droit.id, level: "master_1", reason: "" }), /motif/);
@@ -823,6 +824,18 @@ test("changement d'école et de programme après l'inscription : nouveaux frais,
   assert.equal((await db.prepare("SELECT COUNT(*)::int AS n FROM payments WHERE student_id = ? AND status = 'valide'").get(id)).n, 1);
   assert.equal((await db.prepare("SELECT COUNT(*)::int AS n FROM audit_logs WHERE action = 'etudiant.programme' AND entity_id = ?").get(String(id))).n, 1);
   await assert.rejects(() => domain.changeProgram(db, agent, id, { programId: droit.id, level: "master_1", matricule, reason }), /rien à changer/);
+
+  const original = JSON.parse(receipt.snapshot_json);
+  const shown = await domain.receiptForCurrentStudent(db, original, { studentId: id, paymentId: paid.paymentId });
+  assert.equal(shown.program, changed.student.program_name);
+  assert.equal(shown.level, "master_1");
+  assert.equal(shown.matricule, matricule);
+  assert.equal(shown.amount, original.amount);
+  assert.equal(shown.due, changed.situation.due);
+  assert.equal(shown.paidAfter, 5_000_000);
+  assert.equal(shown.resteAfter, changed.situation.due - 5_000_000);
+  const stored = await db.prepare("SELECT snapshot_json FROM receipts WHERE id = ?").get(receipt.id);
+  assert.equal(JSON.parse(stored.snapshot_json).program, original.program);
 });
 
 test("tableau de bord : étudiants n'ayant pas payé la première tranche", async () => {
