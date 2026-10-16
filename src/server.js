@@ -54,6 +54,7 @@ import {
   updateSettings,
   updateStudent,
   changeMatricule,
+  changeName,
   changeProgram,
   receiptForCurrentStudent,
   setCostumeQuantity,
@@ -263,6 +264,16 @@ app.put("/api/etudiants/:id/costume-nombre", requireAction("payment.create"), as
 });
 app.put("/api/etudiants/:id/matricule", requireAction("student.write"), async (req, res) => {
   res.json(await changeMatricule(db, req.user, Number(req.params.id), req.body?.matricule));
+});
+app.put("/api/etudiants/:id/nom", requireAction("student.write"), async (req, res) => {
+  const result = await changeName(db, req.user, Number(req.params.id), req.body || {});
+  res.json({
+    student: publicStudent(result.student),
+    situation: result.situation,
+    changed: result.changed,
+    previousEmail: result.previousEmail,
+    card: result.card,
+  });
 });
 app.put("/api/etudiants/:id/programme", requireAction("payment.cancel"), async (req, res) => {
   const result = await changeProgram(db, req.user, Number(req.params.id), req.body || {});

@@ -1380,6 +1380,7 @@ async function showStudent(screen, id) {
       ${student.accountEmail ? `<p class="muted">Compte étudiant : ${esc(student.accountEmail)}</p>` : ""}</div>
       <div class="row-actions">
         <button class="btn" id="pay-this" type="button">Encaisser</button>
+        ${allowed("student.write") ? `<button class="btn secondary" id="edit-name" type="button">Corriger le nom</button>` : ""}
         ${allowed("student.write") ? `<button class="btn secondary" id="edit-matricule" type="button">Modifier le matricule</button>` : ""}
         ${allowed("payment.cancel") && student.status !== "archive" ? `<button class="btn secondary" id="change-program" type="button">Changer d'école ou de programme</button>` : ""}
         ${allowed("payment.cancel") && situation.reste > 0 ? `<button class="btn secondary" id="settle-balance" type="button">Mettre le reste à 0</button>` : ""}
@@ -1461,6 +1462,7 @@ async function showStudent(screen, id) {
       saved(caught.message);
     }
   }));
+  document.querySelector("#edit-name")?.addEventListener("click", () => openNameEdit(student, () => showStudent(screen, id)));
   document.querySelector("#edit-matricule")?.addEventListener("click", () => openMatriculeEdit(student, () => showStudent(screen, id)));
   document.querySelector("#change-program")?.addEventListener("click", () => openProgramChange(student, situation, () => showStudent(screen, id)));
   const balanceAction = (selector, path, question, done) => document.querySelector(selector)?.addEventListener("click", async () => {
@@ -1517,6 +1519,57 @@ async function showStudent(screen, id) {
     state.idempotencyKey = newKey();
     render();
   });
+}
+
+function openNameEdit(student, onDone) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "sheet notice";
+  dialog.setAttribute("closedby", "none");
+  dialog.innerHTML = `<form class="name-form" novalidate>
+      <div class="dialog-head"><div><p class="mark">Fiche de ${esc(student.name)}</p><h2>Corriger le nom</h2></div>
+        <button class="dialog-close" type="button" data-close>Fermer</button></div>
+      <p class="muted">Corrigez une erreur de saisie. Les reçus et la carte afficheront le nom corrigé. Le compte étudiant suit le nouveau nom.</p>
+      <div class="duo"><p><label>Nom</label><input name="lastName" value="${esc(student.lastName)}" required autocomplete="off"></p>
+        <p><label>Prénom</label><input name="firstName" value="${esc(student.firstName)}" required autocomplete="off"></p></div>
+      <p class="muted">Aperçu du compte : <strong data-email>${esc(student.accountEmail || "—")}</strong></p>
+      <p class="error" data-error hidden></p>
+      <div class="row-actions"><button class="btn secondary" type="button" data-close>Annuler</button><button class="btn" type="submit">Enregistrer le nom</button></div>
+    </form>`;
+  document.body.appendChild(dialog);
+  const form = dialog.querySelector("form");
+  const preview = form.querySelector("[data-email]");
+  const syncEmail = () => { preview.textContent = studentAddress(form.firstName.value, form.lastName.value) || "—"; };
+  form.firstName.addEventListener("input", syncEmail);
+  form.lastName.addEventListener("input", syncEmail);
+  const close = () => { dialog.close(); dialog.remove(); };
+  dialog.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", close));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = form.querySelector("[data-error]");
+    const button = form.querySelector("[type=submit]");
+    error.hidden = true;
+    button.disabled = true;
+    try {
+      const result = await api(`/api/etudiants/${student.id}/nom`, { method: "PUT", body: JSON.stringify({
+        lastName: form.lastName.value,
+        firstName: form.firstName.value,
+      }) });
+      close();
+      if (!result.changed) saved("Nom inchangé");
+      else if (result.student.accountEmail && result.student.accountEmail !== result.previousEmail) {
+        saved(`Nom corrigé : ${result.student.name}. Compte étudiant : ${result.student.accountEmail}. Réimprimez la carte.`);
+      } else if (result.card?.ok === false) {
+        saved(`Nom corrigé : ${result.student.name}. La carte sera mise à jour à la prochaine synchronisation.`);
+      } else saved(`Nom corrigé : ${result.student.name}. Réimprimez la carte.`);
+      onDone();
+    } catch (caught) {
+      error.hidden = false;
+      error.textContent = caught.message;
+      button.disabled = false;
+    }
+  });
+  dialog.showModal();
+  form.lastName.select();
 }
 
 function openMatriculeEdit(student, onDone) {

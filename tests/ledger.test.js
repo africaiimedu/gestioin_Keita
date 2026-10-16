@@ -648,6 +648,43 @@ test("matricule : saisi à l'inscription, unique, modifiable ensuite", async () 
   assert.match(trace.after_json, /AIM-2026-0501/);
 });
 
+test("correction du nom et du prénom : reçus et compte étudiant mis à jour", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "NOMERR", firstName: "PrenomFaux", programId: program.id, level: "bachelor_1",
+    paymentAmount: "2000000", method: "especes",
+  });
+  const paid = await db.prepare("SELECT id FROM payments WHERE student_id = ? AND status = 'valide'").get(created.student.id);
+  const receipt = await db.prepare("SELECT snapshot_json FROM receipts WHERE payment_id = ?").get(paid.id);
+  assert.match(JSON.parse(receipt.snapshot_json).studentName, /NOMERR PrenomFaux/);
+  await assert.rejects(() => domain.changeName(db, direction, created.student.id, { lastName: "NOMERR", firstName: "PrenomJuste" }), /droit/);
+  await assert.rejects(() => domain.changeName(db, agent, created.student.id, { lastName: "N", firstName: "PrenomJuste" }), /obligatoires/);
+  const twin = await domain.createStudent(db, agent, {
+    lastName: "JUMEAU", firstName: "Test", programId: program.id, level: "bachelor_1",
+  });
+  await assert.rejects(() => domain.changeName(db, agent, created.student.id, {
+    lastName: twin.student.last_name, firstName: twin.student.first_name,
+  }), /déjà enregistré/);
+  const previousEmail = created.student.account_email;
+  const corrected = await domain.changeName(db, agent, created.student.id, {
+    lastName: "nomok", firstName: "Prenomjuste",
+  });
+  assert.equal(corrected.changed, true);
+  assert.equal(corrected.student.last_name, "NOMOK");
+  assert.equal(corrected.student.first_name, "Prenomjuste");
+  assert.equal(corrected.student.account_email, "prenomjuste.nomok@univ-africaiim.com");
+  assert.notEqual(corrected.student.account_email, previousEmail);
+  const shown = await domain.receiptForCurrentStudent(db, JSON.parse(receipt.snapshot_json), {
+    studentId: created.student.id, paymentId: paid.id,
+  });
+  assert.equal(shown.studentName, "NOMOK Prenomjuste");
+  const same = await domain.changeName(db, agent, created.student.id, {
+    lastName: "NOMOK", firstName: "Prenomjuste",
+  });
+  assert.equal(same.changed, false);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS n FROM audit_logs WHERE action = 'etudiant.nom' AND entity_id = ?").get(String(created.student.id))).n, 1);
+});
+
 test("dépenses : décharge numérotée, montant en lettres, immuable, annulable avec motif", async () => {
   await assert.rejects(() => expenses.createExpense(db, comptable, {
     amount: 500_000, receiverName: "Kaba Mariama", receiverPosition: "Logistique", reason: "Fournitures",

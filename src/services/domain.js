@@ -1578,6 +1578,35 @@ export async function changeMatricule(db, user, studentId, value) {
   return { ...result.situation, previousMatricule: result.previous, card };
 }
 
+/** Corrige une erreur de saisie sur le nom ou le prénom. Les reçus et la carte affichent le nom corrigé. */
+export async function changeName(db, user, studentId, input = {}) {
+  if (!can(user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit de modifier cette fiche");
+  const last = String(input.lastName || "").trim();
+  const first = String(input.firstName || "").trim();
+  if (last.length < 2 || first.length < 2) throw new HttpError(400, "Le nom et le prénom sont obligatoires");
+  const result = await transaction(db, async () => {
+    const before = await db.prepare("SELECT * FROM students WHERE id = ?").get(Number(studentId));
+    if (!before) throw new HttpError(404, "Étudiant introuvable");
+    const lastName = last.toUpperCase();
+    if (before.last_name === lastName && before.first_name === first) {
+      return { changed: false, previousEmail: before.account_email, situation: await studentSituation(db, before.id) };
+    }
+    await refuseSamePerson(db, lastName, first, before.id);
+    await db.prepare("UPDATE students SET last_name = ?, first_name = ? WHERE id = ?").run(lastName, first, before.id);
+    const accountEmail = await assignAccountEmail(db, { id: before.id, first_name: first, last_name: lastName, account_email: before.account_email });
+    await audit(db, user.id, "etudiant.nom", "students", before.id,
+      { lastName: before.last_name, firstName: before.first_name, accountEmail: before.account_email },
+      { lastName, firstName: first, accountEmail });
+    const situation = await studentSituation(db, before.id);
+    await refreshCard(db, situation.student, situation.situation);
+    return { changed: true, previousEmail: before.account_email, situation };
+  });
+  const card = result.changed && result.situation.student.status !== "archive"
+    ? await pushStudentToCard(result.situation.student).catch(() => ({ ok: false }))
+    : null;
+  return { ...result.situation, changed: result.changed, previousEmail: result.previousEmail, card };
+}
+
 /**
  * Change l'école et le programme d'un étudiant déjà inscrit. Les frais suivent le barème de la nouvelle école ;
  * les paiements et reçus déjà émis ne changent pas. La remise « paiement comptant » est retirée si le nouveau
