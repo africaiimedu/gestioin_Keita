@@ -305,6 +305,12 @@ app.post("/api/etudiants", requireAction("student.write"), async (req, res) => {
   res.status(201).json({
     student: publicStudent(created.student),
     situation: created.situation,
+    namesakes: (created.namesakes || []).map((row) => ({
+      id: row.id,
+      matricule: row.matricule,
+      name: `${row.last_name} ${row.first_name}`.trim(),
+      accountEmail: row.account_email,
+    })),
   });
 });
 app.patch("/api/etudiants/:id", requireAction("student.write"), async (req, res) => {

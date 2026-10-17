@@ -103,8 +103,12 @@ export async function previewImport(db, filename, text, userId) {
     const person = nom && prenom ? personKey(nom, prenom) : "";
     if (person) {
       const twin = people.get(person);
-      if (twin && twin.matricule !== matricule) anomalies.push(`Personne déjà enregistrée (${twin.matricule}) : les versements seront ajoutés à sa fiche`);
-      if (seenPeople.has(person)) anomalies.push("Personne en double dans le fichier");
+      if (twin && twin.matricule !== matricule) {
+        anomalies.push(matricule
+          ? `Homonyme de ${twin.matricule} : une nouvelle fiche sera créée avec le matricule ${matricule}`
+          : `Homonyme de ${twin.matricule} : sans matricule, les versements iront sur sa fiche. Indiquez un nouveau matricule pour créer une autre fiche`);
+      }
+      if (seenPeople.has(person) && !matricule) anomalies.push("Personne en double dans le fichier (sans matricule)");
       seenPeople.add(person);
     }
     return {
@@ -143,7 +147,8 @@ export async function commitImport(db, user, batchId, decisions) {
       if (decisions?.[row.line] === "skip" || row.anomalies.includes("Ligne vide")) { skipped += 1; continue; }
       if (!row.programId || !row.nom) { skipped += 1; continue; }
       let student = row.matricule ? await db.prepare("SELECT * FROM students WHERE matricule = ?").get(row.matricule) : null;
-      if (!student && row.prenom) {
+      // Sans matricule, un homonyme existant reçoit les versements ; avec un matricule distinct, une nouvelle fiche est créée.
+      if (!student && !row.matricule && row.prenom) {
         const twin = await findSamePerson(db, row.nom, row.prenom);
         if (twin) student = await db.prepare("SELECT * FROM students WHERE id = ?").get(twin.id);
       }

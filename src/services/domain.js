@@ -20,7 +20,7 @@ import {
 } from "../finance/index.js";
 import { HttpError } from "../httpError.js";
 import { pushStudentToCard } from "./cardSync.js";
-import { assignAccountEmail, refuseSamePerson } from "./identity.js";
+import { assignAccountEmail, listNamesakes } from "./identity.js";
 
 const METHODS = new Set(Object.keys(METHOD_LABELS));
 const INSTALLMENTS = ["inscription", "tranche_1", "tranche_2", "tranche_3"];
@@ -1472,7 +1472,7 @@ export async function createStudent(db, user, input) {
   if (!techSchool && TECH_LEVELS.has(input.level)) throw new HttpError(400, "Les niveaux CPI et MIAGE sont réservés à Africaiim Tech");
   const paidOn = todayInConakry();
   const created = await transaction(db, async () => {
-    await refuseSamePerson(db, last, first);
+    const namesakes = await listNamesakes(db, last, first);
     const matricule = typedMatricule || await nextMatricule(db, year.label, program);
     await refuseTakenMatricule(db, matricule);
     const result = await db.prepare(`
@@ -1481,7 +1481,10 @@ export async function createStudent(db, user, input) {
     `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1);
     const studentId = result.lastInsertRowid;
     await assignAccountEmail(db, { id: studentId, first_name: first, last_name: last });
-    await audit(db, user.id, "etudiant.creer", "students", studentId, null, { matricule, last, first, level: input.level, scholarship });
+    await audit(db, user.id, "etudiant.creer", "students", studentId, null, {
+      matricule, last, first, level: input.level, scholarship,
+      namesakes: namesakes.map((row) => row.matricule),
+    });
     if (scholarship) {
       await db.prepare(`
         INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
@@ -1506,7 +1509,7 @@ export async function createStudent(db, user, input) {
     }
     const current = await studentSituation(db, studentId, paidOn);
     await refreshCard(db, current.student, current.situation);
-    return studentSituation(db, studentId, paidOn);
+    return { ...await studentSituation(db, studentId, paidOn), namesakes };
   });
   pushStudentToCard(created.student).catch(() => {});
   return created;
@@ -1591,7 +1594,6 @@ export async function changeName(db, user, studentId, input = {}) {
     if (before.last_name === lastName && before.first_name === first) {
       return { changed: false, previousEmail: before.account_email, situation: await studentSituation(db, before.id) };
     }
-    await refuseSamePerson(db, lastName, first, before.id);
     await db.prepare("UPDATE students SET last_name = ?, first_name = ? WHERE id = ?").run(lastName, first, before.id);
     const accountEmail = await assignAccountEmail(db, { id: before.id, first_name: first, last_name: lastName, account_email: before.account_email });
     await audit(db, user.id, "etudiant.nom", "students", before.id,
@@ -1697,7 +1699,6 @@ export async function updateStudent(db, user, studentId, input) {
     if (!before) throw new HttpError(404, "Étudiant introuvable");
     const status = input.status || before.status;
     if (!["actif", "suspendu", "archive"].includes(status)) throw new HttpError(400, "Statut inconnu");
-    if (before.status === "archive" && status !== "archive") await refuseSamePerson(db, before.last_name, before.first_name, before.id);
     await db.prepare(`
       UPDATE students SET phone = ?, email = ?, guardian_name = ?, guardian_phone = ?, status = ? WHERE id = ?
     `).run(clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), status, studentId);

@@ -385,34 +385,33 @@ test("prix exceptionnel fixé par l'admin : remplace le barème, sans remise, et
   assert.equal((await db.prepare("SELECT count(*)::int AS n FROM discounts WHERE student_id = ? AND label = 'Paiement comptant'").get(id)).n, 1);
 });
 
-test("compte étudiant créé à l'inscription, et une personne n'est jamais enregistrée deux fois", async () => {
+test("compte étudiant créé à l'inscription, et deux homonymes ont matricule et compte distincts", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const first = await domain.createStudent(db, agent, {
     lastName: "Kourouma", firstName: "Mamadou Alpha", programId: program.id, level: "bachelor_1",
     paymentAmount: 1_000_000, method: "especes",
   });
   assert.equal(first.student.account_email, "alpha.kourouma@univ-africaiim.com");
-  const count = async () => (await db.prepare("SELECT COUNT(*) AS n FROM students").get()).n;
-  const before = await count();
-  await assert.rejects(
-    () => domain.createStudent(db, agent, {
-      lastName: "KOUROUMA", firstName: "alpha mamadou", programId: program.id, level: "bachelor_1",
-      paymentAmount: 2_000_000, method: "especes",
-    }),
-    (error) => error.status === 409 && error.message.includes(first.student.matricule),
-  );
-  assert.equal(await count(), before);
+  assert.equal(first.namesakes.length, 0);
+  const twin = await domain.createStudent(db, agent, {
+    lastName: "KOUROUMA", firstName: "alpha mamadou", programId: program.id, level: "bachelor_1",
+    paymentAmount: 2_000_000, method: "especes",
+  });
+  assert.notEqual(twin.student.matricule, first.student.matricule);
+  assert.equal(twin.student.account_email, "alpha.kourouma2@univ-africaiim.com");
+  assert.equal(twin.namesakes.length, 1);
+  assert.equal(twin.namesakes[0].matricule, first.student.matricule);
   const other = await domain.createStudent(db, agent, {
     lastName: "KOUROUMA", firstName: "Alpha", programId: program.id, level: "bachelor_1",
     paymentAmount: 0, method: "especes",
   });
-  assert.equal(other.student.account_email, "alpha.kourouma2@univ-africaiim.com");
+  assert.equal(other.student.account_email, "alpha.kourouma3@univ-africaiim.com");
   const payment = await db.prepare("SELECT id FROM payments WHERE student_id = ? ORDER BY id LIMIT 1").get(first.student.id);
   const added = await domain.updatePayment(db, agent, payment.id, {
     amount: 2_000_000, paidOn: "2026-10-06", method: "especes", idempotencyKey: "compte-maj-0001",
   }, "2026-10-06");
   assert.equal(added.after.paid, 3_000_000);
-  assert.equal(await count(), before + 1);
+  assert.equal(added.keptAmount, 1_000_000);
 });
 
 test("une mise à jour ajoute un versement sans modifier le montant déjà enregistré", async () => {
@@ -662,10 +661,13 @@ test("correction du nom et du prénom : reçus et compte étudiant mis à jour",
   const twin = await domain.createStudent(db, agent, {
     lastName: "JUMEAU", firstName: "Test", programId: program.id, level: "bachelor_1",
   });
-  await assert.rejects(() => domain.changeName(db, agent, created.student.id, {
+  const asTwin = await domain.changeName(db, agent, created.student.id, {
     lastName: twin.student.last_name, firstName: twin.student.first_name,
-  }), /déjà enregistré/);
-  const previousEmail = created.student.account_email;
+  });
+  assert.equal(asTwin.changed, true);
+  assert.equal(asTwin.student.last_name, "JUMEAU");
+  assert.match(asTwin.student.account_email, /jumeau2@/);
+  const previousEmail = asTwin.student.account_email;
   const corrected = await domain.changeName(db, agent, created.student.id, {
     lastName: "nomok", firstName: "Prenomjuste",
   });
@@ -682,7 +684,7 @@ test("correction du nom et du prénom : reçus et compte étudiant mis à jour",
     lastName: "NOMOK", firstName: "Prenomjuste",
   });
   assert.equal(same.changed, false);
-  assert.equal((await db.prepare("SELECT COUNT(*)::int AS n FROM audit_logs WHERE action = 'etudiant.nom' AND entity_id = ?").get(String(created.student.id))).n, 1);
+  assert.equal((await db.prepare("SELECT COUNT(*)::int AS n FROM audit_logs WHERE action = 'etudiant.nom' AND entity_id = ?").get(String(created.student.id))).n, 2);
 });
 
 test("dépenses : décharge numérotée, montant en lettres, immuable, annulable avec motif", async () => {

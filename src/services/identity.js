@@ -1,5 +1,3 @@
-import { HttpError } from "../httpError.js";
-
 export const ACCOUNT_DOMAIN = "univ-africaiim.com";
 const VALID_NAME = /^[A-Za-zÀ-ÖØ-öø-ÿ'’\- ]{2,80}$/;
 
@@ -39,19 +37,20 @@ export function accountAddress(base, rank = 1) {
   return `${base}${rank > 1 ? rank : ""}@${ACCOUNT_DOMAIN}`;
 }
 
-export async function findSamePerson(db, lastName, firstName, exceptId = null) {
+/** Autres étudiants actifs portant le même nom (accents, casse et ordre des mots ignorés). */
+export async function listNamesakes(db, lastName, firstName, exceptId = null) {
   const key = personKey(lastName, firstName);
-  if (!key) return null;
+  if (!key) return [];
   const rows = await db.prepare(`
-    SELECT id, matricule, last_name, first_name FROM students WHERE status <> 'archive' AND id <> COALESCE(?::int, 0) ORDER BY id
+    SELECT id, matricule, last_name, first_name, account_email FROM students
+    WHERE status <> 'archive' AND id <> COALESCE(?::int, 0) ORDER BY id
   `).all(exceptId);
-  return rows.find((row) => personKey(row.last_name, row.first_name) === key) || null;
+  return rows.filter((row) => personKey(row.last_name, row.first_name) === key);
 }
 
-export async function refuseSamePerson(db, lastName, firstName, exceptId = null) {
-  const twin = await findSamePerson(db, lastName, firstName, exceptId);
-  if (!twin) return;
-  throw new HttpError(409, `${twin.last_name} ${twin.first_name} est déjà enregistré(e) sous le matricule ${twin.matricule}. Une personne ne peut pas être enregistrée deux fois : pour un nouveau versement, ouvrez sa fiche puis « Mettre à jour le paiement ».`);
+export async function findSamePerson(db, lastName, firstName, exceptId = null) {
+  const twins = await listNamesakes(db, lastName, firstName, exceptId);
+  return twins[0] || null;
 }
 
 /** Attribue l'adresse du compte étudiant ; à appeler dans une transaction (verrou d'écriture). */
