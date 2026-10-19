@@ -328,6 +328,18 @@ test("bachelor, masters, remise de 1.200.000 au choix et boursier", async () => 
   });
   assert.equal(changed.situation.due, 27_000_000);
   assert.equal((await db.prepare("SELECT registration_amount FROM fee_schedules WHERE id = ?").get(bachelor2.id)).registration_amount, 5_200_000);
+  await domain.saveFeeSchedule(db, agent, {
+    id: bachelor2.id, registration: 6_000_000, installment1: 9_000_000, installment2: 10_000_000, installment3: 0,
+  });
+  const custom = await db.prepare("SELECT tuition_amount, registration_amount, installment_1, installment_2 FROM fee_schedules WHERE id = ?").get(bachelor2.id);
+  assert.deepEqual([custom.tuition_amount, custom.registration_amount, custom.installment_1, custom.installment_2], [25_000_000, 6_000_000, 9_000_000, 10_000_000]);
+  const withCustom = await domain.createStudent(db, agent, {
+    lastName: "SYLLA", firstName: "Tranches", programId: program.id, level: "bachelor_2",
+  });
+  assert.equal(withCustom.situation.due, 26_000_000);
+  assert.equal(withCustom.situation.plan.find((item) => item.code === "inscription").amount, 7_000_000);
+  assert.equal(withCustom.situation.plan.find((item) => item.code === "tranche_1").amount, 9_000_000);
+  assert.equal(withCustom.situation.plan.find((item) => item.code === "tranche_2").amount, 10_000_000);
 });
 
 test("reste mis à 0 par l'admin, avec motif, puis rétabli sans rien effacer", async () => {

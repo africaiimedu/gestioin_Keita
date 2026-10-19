@@ -765,6 +765,30 @@ dialog.sheet form { padding: 22px 22px 18px; overflow: auto; max-height: min(92v
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.fee-open {
+  display: block;
+  width: 100%;
+  min-width: 7.4rem;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line, #c9d5ce);
+  border-radius: 8px;
+  background: #fff;
+  text-align: right;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+.fee-open:hover, .fee-open:focus-visible {
+  border-color: var(--green-2, #004c22);
+  outline: 2px solid color-mix(in srgb, var(--green-2, #004c22) 25%, transparent);
+}
+.fee-hint { margin: 12px 4px 0; }
+.fee-tranches { display: grid; gap: 10px; margin: 12px 0; }
+.fee-tranches p { margin: 0; }
+.fee-total { margin: 0 0 12px; font-size: 1.05rem; }
 .fee-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .fee-foot p { margin: 0; line-height: 1.4; }
 .fee-foot .btn, .settings-card .btn { margin-top: 0; }

@@ -3229,6 +3229,14 @@ function showSettings(screen) {
   const techHeads = techLevels.map((level) => labels[level]);
   const isTech = (program) => String(program.code || "").toUpperCase() === "TECH";
   const francs = (amount) => grouped(amount);
+  const trancheFields = (fee, caption) => {
+    if (!fee) return `<td class="fee-empty" colspan="1"><span class="muted">—</span></td>`;
+    return `<td class="fee-cell">
+      <button type="button" class="fee-open" data-fee="${fee.id}" data-label="${esc(caption)}"
+        data-t1="${fee.registration_amount}" data-t2="${fee.installment_1}" data-t3="${fee.installment_2}"
+        aria-label="${esc(caption)}">${francs(fee.tuition_amount)}</button>
+    </td>`;
+  };
   const feeTable = ([firstGroup, firstSpan, secondGroup, secondSpan], heads, levels, programs) => programs.length ? `<table class="fee-table">
             <thead>
               <tr class="fee-group">
@@ -3246,14 +3254,13 @@ function showSettings(screen) {
                 <th scope="row">${esc(program.name)}</th>
                 ${levels.map((level) => {
                   const fee = state.catalog.fees.find((item) => item.program_id === program.id && item.level === level);
-                  const caption = `${program.name}, ${labels[level]}`;
-                  return `<td><input name="tuition" data-fee="${fee?.id || ""}" data-label="${esc(caption)}" inputmode="numeric" required aria-label="${esc(caption)}" value="${fee ? francs(fee.tuition_amount) : ""}"></td>`;
+                  return trancheFields(fee, `${program.name}, ${labels[level]}`);
                 }).join("")}
               </tr>`).join("")}
             </tbody>
           </table>` : "";
   screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Tarifs des programmes</h1>
-      <p class="lead">Scolarité annuelle en francs guinéens, répartie en 20 % le 5 octobre, 40 % le 5 décembre et 40 % le 5 mars. Les fiches Bachelor, Master, CPI et MIAGE déjà créées suivent le nouveau tarif.</p></div></div>
+      <p class="lead">Cliquez un montant pour fixer la 1re, 2e et 3e tranche. Les frais d'inscription (ci-dessous) s'ajoutent encore à la 1re échéance. Les fiches déjà créées suivent le nouveau tarif.</p></div></div>
     <div class="stat-row">
       <div class="stat-tile"><span>Inscription Licence et Bachelor</span><strong>${gnf(state.catalog.registrationFees?.bachelor || 0)}</strong></div>
       <div class="stat-tile"><span>Inscription Africaiim Tech (CPI et MIAGE)</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
@@ -3273,17 +3280,11 @@ function showSettings(screen) {
       </form>
     </article>
     <article class="card fee-board">
-      <form id="fees">
-        <div class="table-scroll">
-          ${feeTable(["Bachelor", 3, "Master", 2], yearHeads, offerLevels, state.catalog.programs.filter((program) => !isTech(program)))}
-          ${feeTable(["Cycle Préparatoire Intégré", 2, "MIAGE", 3], techHeads, techLevels, state.catalog.programs.filter(isTech))}
-        </div>
-        <div class="fee-foot">
-          <p class="muted" data-split>Cliquez un montant pour voir sa répartition 20 % / 40 % / 40 %.</p>
-          <button class="btn" type="submit">Enregistrer</button>
-        </div>
-        <p class="error" data-fee-error hidden></p>
-      </form>
+      <div class="table-scroll">
+        ${feeTable(["Bachelor", 3, "Master", 2], yearHeads, offerLevels, state.catalog.programs.filter((program) => !isTech(program)))}
+        ${feeTable(["Cycle Préparatoire Intégré", 2, "MIAGE", 3], techHeads, techLevels, state.catalog.programs.filter(isTech))}
+      </div>
+      <p class="muted fee-hint">Cliquez un total pour modifier les trois tranches (ou répartir automatiquement 20 % / 40 % / 40 %).</p>
     </article>
     <details class="card settings-card">
       <summary>Établissement</summary>
@@ -3303,52 +3304,89 @@ function showSettings(screen) {
         </form>
       </div>
     </details>`;
-  const splitText = (amount) => {
-    const inscription = Math.floor((amount * 20 + 50) / 100);
-    const december = Math.floor((amount * 40 + 50) / 100);
-    const march = amount - inscription - december;
-    return `20 % : ${gnf(inscription)} · 40 % : ${gnf(december)} · 40 % : ${gnf(march)}`;
-  };
-  const fees = document.querySelector("#fees");
-  const hint = fees.querySelector("[data-split]");
-  const showSplit = (input) => {
+  const moneyDigits = (input) => {
     const digits = input.value.replace(/[^\d]/g, "");
-    const amount = Number(digits);
-    hint.textContent = amount
-      ? `${input.dataset.label} — ${splitText(amount)}`
-      : "Cliquez un montant pour voir sa répartition 20 % / 40 % / 40 %.";
+    input.value = digits ? grouped(Number(digits)) : "";
+    return Number(digits) || 0;
   };
-  fees.addEventListener("input", (event) => {
-    if (!event.target.matches("[data-fee]")) return;
-    const digits = event.target.value.replace(/[^\d]/g, "");
-    event.target.value = digits ? grouped(Number(digits)) : "";
-    showSplit(event.target);
-  });
-  fees.addEventListener("focusin", (event) => {
-    if (event.target.matches("[data-fee]")) showSplit(event.target);
-  });
-  fees.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const error = fees.querySelector("[data-fee-error]");
-    error.hidden = true;
-    const button = fees.querySelector("[type=submit]");
-    button.disabled = true;
-    try {
-      for (const input of fees.querySelectorAll("[data-fee]")) {
-        const tuition = Number(input.value.replace(/\D/g, ""));
-        if (!input.dataset.fee || !tuition) throw new Error("Chaque tarif doit être un montant entier supérieur à zéro.");
-        const current = state.catalog.fees.find((fee) => String(fee.id) === input.dataset.fee);
-        if (current && current.tuition_amount === tuition) continue;
-        await api(`/api/baremes/${input.dataset.fee}`, { method: "PUT", body: JSON.stringify({ tuition }) });
+  const openFeeEditor = (button) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "sheet notice";
+    dialog.setAttribute("closedby", "none");
+    const t1 = Number(button.dataset.t1) || 0;
+    const t2 = Number(button.dataset.t2) || 0;
+    const t3 = Number(button.dataset.t3) || 0;
+    dialog.innerHTML = `<form class="fee-edit" novalidate>
+      <div class="dialog-head"><div><p class="mark">Barème</p><h2>${esc(button.dataset.label)}</h2></div>
+        <button class="dialog-close" type="button" data-close>Fermer</button></div>
+      <p class="muted">Indiquez chaque tranche de scolarité. Le total est la somme des trois. Les frais d'inscription s'ajoutent encore à la 1re échéance sur la fiche de l'étudiant.</p>
+      <div class="fee-tranches">
+        <p><label>1re tranche — 5 octobre</label><input name="t1" inputmode="numeric" required value="${francs(t1)}"></p>
+        <p><label>2e tranche — 5 décembre</label><input name="t2" inputmode="numeric" required value="${francs(t2)}"></p>
+        <p><label>3e tranche — 5 mars</label><input name="t3" inputmode="numeric" required value="${francs(t3)}"></p>
+      </div>
+      <p class="fee-total">Total scolarité : <strong data-total>${gnf(t1 + t2 + t3)}</strong></p>
+      <p><label>Ou total à répartir automatiquement (20 % / 40 % / 40 %)</label>
+        <input name="total" inputmode="numeric" placeholder="Ex. 24.000.000" value=""></p>
+      <p class="error" data-error hidden></p>
+      <div class="row-actions">
+        <button class="btn secondary" type="button" data-close>Annuler</button>
+        <button class="btn" type="submit">Enregistrer les tranches</button>
+      </div>
+    </form>`;
+    document.body.appendChild(dialog);
+    const form = dialog.querySelector("form");
+    const totalLabel = form.querySelector("[data-total]");
+    const syncTotal = () => {
+      totalLabel.textContent = gnf(moneyDigits(form.t1) + moneyDigits(form.t2) + moneyDigits(form.t3));
+    };
+    ["t1", "t2", "t3"].forEach((name) => form[name].addEventListener("input", syncTotal));
+    form.total.addEventListener("input", () => {
+      const amount = moneyDigits(form.total);
+      if (!amount) return;
+      const a = Math.floor((amount * 20 + 50) / 100);
+      const b = Math.floor((amount * 40 + 50) / 100);
+      form.t1.value = francs(a);
+      form.t2.value = francs(b);
+      form.t3.value = francs(amount - a - b);
+      syncTotal();
+    });
+    const close = () => { dialog.close(); dialog.remove(); };
+    dialog.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", close));
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const error = form.querySelector("[data-error]");
+      const submit = form.querySelector("[type=submit]");
+      error.hidden = true;
+      const registration = moneyDigits(form.t1);
+      const installment1 = moneyDigits(form.t2);
+      const installment2 = moneyDigits(form.t3);
+      if (registration + installment1 + installment2 <= 0) {
+        error.hidden = false;
+        error.textContent = "Le total des trois tranches doit être supérieur à zéro.";
+        return;
       }
-      state.catalog = null;
-      saved("Tarifs enregistrés");
-      render();
-    } catch (caught) {
-      error.hidden = false;
-      error.textContent = caught.message;
-      button.disabled = false;
-    }
+      submit.disabled = true;
+      try {
+        await api(`/api/baremes/${button.dataset.fee}`, {
+          method: "PUT",
+          body: JSON.stringify({ registration, installment1, installment2, installment3: 0 }),
+        });
+        close();
+        state.catalog = null;
+        saved("Tranches enregistrées");
+        render();
+      } catch (caught) {
+        error.hidden = false;
+        error.textContent = caught.message;
+        submit.disabled = false;
+      }
+    });
+    dialog.showModal();
+    form.t1.select();
+  };
+  document.querySelectorAll(".fee-open").forEach((button) => {
+    button.addEventListener("click", () => openFeeEditor(button));
   });
   const costumeForm = document.querySelector("#costume-price");
   costumeForm.costume_price.addEventListener("input", (event) => {

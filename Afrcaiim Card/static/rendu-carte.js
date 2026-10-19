@@ -1,5 +1,16 @@
 function teinte(valeur, defaut) {
-  return /^#[0-9A-Fa-f]{6}$/.test(String(valeur || "")) ? String(valeur).slice(1) : defaut.slice(1);
+  return encreResine(valeur, defaut).slice(1);
+}
+
+/** Noir pur pour la Primacy (panneau K résine) : un quasi-noir ou un vert trop sombre sort tramé / bandé. */
+function encreResine(valeur, defaut = "#000000") {
+  const hex = /^#[0-9A-Fa-f]{6}$/.test(String(valeur || "")) ? String(valeur) : defaut;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  if (Math.max(r, g, b) < 0.18) return "#000000";
+  if (0.2126 * r + 0.7152 * g + 0.0722 * b < 0.28) return "#000000";
+  return hex;
 }
 
 function dateCarte(valeur) {
@@ -82,7 +93,9 @@ function rendreFace(carte, objets, ctx) {
     el.style.height = `${obj.h * px}px`;
     if (ctx.selection === obj.id) el.style.outline = "1px dashed #1d4f8a";
     if (obj.type === "rect" || obj.type === "piste") {
-      el.style.background = obj.couleur || "#0C4630";
+      el.style.background = obj.type === "piste"
+        ? encreResine(obj.couleur, "#000000")
+        : (obj.couleur || "#0C4630");
       if (obj.rayon) el.style.borderRadius = `${obj.rayon * px}px`;
       if (obj.contour) el.style.border = `${Math.max(1, (obj.epaisseur || 0.25) * px * 0.35)}px solid ${obj.contour}`;
     } else if (obj.type === "cercle") {

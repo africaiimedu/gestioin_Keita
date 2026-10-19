@@ -170,7 +170,7 @@
       "y": 3.2,
       "w": 85.6,
       "h": 6.0,
-      "couleur": "#1A1A1A"
+      "couleur": "#000000"
     },
     {
       "id": "filet",
@@ -188,7 +188,7 @@
       "y": 11.4,
       "w": 22.4,
       "h": 22.4,
-      "couleur": "#004C22",
+      "couleur": "#000000",
       "contenu": "securise",
       "fond": "#FFFFFF",
       "cadre": false
@@ -268,8 +268,8 @@
       "x": 3.39,
       "y": 35.2,
       "w": 22.4,
-      "h": 6.4,
-      "couleur": "#004C22",
+      "h": 8.0,
+      "couleur": "#000000",
       "champ": "controle",
       "lisible": false,
       "fond": "#FFFFFF"

@@ -796,7 +796,11 @@ def _trace(c, obj: dict) -> int:
 
 
 def _forme(c, obj: dict, x, y, largeur, hauteur, rayon) -> None:
-    c.setFillColor(_hex(obj.get("couleur"), "#004C22"))
+    # Piste et quasi-noir → panneau K résine (sinon tramage / bandes sur le verso Primacy).
+    teinte = _hex(obj.get("couleur"), "#004C22")
+    if obj.get("type") == "piste" or max(teinte.red, teinte.green, teinte.blue) < 0.15:
+        teinte = NOIR_RESINE
+    c.setFillColor(teinte)
     trait = _trace(c, obj)
     if rayon > 0.4:
         c.roundRect(x, y, largeur, hauteur, rayon, fill=1, stroke=trait)

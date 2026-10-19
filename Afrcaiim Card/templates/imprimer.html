@@ -48,7 +48,7 @@
   <div id="recto" class="feuille"></div>
   <div id="verso" class="feuille"></div>
   <script id="donnees" type="application/json">{{ donnees | tojson }}</script>
-  <script src="/static/rendu-carte.js?v=31"></script>
+  <script src="/static/rendu-carte.js?v=32"></script>
   <script>
     const csrf = document.querySelector('meta[name="csrf"]').content;
     const data = JSON.parse(document.getElementById("donnees").textContent);
