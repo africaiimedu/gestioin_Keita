@@ -7,6 +7,7 @@ des fiches locales absentes de l'API. La validité suit la durée du programme.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 from typing import Any
 from urllib.parse import urljoin
@@ -78,11 +79,33 @@ def date_validite_api(intake_year: Any, duration_years: Any) -> date | None:
     return date(debut + duree, 8, 31)
 
 
+def _repartir_nom_prenom(prenom: str, nom: str) -> tuple[str, str]:
+    """L'API laisse parfois le nom vide (tout dans first_name) : on répartit proprement."""
+    prenom = re.sub(r"\s+", " ", (prenom or "")).strip()
+    nom = re.sub(r"\s+", " ", (nom or "")).strip()
+    if prenom and nom:
+        return prenom, nom
+    if nom and not prenom:
+        parties = nom.split(" ")
+        if len(parties) >= 2:
+            return " ".join(parties[:-1]), parties[-1]
+        return nom, nom
+    if prenom and not nom:
+        parties = prenom.split(" ")
+        if len(parties) >= 2:
+            return " ".join(parties[:-1]), parties[-1]
+        # Un seul mot : on le duplique pour respecter le contrôle fiche (nom obligatoire).
+        return prenom, prenom
+    return prenom, nom
+
+
 def fiche_depuis_api(brut: dict) -> dict:
     """Transforme une fiche API en champs atelier (100 % source Université)."""
     matricule = str(brut.get("student_number") or "").strip()
-    prenom = str(brut.get("first_name") or "").strip()
-    nom = str(brut.get("last_name") or "").strip()
+    prenom, nom = _repartir_nom_prenom(
+        str(brut.get("first_name") or ""),
+        str(brut.get("last_name") or ""),
+    )
     ecole = str(brut.get("school") or "").strip()
     email = str(brut.get("institutional_email") or brut.get("email") or "").strip()
     annee = annee_academique_api(brut.get("intake_year")) or ""
@@ -276,7 +299,7 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
             f"{len(bruts)} étudiant(s) Université : {crees} créé(s), {maj} mis à jour"
             + (f", {photos} photo(s)" if photos else "")
             + (f", {retires} retiré(s) hors API" if retires else "")
-            + (f", {len(erreurs)} erreur(s)" if erreurs else "")
+            + (f", {len(erreurs)} erreur(s) ({erreurs[0]})" if erreurs else "")
             + ". Validité = année d'entrée + durée du programme."
         ),
     }

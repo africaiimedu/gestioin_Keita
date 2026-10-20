@@ -42,6 +42,24 @@ def test_fiche_depuis_api_mapping_et_duree():
     assert date_validite_api(2026, 1) == date(2027, 8, 31)
 
 
+def test_fiche_nom_vide_reparti_depuis_prenom():
+    """Cas réel API : last_name vide, first_name = « Mamadou Adama »."""
+    fiche = fiche_depuis_api(
+        {
+            "student_number": "UA26AT0006",
+            "first_name": "Mamadou Adama",
+            "last_name": "",
+            "school": "AFRICAIIM Tech",
+            "intake_year": 2026,
+            "duration_years": 5,
+            "institutional_email": "mamadouadama.africaiim@etu.univ-africaiim.com",
+        }
+    )
+    assert fiche["prenom"] == "Mamadou"
+    assert fiche["nom"] == "Adama"
+    assert fiche["date_validite"] == date(2031, 8, 31)
+
+
 def test_synchro_upsert_et_retrait_hors_api(monkeypatch):
     monkeypatch.setenv("UNIVERSITE_API_KEY", "cle-de-test-assez-longue")
     monkeypatch.setenv("UNIVERSITE_API_URL", "https://api.exemple.test")
