@@ -1005,6 +1005,36 @@ document.getElementById("recharger").onclick = () => {
   document.getElementById("recharge-solde").textContent = `Compte actuel : ${francs(etu.solde_cantine)}`;
   document.getElementById("recharge").showModal();
 };
+
+document.getElementById("synchro-universite")?.addEventListener("click", async () => {
+  if (CFG.personnel) return;
+  const bouton = document.getElementById("synchro-universite");
+  if (bouton) bouton.disabled = true;
+  message("Synchronisation avec l'université…");
+  try {
+    const reponse = await fetch("/admin/api/atelier/synchro-universite", {
+      method: "POST",
+      headers: entetes(),
+      body: "{}",
+    });
+    const corps = await reponse.json();
+    if (!reponse.ok) {
+      message(corps.message || "Synchronisation impossible.");
+      return;
+    }
+    if (Array.isArray(corps.etudiants)) {
+      etudiants = corps.etudiants;
+      if (index >= etudiants.length) index = Math.max(0, etudiants.length - 1);
+      dessinerGrille();
+      dessinerCarte();
+    }
+    message(corps.message || "Base mise à jour depuis l'université.");
+  } catch (_) {
+    message("Synchronisation impossible (réseau).");
+  } finally {
+    if (bouton) bouton.disabled = false;
+  }
+});
 document.getElementById("fermer-recharge").onclick = () => document.getElementById("recharge").close();
 document.getElementById("form-recharge").addEventListener("submit", async (ev) => {
   ev.preventDefault();

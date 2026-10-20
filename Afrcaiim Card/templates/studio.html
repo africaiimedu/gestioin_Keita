@@ -104,6 +104,7 @@
         <button type="button" id="dernier" title="Dernier">&gt;|</button>
         <input id="recherche" type="search" placeholder="{% if personnel %}Rechercher nom, n° ou fonction{% else %}Rechercher nom ou matricule{% endif %}">
         {% if not personnel %}
+        <button type="button" id="synchro-universite" title="Créer ou mettre à jour les fiches depuis l'API Université">Mettre à jour depuis l'université</button>
         <button type="button" id="recharger">Recharger la cantine</button>
         {% else %}
         <button type="button" id="recharger" hidden disabled>Recharger la cantine</button>
@@ -219,6 +220,6 @@
   } | tojson }}</script>
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
   <script src="/static/rendu-carte.js?v=34"></script>
-  <script src="/static/studio.js?v=30"></script>
+  <script src="/static/studio.js?v=31"></script>
 </body>
 </html>

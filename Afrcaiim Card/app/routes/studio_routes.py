@@ -27,6 +27,7 @@ from app.services.metier import (
 )
 from app.services.pdf_carte import code_controle, url_affichee
 from app.services.statut import statut_effectif
+from app.services.universite_api import api_configuree, synchro_etudiants
 from app.ui import csrf_valide
 
 router = APIRouter(prefix="/admin/api")
@@ -180,7 +181,39 @@ def atelier(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(g
     etudiants = db.scalars(
         select(Etudiant).options(selectinload(Etudiant.cartes)).order_by(Etudiant.nom, Etudiant.prenom)
     ).all()
-    return {"etudiants": [_ligne(e) for e in etudiants], "modele": _lire(_MODELE)}
+    return {
+        "etudiants": [_ligne(e) for e in etudiants],
+        "modele": _lire(_MODELE),
+        "synchro_universite": api_configuree(),
+    }
+
+
+@router.post("/atelier/synchro-universite")
+def atelier_synchro_universite(
+    request: Request,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    """Crée / met à jour les fiches atelier depuis l'API Université (sans suppression)."""
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    if not api_configuree():
+        return JSONResponse(
+            {"message": "Clé API Université absente (UNIVERSITE_API_KEY dans Afrcaiim Card/.env)."},
+            status_code=503,
+        )
+    try:
+        bilan = synchro_etudiants(db, acteur_id=admin.id)
+    except RuntimeError as exc:
+        return JSONResponse({"message": str(exc)}, status_code=502)
+    etudiants = db.scalars(
+        select(Etudiant).options(selectinload(Etudiant.cartes)).order_by(Etudiant.nom, Etudiant.prenom)
+    ).all()
+    return {
+        **bilan,
+        "etudiants": [_ligne(e) for e in etudiants],
+        "modele": _lire(_MODELE),
+    }
 
 
 @router.get("/atelier-personnel")
