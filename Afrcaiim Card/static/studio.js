@@ -951,7 +951,12 @@ document.getElementById("recherche").oninput = (ev) => {
 document.getElementById("imprimer").onclick = () => {
   const etu = courant();
   if (!etu) {
-    message(`Choisissez un${CFG.personnel ? "e" : ""} ${CFG.labelFiche} dans la base.`);
+    // Design importé (personnel) : pas besoin d’une fiche pour composer ; on ouvre l’impression.
+    if (CFG.personnel) {
+      window.location.href = "/admin/impression";
+      return;
+    }
+    message(`Choisissez un ${CFG.labelFiche} dans la base.`);
     return;
   }
   window.location.href = CFG.impression(etu.id);
@@ -1066,64 +1071,27 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
-function poserDesign(asset, usage) {
-  if (!modele || !asset) return;
+function poserDesign(asset) {
+  if (!CFG.personnel || !modele || !asset) return;
   const format = formatCarte();
   const id = `d${Date.now().toString(36)}`;
-  if (usage === "badge") {
-    if (!window.confirm("Remplacer tout le contenu de cette face par le badge importé ? Vous pourrez ensuite ajouter un QR ou une photo.")) {
-      return;
-    }
-    modele[face] = [{
-      id,
-      type: "image",
-      asset,
-      ajustement: "cover",
-      x: 0,
-      y: 0,
-      w: format.w,
-      h: format.h,
-    }];
-  } else if (usage === "fond") {
-    const reste = (modele[face] || []).filter((obj) => {
-      const plein = obj.w >= format.w - 0.5 && obj.h >= format.h - 0.5 && obj.x <= 0.2 && obj.y <= 0.2;
-      if (obj.type === "image" && String(obj.asset || "").startsWith("design:") && plein) return false;
-      if (obj.id === "fond" && obj.type === "rect") return false;
-      return true;
-    });
-    reste.unshift({
-      id,
-      type: "image",
-      asset,
-      ajustement: "cover",
-      x: 0,
-      y: 0,
-      w: format.w,
-      h: format.h,
-    });
-    modele[face] = reste;
-  } else {
-    modele[face].push({
-      id,
-      type: "image",
-      asset,
-      ajustement: "contain",
-      x: Math.round((format.w - 36) / 2 * 10) / 10,
-      y: Math.round((format.h - 20) / 2 * 10) / 10,
-      w: 36,
-      h: 20,
-    });
-  }
+  // Remplace entièrement la face active : plus de champs / photo / QR issus de la base.
+  modele[face] = [{
+    id,
+    type: "image",
+    asset,
+    ajustement: "cover",
+    x: 0,
+    y: 0,
+    w: format.w,
+    h: format.h,
+  }];
   selection = id;
   marquerOutil("selection");
   dessinerCarte();
   proprietes();
   sauverModele();
-  message(usage === "badge"
-    ? "Badge importé sur toute la face. Ajoutez un QR si besoin, puis enregistrez."
-    : usage === "fond"
-      ? "Fond importé. Déplacez photo, textes et QR au-dessus du dessin."
-      : "Élément importé. Déplacez-le et réglez-le dans Propriétés.");
+  message(`Face ${face} remplacée par le design. Aucun nom en base n’est requis — enregistrez puis imprimez.`);
 }
 
 async function rafraichirListeDesigns() {
@@ -1148,17 +1116,13 @@ async function rafraichirListeDesigns() {
       <img src="${item.url}" alt="">
       <strong title="${echapper(item.nom)}">${echapper(item.nom)}</strong>
       <div class="ligne-boutons">
-        <button type="button" class="fond" data-pose="fond">Fond</button>
-        <button type="button" data-pose="badge">Badge</button>
-        <button type="button" data-pose="element">Élément</button>
+        <button type="button" class="fond" data-pose="1">Remplacer la face</button>
         <button type="button" data-supprimer="1" title="Supprimer">×</button>
       </div>
     `;
-    tuile.querySelectorAll("[data-pose]").forEach((bouton) => {
-      bouton.addEventListener("click", () => {
-        poserDesign(`design:${item.id}`, bouton.dataset.pose);
-        document.getElementById("dialogue-design").close();
-      });
+    tuile.querySelector("[data-pose]").addEventListener("click", () => {
+      poserDesign(`design:${item.id}`);
+      document.getElementById("dialogue-design").close();
     });
     tuile.querySelector("[data-supprimer]").addEventListener("click", async () => {
       if (!window.confirm(`Retirer « ${item.nom} » de la bibliothèque ?`)) return;
@@ -1173,52 +1137,53 @@ async function rafraichirListeDesigns() {
   });
 }
 
-document.getElementById("ouvrir-import-design")?.addEventListener("click", () => {
-  document.getElementById("dialogue-design").showModal();
-  rafraichirListeDesigns();
-});
-document.getElementById("fermer-design")?.addEventListener("click", () => {
-  document.getElementById("dialogue-design").close();
-});
-document.getElementById("fichier-design")?.addEventListener("change", (ev) => {
-  const apercu = document.getElementById("apercu-design");
-  const fichier = ev.target.files && ev.target.files[0];
-  if (!fichier) {
-    apercu.hidden = true;
-    apercu.removeAttribute("src");
-    return;
-  }
-  apercu.src = URL.createObjectURL(fichier);
-  apercu.hidden = false;
-});
-document.getElementById("form-design")?.addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const formulaire = new FormData(ev.target);
-  const fichier = formulaire.get("fichier");
-  if (!(fichier instanceof File) || !fichier.size) {
-    message("Choisissez un fichier PNG ou JPG exporté depuis Photoshop.");
-    return;
-  }
-  const envoi = new FormData();
-  envoi.append("fichier", fichier);
-  envoi.append("nom", formulaire.get("nom") || fichier.name);
-  const reponse = await fetch("/admin/api/designs", {
-    method: "POST",
-    headers: { Accept: "application/json", "X-CSRF": csrf },
-    body: envoi,
+if (CFG.personnel) {
+  document.getElementById("ouvrir-import-design")?.addEventListener("click", () => {
+    document.getElementById("dialogue-design").showModal();
+    rafraichirListeDesigns();
   });
-  const corps = await reponse.json();
-  if (!reponse.ok) {
-    message(corps.message || "Import impossible.");
-    return;
-  }
-  const usage = formulaire.get("usage") || "fond";
-  poserDesign(corps.asset, usage);
-  document.getElementById("dialogue-design").close();
-  ev.target.reset();
-  document.getElementById("apercu-design").hidden = true;
-  rafraichirListeDesigns();
-});
+  document.getElementById("fermer-design")?.addEventListener("click", () => {
+    document.getElementById("dialogue-design").close();
+  });
+  document.getElementById("fichier-design")?.addEventListener("change", (ev) => {
+    const apercu = document.getElementById("apercu-design");
+    const fichier = ev.target.files && ev.target.files[0];
+    if (!fichier) {
+      apercu.hidden = true;
+      apercu.removeAttribute("src");
+      return;
+    }
+    apercu.src = URL.createObjectURL(fichier);
+    apercu.hidden = false;
+  });
+  document.getElementById("form-design")?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const formulaire = new FormData(ev.target);
+    const fichier = formulaire.get("fichier");
+    if (!(fichier instanceof File) || !fichier.size) {
+      message("Choisissez un fichier PNG ou JPG exporté depuis Photoshop.");
+      return;
+    }
+    const envoi = new FormData();
+    envoi.append("fichier", fichier);
+    envoi.append("nom", formulaire.get("nom") || fichier.name);
+    const reponse = await fetch("/admin/api/designs", {
+      method: "POST",
+      headers: { Accept: "application/json", "X-CSRF": csrf },
+      body: envoi,
+    });
+    const corps = await reponse.json();
+    if (!reponse.ok) {
+      message(corps.message || "Import impossible.");
+      return;
+    }
+    poserDesign(corps.asset);
+    document.getElementById("dialogue-design").close();
+    ev.target.reset();
+    document.getElementById("apercu-design").hidden = true;
+    rafraichirListeDesigns();
+  });
+}
 
 function garderMenus() {
   document.querySelectorAll(".service").forEach((service) => {

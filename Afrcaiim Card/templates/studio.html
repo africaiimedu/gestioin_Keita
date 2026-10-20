@@ -7,7 +7,7 @@
   {% set personnel = atelier_cible == "personnel" %}
   <title>{% if personnel %}Atelier badges personnel{% else %}Atelier cartes{% endif %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/studio.css?v=24">
+  <link rel="stylesheet" href="/static/studio.css?v=25">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 </head>
 <body class="{% if personnel %}atelier-personnel{% endif %}">
@@ -53,7 +53,9 @@
       <button type="button" data-outil="marque" title="Logo" aria-label="Logo"><svg viewBox="0 0 24 24"><path d="M5 18V8l7-4 7 4v10M9 18v-5h6v5"/></svg></button>
       <button type="button" data-outil="rosette" title="Rosace" aria-label="Rosace"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5 19 19M19 5l-2.5 2.5M7.5 16.5 5 19"/></svg></button>
       <button type="button" data-outil="micro" title="Microtexte" aria-label="Microtexte"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h10"/></svg></button>
+      {% if personnel %}
       <button type="button" id="ouvrir-import-design" title="Importer un design (Photoshop, Canva…)" aria-label="Importer un design"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M5 14v5h14v-5"/><rect x="4" y="19" width="16" height="2" rx="0.5"/></svg></button>
+      {% endif %}
     </aside>
 
     <main class="planche">
@@ -140,25 +142,20 @@
     </form>
   </dialog>
 
+  {% if personnel %}
   <dialog id="dialogue-design">
     <form id="form-design">
       <h2>Importer un design</h2>
-      <p class="aide-photo">Exportez depuis Photoshop, Illustrator, Canva ou Inkscape en <strong>PNG</strong> ou <strong>JPG</strong> (pas le fichier .psd). Idéalement aux dimensions CR80 : 85,6 × 54 mm (paysage) ou 54 × 85,6 mm (portrait), 300 dpi.</p>
+      <p class="aide-photo">Exportez depuis Photoshop, Illustrator, Canva ou Inkscape en <strong>PNG</strong> ou <strong>JPG</strong> (pas le fichier .psd). Idéalement aux dimensions CR80 portrait : 54 × 85,6 mm, 300 dpi. L’import <strong>efface tout</strong> sur la face active et la remplace par votre image — inutile de choisir quelqu’un dans la base.</p>
       <label>Fichier image
         <input id="fichier-design" name="fichier" type="file" accept="image/png,image/jpeg,image/webp,image/tiff,.png,.jpg,.jpeg,.webp,.tif,.tiff" required>
       </label>
       <img id="apercu-design" alt="Aperçu du design" hidden>
       <label>Nom (optionnel)
-        <input name="nom" maxlength="80" placeholder="Recto Photoshop, Badge direction…">
+        <input name="nom" maxlength="80" placeholder="Badge direction, Recto Photoshop…">
       </label>
-      <fieldset class="choix-usage">
-        <legend>Utilisation sur la face active</legend>
-        <label class="choix"><input type="radio" name="usage" value="fond" checked> <span><strong>Fond de carte</strong> — le dessin remplit la face ; photo, QR et textes restent au-dessus.</span></label>
-        <label class="choix"><input type="radio" name="usage" value="badge"> <span><strong>Badge complet</strong> — remplace le contenu de la face par votre badge confectionné (vous pourrez encore ajouter un QR).</span></label>
-        <label class="choix"><input type="radio" name="usage" value="element"> <span><strong>Élément</strong> — image déplaçable (logo, motif, vignette).</span></label>
-      </fieldset>
       <div class="actions-dialogue">
-        <button type="submit" value="ok">Importer et poser</button>
+        <button type="submit" value="ok">Importer et remplacer</button>
         <button type="button" id="fermer-design">Annuler</button>
       </div>
     </form>
@@ -167,6 +164,7 @@
       <div id="liste-designs" class="grille-designs"></div>
     </div>
   </dialog>
+  {% endif %}
 
   <dialog id="dialogue">
     <form id="form-ajout" method="dialog">
@@ -216,6 +214,6 @@
   } | tojson }}</script>
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
   <script src="/static/rendu-carte.js?v=34"></script>
-  <script src="/static/studio.js?v=27"></script>
+  <script src="/static/studio.js?v=28"></script>
 </body>
 </html>
