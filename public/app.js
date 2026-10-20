@@ -137,6 +137,7 @@ function carteGroups() {
   return [
     ["Cartes", [
       ["etudiants", "Étudiants", "/portail/cartes/admin/etudiants"],
+      ["personnel", "Badges personnel", "/portail/cartes/admin/personnel"],
       ["atelier", "Atelier", "/portail/cartes/admin"],
       ["impression", "Impression", "/portail/cartes/admin/impression"],
       ["lot", "Lot d'impression", "/portail/cartes/admin/lot"],
