@@ -76,13 +76,13 @@
               <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/impression/design/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
               <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
               <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/impression/design/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
-              <p class="impression-note">Choisissez la Primacy 2, couleur, recto-verso bord long, orientation {{ orientation }}, taille réelle 100 %, sans « ajuster à la page ».</p>
+              <p class="impression-note">Primacy 2 : <strong>orientation portrait</strong> (54 × 85,6 mm), couleur, recto-verso bord long, taille réelle 100 %, sans « ajuster à la page ». Ne choisissez pas paysage.</p>
               <p class="impression-note"><a href="/admin/impression/design/pdf?format=a4">Télécharger la feuille A4</a> · <a href="/admin/impression/design/pdf">Télécharger le PDF design</a></p>
             {% elif personnel_mode %}
               <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/personnel/{{ choisi_personnel.id }}/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
               <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
               <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/personnel/{{ choisi_personnel.id }}/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
-              <p class="impression-note">Choisissez la Primacy 2, couleur, recto-verso bord long, orientation {{ orientation }}, taille réelle 100 %, sans « ajuster à la page ».</p>
+              <p class="impression-note">Primacy 2 : <strong>orientation portrait</strong> (54 × 85,6 mm), couleur, recto-verso bord long, taille réelle 100 %, sans « ajuster à la page ». Ne choisissez pas paysage.</p>
               <p class="impression-note"><a href="/admin/personnel/{{ choisi_personnel.id }}/pdf?format=a4">Télécharger la feuille A4</a> · <a href="/admin/personnel/{{ choisi_personnel.id }}/pdf">Télécharger le PDF badge</a></p>
             {% else %}
               <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
@@ -139,6 +139,10 @@
           <p id="note-primacy" class="impression-note">{% if preferee %}Pilote Evolis reconnu. Le travail part en recto-verso, bord long.{% else %}Imprimante ordinaire : la carte part sur une feuille A4, recto et verso côte à côte, à découper et plier.{% endif %}</p>
         {% endif %}
 
+        {% if design_mode or personnel_mode %}
+        <input type="hidden" name="orientation" value="portrait">
+        <p class="impression-note"><strong>Orientation verrouillée : portrait</strong> (54 × 85,6 mm). Les badges personnel ne suivent pas le format paysage des cartes étudiants.</p>
+        {% else %}
         <fieldset class="sens">
           <legend>Sens d'impression</legend>
           <div class="sens-choix">
@@ -157,6 +161,7 @@
           </div>
         </fieldset>
         <p id="detail-sens" class="impression-note"></p>
+        {% endif %}
 
         <div class="impression-ligne">
           <label>Copies

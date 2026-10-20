@@ -115,6 +115,9 @@ def commande_lp(
     if media == "A4":
         commande += ["-o", "media=A4"]
         _poser_option(commande, choix, "PageSize", "A4")
+    elif not paysage and str(media).startswith("Custom."):
+        # Badge portrait (54 × 85,6) : ne pas forcer le CR80 paysage des cartes étudiants.
+        commande += ["-o", f"media={media}"]
     elif "Card" in choix.get("PageSize", []):
         commande += ["-o", "PageSize=Card"]
     elif "CR80" in choix.get("PageSize", []):

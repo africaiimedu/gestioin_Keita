@@ -24,8 +24,13 @@
       <button type="button" id="vue-double">Double face</button>
     </div>
     <div class="faces" role="group" aria-label="Orientation">
-      <button type="button" id="orient-paysage"{% if not personnel %} class="actif"{% endif %}>Paysage</button>
-      <button type="button" id="orient-portrait"{% if personnel %} class="actif"{% endif %}>Portrait</button>
+      {% if personnel %}
+      <button type="button" id="orient-paysage" disabled title="Les badges personnel sont uniquement en portrait" hidden>Paysage</button>
+      <button type="button" id="orient-portrait" class="actif" disabled title="Orientation verrouillée">Portrait · 54 × 85,6 mm</button>
+      {% else %}
+      <button type="button" id="orient-paysage" class="actif">Paysage</button>
+      <button type="button" id="orient-portrait">Portrait</button>
+      {% endif %}
     </div>
     <div class="zoom">
       <button type="button" id="zoom-moins" title="Réduire" aria-label="Réduire">−</button>
@@ -214,6 +219,6 @@
   } | tojson }}</script>
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
   <script src="/static/rendu-carte.js?v=34"></script>
-  <script src="/static/studio.js?v=29"></script>
+  <script src="/static/studio.js?v=30"></script>
 </body>
 </html>

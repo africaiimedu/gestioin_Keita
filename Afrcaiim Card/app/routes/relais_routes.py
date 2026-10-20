@@ -86,9 +86,10 @@ def _pdf_du_travail(db: Session, travail) -> tuple[bytes | None, str]:
             "",
         )
 
-    # Design atelier personnel : pas de fiche nominative.
+    # Design atelier personnel : pas de fiche nominative, PDF toujours portrait.
     if not travail.etudiant_id:
         modele = charger_modele_personnel()
+        modele["orientation"] = "portrait"
         if _sur_a4(travail):
             return (
                 pdf_feuille_a4(

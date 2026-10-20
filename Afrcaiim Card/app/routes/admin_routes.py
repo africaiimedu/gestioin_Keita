@@ -700,9 +700,11 @@ def _raison_blocage_personnel(personne: Personnel, badge) -> str | None:
 def _imprimer_personnel(
     db: Session, admin: Utilisateur, personne: Personnel, badge, cle: str, copies: int, recto_verso: bool, sens: str,
 ) -> tuple[bool, str]:
-    """Mêmes paramètres Primacy 2 que la carte étudiant (recto-verso bord long, 100 %, RVB)."""
+    """Badge personnel : toujours portrait (54 × 85,6 mm), indépendant de l'atelier étudiants."""
+    sens = "portrait"
     face = "recto-verso, bord long" if recto_verso else "recto seul"
     modele = charger_modele_personnel()
+    modele["orientation"] = "portrait"
     photo = lire_photo(personne.photo_chemin) or portrait_initiales(personne.prenom, personne.nom)
     if cle.startswith("poste:"):
         cible = next((imp for imp in relais.imprimantes_relais(db) if imp["cle"] == cle), None)
@@ -760,9 +762,11 @@ def _imprimer_personnel(
 def _imprimer_design_personnel(
     db: Session, admin: Utilisateur, cle: str, copies: int, recto_verso: bool, sens: str,
 ) -> tuple[bool, str]:
-    """Imprime le modèle atelier personnel (design importé) sans fiche nominative."""
+    """Imprime le modèle atelier personnel (design importé) : toujours portrait, jamais le sens étudiant."""
+    sens = "portrait"
     face = "recto-verso, bord long" if recto_verso else "recto seul"
     modele = charger_modele_personnel()
+    modele["orientation"] = "portrait"
     if cle.startswith("poste:"):
         cible = next((imp for imp in relais.imprimantes_relais(db) if imp["cle"] == cle), None)
         if cible is None:
@@ -775,13 +779,13 @@ def _imprimer_design_personnel(
             libelle="Design badge personnel",
             copies=copies,
             recto_verso=recto_verso and not a4,
-            sens=sens,
+            sens="portrait",
             media=MEDIA_A4 if a4 else _media_cr80(modele),
             cree_par=admin.id,
         )
         if a4:
             return True, f"Feuille A4 (design) confiée à {cible['nom']} ({cible['lieu']})."
-        return True, f"Design confié à {cible['nom']} ({cible['lieu']}, {face}, {sens}). Il sort dans quelques secondes."
+        return True, f"Design confié à {cible['nom']} ({cible['lieu']}, {face}, portrait). Il sort dans quelques secondes."
     nom = cle.split(":", 1)[1] if cle.startswith("local:") else cle
     locale = next((imp for imp in cups.lister_imprimantes() if imp["nom"] == nom), None)
     if locale is None:
@@ -792,19 +796,19 @@ def _imprimer_design_personnel(
         ok, detail = cups.envoyer(contenu, nom, False, copies, MEDIA_A4, "portrait")
         if not ok:
             return False, detail
-        journaliser(db, "badge_imprime", utilisateur_id=admin.id, details=f"{nom} · A4 · design")
+        journaliser(db, "badge_imprime", utilisateur_id=admin.id, details=f"{nom} · A4 · design · portrait")
         db.commit()
         return True, f"Feuille A4 (design) envoyée à {nom}."
     contenu = pdf_design_personnel(recto_verso=recto_verso, retourner_verso=False, base=base_url())
-    ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, sens, modele=modele)
+    ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, "portrait", modele=modele)
     if not ok:
         return False, detail
     journaliser(
         db, "badge_imprime", utilisateur_id=admin.id,
-        details=f"{nom} · {copies} copie(s) · {face} · {sens} · design",
+        details=f"{nom} · {copies} copie(s) · {face} · portrait · design",
     )
     db.commit()
-    return True, f"Design envoyé à {nom} ({face}, {sens}, {_format_carte(modele)}, 100 %)."
+    return True, f"Design envoyé à {nom} ({face}, portrait, {_format_carte(modele)}, 100 %)."
 
 
 @router.get("/impression")
@@ -911,8 +915,7 @@ def lancer_page_impression(
         if copies < 1 or copies > 20:
             flash(request, "erreur", "Le nombre de copies doit être entre 1 et 20.")
             raise Redirection(retour)
-        sens = "portrait" if orientation == "portrait" else "paysage"
-        ok, message = _imprimer_design_personnel(db, admin, imprimante, copies, duplex == "1", sens)
+        ok, message = _imprimer_design_personnel(db, admin, imprimante, copies, duplex == "1", "portrait")
         flash(request, "ok" if ok else "erreur", message)
         raise Redirection(retour)
 
@@ -931,8 +934,7 @@ def lancer_page_impression(
         if copies < 1 or copies > 20:
             flash(request, "erreur", "Le nombre de copies doit être entre 1 et 20.")
             raise Redirection(retour)
-        sens = "portrait" if orientation == "portrait" else "paysage"
-        ok, message = _imprimer_personnel(db, admin, personne, badge, imprimante, copies, duplex == "1", sens)
+        ok, message = _imprimer_personnel(db, admin, personne, badge, imprimante, copies, duplex == "1", "portrait")
         flash(request, "ok" if ok else "erreur", message)
         raise Redirection(retour)
 

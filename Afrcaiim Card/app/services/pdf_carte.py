@@ -499,8 +499,10 @@ def charger_modele(fichier: str = "modele.json") -> dict:
 
 
 def charger_modele_personnel() -> dict:
-    """Modèle portrait pour les badges du personnel (mêmes paramètres, orientation portrait)."""
-    return charger_modele("modele_personnel.json")
+    """Modèle portrait pour les badges du personnel — jamais lié au modèle étudiants."""
+    modele = charger_modele("modele_personnel.json")
+    modele["orientation"] = "portrait"
+    return modele
 
 
 def _hex(valeur, defaut="#000000"):

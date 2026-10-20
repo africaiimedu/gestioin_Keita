@@ -221,6 +221,8 @@ async def enregistrer_modele_personnel(request: Request, admin: Utilisateur = De
         propre = _valider_modele(await request.json())
     except (ValueError, TypeError, KeyError) as exc:
         return JSONResponse({"message": str(exc)}, status_code=400)
+    # Jamais lié à l'atelier étudiants : badges personnel uniquement en portrait.
+    propre["orientation"] = "portrait"
     _MODELE_PERSONNEL.write_text(json.dumps(propre, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"ok": True}
 

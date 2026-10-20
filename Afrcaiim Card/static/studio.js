@@ -723,9 +723,11 @@ function poserRegles() {
   const echelle = document.getElementById("echelle");
   if (echelle) echelle.style.gap = `${28 * zoom}px`;
   const info = document.getElementById("info-format");
-  const portrait = w < h;
-  document.getElementById("orient-paysage").classList.toggle("actif", !portrait);
-  document.getElementById("orient-portrait").classList.toggle("actif", portrait);
+  const portrait = CFG.personnel ? true : w < h;
+  const btnPaysage = document.getElementById("orient-paysage");
+  const btnPortrait = document.getElementById("orient-portrait");
+  if (btnPaysage) btnPaysage.classList.toggle("actif", !portrait);
+  if (btnPortrait) btnPortrait.classList.toggle("actif", portrait);
   if (info) info.textContent = portrait ? "CR80 · 54 × 85,6 mm" : "CR80 · 85,6 × 54 mm";
 }
 
@@ -755,6 +757,18 @@ function adapterFace(objets, avant, apres) {
 }
 
 async function changerOrientation(nom) {
+  // Atelier personnel : portrait uniquement — jamais le sens des cartes étudiants.
+  if (CFG.personnel) {
+    if (modele && modele.orientation !== "portrait") {
+      modele.orientation = "portrait";
+      await sauverModele();
+      poserRegles();
+      dessinerCarte();
+      ajusterZoom();
+    }
+    message("Les badges personnel restent en portrait (54 × 85,6 mm).");
+    return;
+  }
   if (!modele || (modele.orientation || "paysage") === nom) return;
   const avant = formatCarte();
   modele.orientation = nom;

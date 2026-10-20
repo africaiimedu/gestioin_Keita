@@ -102,13 +102,21 @@ class Relais:
             ok, message = False, f"L'imprimante {nom} n'est plus installée sur cet ordinateur."
         else:
             pdf = base64.b64decode(travail.get("pdf") or "")
+            media = str(travail.get("media") or "Custom.85.6x54mm")
+            # Media 54×85,6 = badge personnel / design : forcer portrait, jamais le paysage étudiants.
+            media_compact = media.lower().replace(" ", "")
+            sens = (
+                "portrait"
+                if travail.get("sens") == "portrait" or "54x85.6" in media_compact or "54x85,6" in media_compact
+                else "paysage"
+            )
             ok, message = cups.envoyer(
                 pdf,
                 nom,
                 bool(travail.get("recto_verso")),
                 int(travail.get("copies") or 1),
-                str(travail.get("media") or "Custom.85.6x54mm"),
-                "portrait" if travail.get("sens") == "portrait" else "paysage",
+                media,
+                sens,
             )
         dire(f"Carte {travail.get('libelle', '')} → {nom} : {'imprimée' if ok else message}")
         self.appeler(f"/api/relais/travail/{int(travail['id'])}", {"ok": ok, "message": "" if ok else message})
