@@ -1,8 +1,13 @@
-"""Synchronisation des étudiants depuis l'API Université AFRICAIIM."""
+"""Synchronisation des étudiants depuis l'API Université AFRICAIIM.
+
+La base atelier reflète exclusivement la liste Université : upsert + retrait
+des fiches locales absentes de l'API. La validité suit la durée du programme.
+"""
 
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 from urllib.parse import urljoin
 
@@ -12,8 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.config import env
 from app.models import Etudiant
-from app.services.import_etudiants import controler_fiche, validite_par_defaut
-from app.services.metier import creer_etudiant, modifier_etudiant, remplacer_photo
+from app.services.import_etudiants import controler_fiche
+from app.services.metier import creer_etudiant, modifier_etudiant, remplacer_photo, supprimer_etudiant
 from app.services.photos import normaliser_photo
 
 journal = logging.getLogger(__name__)
@@ -44,25 +49,47 @@ def _entetes() -> dict[str, str]:
     }
 
 
-def _annee_depuis_intake(valeur: Any) -> str | None:
+def _entier(valeur: Any, defaut: int | None = None) -> int | None:
     try:
-        annee = int(valeur)
+        nombre = int(valeur)
     except (TypeError, ValueError):
-        return None
-    if annee < 2000 or annee > 2100:
+        return defaut
+    return nombre
+
+
+def annee_academique_api(intake_year: Any) -> str | None:
+    annee = _entier(intake_year)
+    if annee is None or annee < 2000 or annee > 2100:
         return None
     return f"{annee}-{annee + 1}"
 
 
+def date_validite_api(intake_year: Any, duration_years: Any) -> date | None:
+    """Fin de validité = 31/08 de (année d'entrée + durée du programme).
+
+    Ex. entrée 2026, Bachelor 3 ans → 31/08/2029.
+    """
+    debut = _entier(intake_year)
+    duree = _entier(duration_years, 1)
+    if debut is None or duree is None or duree < 1 or duree > 12:
+        return None
+    if debut < 2000 or debut > 2100:
+        return None
+    return date(debut + duree, 8, 31)
+
+
 def fiche_depuis_api(brut: dict) -> dict:
-    """Transforme une fiche API en champs utilisables par controler_fiche / upsert."""
+    """Transforme une fiche API en champs atelier (100 % source Université)."""
     matricule = str(brut.get("student_number") or "").strip()
     prenom = str(brut.get("first_name") or "").strip()
     nom = str(brut.get("last_name") or "").strip()
     ecole = str(brut.get("school") or "").strip()
     email = str(brut.get("institutional_email") or brut.get("email") or "").strip()
-    annee = _annee_depuis_intake(brut.get("intake_year")) or ""
+    annee = annee_academique_api(brut.get("intake_year")) or ""
+    validite = date_validite_api(brut.get("intake_year"), brut.get("duration_years"))
     photo_url = str(brut.get("photo_url") or "").strip()
+    programme = str(brut.get("programme") or "").strip()
+    duree = _entier(brut.get("duration_years"), 1) or 1
     return {
         "matricule": matricule,
         "prenom": prenom,
@@ -70,6 +97,9 @@ def fiche_depuis_api(brut: dict) -> dict:
         "ecole": ecole,
         "email": email,
         "annee": annee,
+        "date_validite": validite,
+        "duree_ans": duree,
+        "programme": programme,
         "photo_url": photo_url,
         "statut": str(brut.get("status") or "").strip().lower(),
     }
@@ -102,7 +132,7 @@ def lister_etudiants(client: httpx.Client | None = None) -> list[dict]:
                 resultats.append(item)
             suivant = data.get("next") if isinstance(data, dict) else None
             url = suivant if isinstance(suivant, str) and suivant else None
-            params = None  # l'URL next contient déjà les paramètres
+            params = None
         return resultats
     finally:
         if propre:
@@ -128,15 +158,16 @@ def telecharger_photo(url: str, client: httpx.Client | None = None) -> bytes | N
 
 
 def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
-    """Crée ou met à jour les fiches cartes à partir de l'API Université (sans suppression)."""
+    """Aligne la base atelier sur l'API Université (création, maj, retrait hors API)."""
     if not api_configuree():
         raise RuntimeError(
             "UNIVERSITE_API_KEY est absent du fichier .env des cartes. "
             "Ajoutez la clé API Université pour synchroniser les étudiants."
         )
 
-    crees = maj = photos = 0
+    crees = maj = photos = retires = 0
     erreurs: list[str] = []
+    matricules_api: set[str] = set()
 
     with httpx.Client(timeout=TIMEOUT, headers=_entetes(), follow_redirects=True) as http:
         try:
@@ -147,6 +178,8 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
         for brut in bruts:
             try:
                 raw = fiche_depuis_api(brut)
+                if not raw["date_validite"]:
+                    raise ValueError("année d'entrée ou durée de programme manquante dans l'API.")
                 fiche = controler_fiche(
                     raw["prenom"],
                     raw["nom"],
@@ -157,12 +190,17 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
                     raw["email"] or None,
                     None,
                 )
-                if raw["annee"]:
-                    fiche.annee_academique = raw["annee"]
-                    fiche.date_validite = validite_par_defaut(raw["annee"])
+                # 100 % API : année d'entrée + validité selon durée du programme.
+                fiche.annee_academique = raw["annee"] or fiche.annee_academique
+                fiche.date_validite = raw["date_validite"]
+                matricules_api.add(fiche.matricule)
 
                 existant = db.scalar(select(Etudiant).where(Etudiant.matricule == fiche.matricule))
                 jpeg = telecharger_photo(raw["photo_url"], http) if raw["photo_url"] else None
+                detail = (
+                    f"API Université · {raw['programme'] or 'programme'} · "
+                    f"{raw['duree_ans']} an(s) · valide jusqu'au {fiche.date_validite.isoformat()}"
+                )
 
                 if existant is None:
                     etudiant, _secret, _compte = creer_etudiant(
@@ -178,12 +216,12 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
                         jpeg=jpeg,
                         acteur_id=acteur_id,
                         action="importee",
-                        details="Synchronisé depuis l'API Université",
+                        details=detail,
                     )
                     crees += 1
                     if jpeg:
                         photos += 1
-                    elif jpeg is None and raw["photo_url"]:
+                    elif raw["photo_url"]:
                         erreurs.append(f"{fiche.matricule} : photo non récupérée")
                 else:
                     modifier_etudiant(
@@ -194,7 +232,7 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
                         filiere=fiche.filiere,
                         annee_academique=fiche.annee_academique,
                         date_validite=fiche.date_validite,
-                        email=fiche.email or existant.email,
+                        email=fiche.email,
                         sexe=existant.sexe or "M",
                         acteur_id=acteur_id,
                     )
@@ -211,17 +249,34 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
                 except Exception:
                     pass
 
+        # N'afficher / garder que les étudiants présents dans l'API Université.
+        locaux = list(db.scalars(select(Etudiant)).all())
+        for local in locaux:
+            if local.matricule in matricules_api:
+                continue
+            try:
+                supprimer_etudiant(db, local)
+                retires += 1
+            except Exception as exc:
+                erreurs.append(f"{local.matricule} : retrait impossible ({exc})")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+
     return {
         "ok": True,
         "recus": len(bruts),
         "crees": crees,
         "maj": maj,
         "photos": photos,
+        "retires": retires,
         "erreurs": erreurs[:40],
         "message": (
-            f"{len(bruts)} fiche(s) reçue(s) : {crees} créée(s), {maj} mise(s) à jour"
+            f"{len(bruts)} étudiant(s) Université : {crees} créé(s), {maj} mis à jour"
             + (f", {photos} photo(s)" if photos else "")
+            + (f", {retires} retiré(s) hors API" if retires else "")
             + (f", {len(erreurs)} erreur(s)" if erreurs else "")
-            + "."
+            + ". Validité = année d'entrée + durée du programme."
         ),
     }
