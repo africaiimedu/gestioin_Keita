@@ -38,7 +38,7 @@ _MODELE_PERSONNEL = ROOT / "config" / "modele_personnel.json"
 _ORIGINE_PERSONNEL = ROOT / "config" / "modele_personnel_origine.json"
 _TYPES = {"image", "photo", "qr", "codebarres", "rect", "cercle", "ligne", "piste", "champ", "texte", "guilloche", "rosette", "micro"}
 _CHAMPS = {
-    "nom", "prenom", "matricule", "filiere", "fonction", "ecole", "email",
+    "nom", "prenom", "matricule", "filiere", "fonction", "ecole", "programme", "email",
     "annee_academique", "date_validite", "url", "edition", "controle", "qualite",
 }
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -140,6 +140,7 @@ def _ligne(etudiant: Etudiant) -> dict:
         "nom": etudiant.nom,
         "matricule": etudiant.matricule,
         "filiere": etudiant.filiere,
+        "programme": getattr(etudiant, "programme", None) or "",
         "annee_academique": etudiant.annee_academique,
         "date_validite": etudiant.date_validite.isoformat(),
         "photo": bool(etudiant.photo_chemin),
@@ -337,7 +338,7 @@ async def ajouter(request: Request, admin: Utilisateur = Depends(exiger_bureau),
             sexe=corps.get("sexe", ""),
             sexe_obligatoire=True,
         )
-        etudiant, secret = creer_etudiant(
+        etudiant, secret, _compte = creer_etudiant(
             db,
             prenom=fiche.prenom,
             nom=fiche.nom,
@@ -345,6 +346,7 @@ async def ajouter(request: Request, admin: Utilisateur = Depends(exiger_bureau),
             filiere=fiche.filiere,
             annee_academique=fiche.annee_academique,
             date_validite=fiche.date_validite,
+            programme=str(corps.get("programme") or "").strip()[:200],
             sexe=fiche.sexe,
             acteur_id=admin.id,
         )
@@ -391,6 +393,7 @@ async def modifier(
             annee_academique=fiche.annee_academique,
             date_validite=fiche.date_validite,
             email=fiche.email,
+            programme=str(corps.get("programme", getattr(etudiant, "programme", "") or "")).strip()[:200],
             acteur_id=admin.id,
         )
     except ValueError as exc:

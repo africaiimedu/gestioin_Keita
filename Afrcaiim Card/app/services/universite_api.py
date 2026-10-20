@@ -235,6 +235,7 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
                         annee_academique=fiche.annee_academique,
                         date_validite=fiche.date_validite,
                         email=fiche.email,
+                        programme=raw["programme"],
                         sexe="M",
                         jpeg=jpeg,
                         acteur_id=acteur_id,
@@ -256,6 +257,7 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
                         annee_academique=fiche.annee_academique,
                         date_validite=fiche.date_validite,
                         email=fiche.email,
+                        programme=raw["programme"],
                         sexe=existant.sexe or "M",
                         acteur_id=acteur_id,
                     )

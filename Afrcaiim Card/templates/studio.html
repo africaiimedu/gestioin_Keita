@@ -120,6 +120,7 @@
               <th>Prénom</th>
               <th>{% if personnel %}N° badge{% else %}Matricule{% endif %}</th>
               <th>{% if personnel %}Fonction{% else %}École{% endif %}</th>
+              {% if not personnel %}<th>Programme</th>{% endif %}
               <th>Année</th>
               <th>Validité</th>
               {% if not personnel %}<th>Compte cantine</th>{% endif %}
@@ -219,7 +220,7 @@
     "cible": atelier_cible or "etudiants"
   } | tojson }}</script>
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
-  <script src="/static/rendu-carte.js?v=34"></script>
-  <script src="/static/studio.js?v=31"></script>
+  <script src="/static/rendu-carte.js?v=35"></script>
+  <script src="/static/studio.js?v=32"></script>
 </body>
 </html>

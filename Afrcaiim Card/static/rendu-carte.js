@@ -41,6 +41,7 @@ function texteCarte(obj, etu) {
     filiere: etu.filiere || etu.fonction || "",
     fonction,
     ecole: fonction || (etu.filiere || "").trim(),
+    programme: etu.programme || "",
     email: etu.email || "",
     annee_academique: etu.annee_academique || "",
     date_validite: dateCarte(etu.date_validite),

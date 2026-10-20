@@ -56,6 +56,7 @@ const CHAMPS = CFG.personnel
       ["matricule", "Matricule"],
       ["filiere", "École"],
       ["ecole", "École"],
+      ["programme", "Programme"],
       ["email", "E-mail étudiant"],
       ["annee_academique", "Année"],
       ["date_validite", "Validité"],
@@ -123,7 +124,7 @@ function vue() {
   const q = recherche.trim().toLowerCase();
   if (!q) return etudiants;
   return etudiants.filter((e) =>
-    `${e.nom} ${e.prenom} ${e.matricule} ${e.filiere || ""} ${e.fonction || ""}`.toLowerCase().includes(q)
+    `${e.nom} ${e.prenom} ${e.matricule} ${e.filiere || ""} ${e.programme || ""} ${e.fonction || ""}`.toLowerCase().includes(q)
   );
 }
 
@@ -375,7 +376,7 @@ function objetChoisi() {
 async function appliquerEdition(obj, valeur) {
   const fiche = CFG.personnel
     ? ["nom", "prenom", "filiere", "fonction", "email"]
-    : ["nom", "prenom", "filiere", "email"];
+    : ["nom", "prenom", "filiere", "programme", "email"];
   if (obj.type === "champ" && fiche.includes(obj.champ) && !obj.personnalise) {
     const etu = courant();
     if (etu) await sauverFiche(etu, obj.champ === "filiere" && CFG.personnel ? "fonction" : obj.champ, valeur);
@@ -661,6 +662,7 @@ function dessinerGrille() {
       <td data-champ="prenom"></td>
       <td>${etu.matricule}</td>
       <td data-champ="${champService}"></td>
+      ${CFG.personnel ? "" : `<td data-champ="programme"></td>`}
       <td data-champ="annee_academique"></td>
       <td data-champ="date_validite"></td>
       ${CFG.personnel ? "" : `<td>${francs(etu.solde_cantine)}</td>`}
@@ -798,6 +800,7 @@ async function sauverFiche(etu, champ, valeur) {
         prenom: etu.prenom,
         nom: etu.nom,
         filiere: etu.filiere,
+        programme: etu.programme || "",
         annee_academique: etu.annee_academique,
         date_validite: etu.date_validite,
         email: etu.email || "",

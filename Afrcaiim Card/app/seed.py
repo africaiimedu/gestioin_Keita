@@ -59,6 +59,9 @@ def _colonnes_cantine() -> None:
         connexion.execute(
             text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS sexe VARCHAR(1) NOT NULL DEFAULT 'M'")
         )
+        connexion.execute(
+            text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS programme VARCHAR(200) NOT NULL DEFAULT ''")
+        )
         connexion.execute(text("ALTER TABLE travaux_impression ADD COLUMN IF NOT EXISTS personnel_id INTEGER"))
         connexion.execute(text("ALTER TABLE travaux_impression ADD COLUMN IF NOT EXISTS badge_id INTEGER"))
 

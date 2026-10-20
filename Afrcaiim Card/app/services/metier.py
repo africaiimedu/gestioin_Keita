@@ -86,6 +86,7 @@ def creer_etudiant(
     date_validite: date,
     jpeg: bytes | None = None,
     email: str = "",
+    programme: str = "",
     sexe: str = "M",
     mot_de_passe: str | None = None,
     identifiant: str | None = None,
@@ -100,6 +101,7 @@ def creer_etudiant(
             nom=nom,
             matricule=matricule,
             filiere=filiere,
+            programme=(programme or "").strip()[:200],
             annee_academique=annee_academique,
             date_validite=date_validite,
             email=email or "",
@@ -185,6 +187,7 @@ def modifier_etudiant(
     annee_academique: str,
     date_validite: date,
     email: str = "",
+    programme: str | None = None,
     sexe: str = "",
     acteur_id: int | None,
 ) -> None:
@@ -194,6 +197,8 @@ def modifier_etudiant(
     etudiant.annee_academique = annee_academique
     etudiant.date_validite = date_validite
     etudiant.email = email or ""
+    if programme is not None:
+        etudiant.programme = (programme or "").strip()[:200]
     if sexe in {"M", "F"}:
         etudiant.sexe = sexe
     carte = carte_courante(db, etudiant.id)

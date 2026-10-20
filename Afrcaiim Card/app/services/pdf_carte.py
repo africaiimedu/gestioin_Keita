@@ -548,6 +548,7 @@ def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
         "filiere": etu.filiere,
         "fonction": fonction,
         "ecole": fonction if personnel else (getattr(etu, "filiere", None) or "").strip(),
+        "programme": "" if personnel else (getattr(etu, "programme", None) or "").strip(),
         "email": getattr(etu, "email", None) or "",
         "annee_academique": etu.annee_academique,
         "date_validite": etu.date_validite.strftime("%d/%m/%Y"),
