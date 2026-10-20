@@ -1061,6 +1061,49 @@ def pdf_badge_personnel(
     )
 
 
+def fiche_design_personnel():
+    """Fiche neutre : un design importé n'a pas besoin d'une personne en base."""
+    from datetime import date
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        nom="",
+        prenom="",
+        matricule="DESIGN",
+        numero="DESIGN",
+        fonction="",
+        filiere="",
+        email="",
+        sexe="M",
+        annee_academique="",
+        date_validite=date(2099, 12, 31),
+        photo_chemin=None,
+    )
+
+
+def element_design_personnel(base: str | None = None) -> tuple:
+    """(fiche, photo, jeton, édition) pour imprimer uniquement le modèle atelier personnel."""
+    from app.services.photos import portrait_initiales
+
+    fiche = fiche_design_personnel()
+    photo = portrait_initiales("D", "G")
+    return fiche, photo, "design-atelier", 1
+
+
+def pdf_design_personnel(
+    recto_verso: bool = True, retourner_verso: bool = False, base: str | None = None,
+) -> bytes:
+    """PDF du modèle personnel tel que composé (design importé inclus), sans fiche nominative."""
+    from app.config import base_url as _base
+
+    adresse = base or _base()
+    fiche, photo, jeton, edition = element_design_personnel(adresse)
+    return pdf_individuel(
+        fiche, photo, jeton, edition, adresse,
+        recto_verso=recto_verso, retourner_verso=retourner_verso, modele=charger_modele_personnel(),
+    )
+
+
 def pdf_primacy(elements: list[tuple], base: str, titre: str) -> bytes:
     """Un PDF CR80 : pour chaque carte, le recto puis le verso déjà tourné pour la Primacy 2."""
     if not elements:

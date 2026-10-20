@@ -45,6 +45,8 @@ from app.services.pdf_carte import (
     charger_modele,
     charger_modele_personnel,
     code_controle,
+    element_design_personnel,
+    pdf_design_personnel,
     pdf_feuille_a4,
     pdf_individuel,
     pdf_primacy,
@@ -755,22 +757,74 @@ def _imprimer_personnel(
     return True, f"Badge envoyé à {nom} ({face}, {sens}, {_format_carte(modele)}, 100 %)."
 
 
+def _imprimer_design_personnel(
+    db: Session, admin: Utilisateur, cle: str, copies: int, recto_verso: bool, sens: str,
+) -> tuple[bool, str]:
+    """Imprime le modèle atelier personnel (design importé) sans fiche nominative."""
+    face = "recto-verso, bord long" if recto_verso else "recto seul"
+    modele = charger_modele_personnel()
+    if cle.startswith("poste:"):
+        cible = next((imp for imp in relais.imprimantes_relais(db) if imp["cle"] == cle), None)
+        if cible is None:
+            return False, "Cette imprimante n'est plus en ligne. Vérifiez que l'ordinateur du bureau est allumé, puis rechargez la page."
+        a4 = not cible.get("primacy")
+        relais.mettre_en_file(
+            db,
+            cible["poste_id"],
+            cible["nom"],
+            libelle="Design badge personnel",
+            copies=copies,
+            recto_verso=recto_verso and not a4,
+            sens=sens,
+            media=MEDIA_A4 if a4 else _media_cr80(modele),
+            cree_par=admin.id,
+        )
+        if a4:
+            return True, f"Feuille A4 (design) confiée à {cible['nom']} ({cible['lieu']})."
+        return True, f"Design confié à {cible['nom']} ({cible['lieu']}, {face}, {sens}). Il sort dans quelques secondes."
+    nom = cle.split(":", 1)[1] if cle.startswith("local:") else cle
+    locale = next((imp for imp in cups.lister_imprimantes() if imp["nom"] == nom), None)
+    if locale is None:
+        return False, "Cette imprimante n'est pas installée."
+    if not locale.get("primacy"):
+        element = element_design_personnel(base_url())
+        contenu = pdf_feuille_a4([element], base_url(), "Design badge personnel", modele=modele)
+        ok, detail = cups.envoyer(contenu, nom, False, copies, MEDIA_A4, "portrait")
+        if not ok:
+            return False, detail
+        journaliser(db, "badge_imprime", utilisateur_id=admin.id, details=f"{nom} · A4 · design")
+        db.commit()
+        return True, f"Feuille A4 (design) envoyée à {nom}."
+    contenu = pdf_design_personnel(recto_verso=recto_verso, retourner_verso=False, base=base_url())
+    ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, sens, modele=modele)
+    if not ok:
+        return False, detail
+    journaliser(
+        db, "badge_imprime", utilisateur_id=admin.id,
+        details=f"{nom} · {copies} copie(s) · {face} · {sens} · design",
+    )
+    db.commit()
+    return True, f"Design envoyé à {nom} ({face}, {sens}, {_format_carte(modele)}, 100 %)."
+
+
 @router.get("/impression")
 def page_impression(
     request: Request,
     etudiant: int = 0,
     personnel: int = 0,
+    design: int = 0,
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
     etudiants = db.scalars(select(Etudiant).order_by(Etudiant.nom, Etudiant.prenom)).all()
     personnels = db.scalars(select(Personnel).order_by(Personnel.nom, Personnel.prenom)).all()
-    choisi = next((ligne for ligne in etudiants if ligne.id == etudiant), None) if not personnel else None
-    choisi_personnel = next((ligne for ligne in personnels if ligne.id == personnel), None)
+    design_personnel = bool(design) and not personnel and not etudiant
+    choisi = next((ligne for ligne in etudiants if ligne.id == etudiant), None) if not personnel and not design_personnel else None
+    choisi_personnel = next((ligne for ligne in personnels if ligne.id == personnel), None) if not design_personnel else None
     imprimantes = _lister_imprimantes(db)
     preferee = next((imp["cle"] for imp in imprimantes if imp["primacy"]), "")
     raison = None
-    modele = charger_modele_personnel() if choisi_personnel else charger_modele()
+    modele = charger_modele_personnel() if (choisi_personnel or design_personnel) else charger_modele()
     if choisi is not None:
         raison = _raison_blocage(choisi, carte_courante(db, choisi.id))
     elif choisi_personnel is not None:
@@ -783,6 +837,7 @@ def page_impression(
         personnels=personnels,
         choisi=choisi,
         choisi_personnel=choisi_personnel,
+        design_personnel=design_personnel,
         badge=badge_courant(db, choisi_personnel.id) if choisi_personnel else None,
         imprimantes=imprimantes,
         preferee=preferee,
@@ -794,8 +849,31 @@ def page_impression(
         en_ligne=relais.en_ligne,
         travaux=relais.derniers(db),
         libelles_travaux=relais.LIBELLES,
-        cible="personnel" if choisi_personnel else "etudiant",
+        cible="personnel" if (choisi_personnel or design_personnel) else "etudiant",
     )
+
+
+@router.get("/impression/design/pdf")
+def pdf_design_impression(
+    inline: int = 0,
+    format: str = "",
+    admin: Utilisateur = Depends(exiger_bureau),
+):
+    """PDF du design atelier personnel, sans fiche en base."""
+    modele = charger_modele_personnel()
+    if format == "a4":
+        contenu = pdf_feuille_a4(
+            [element_design_personnel(base_url())],
+            base_url(),
+            "Design badge personnel",
+            modele=modele,
+        )
+        nom = "design-badge-a4.pdf"
+    else:
+        contenu = pdf_design_personnel(base=base_url())
+        nom = "design-badge.pdf"
+    headers = {"Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{nom}"'}
+    return Response(contenu, media_type="application/pdf", headers=headers)
 
 
 @router.get("/impression/travaux.json")
@@ -823,9 +901,21 @@ def lancer_page_impression(
     csrf: str = Form(""),
     etudiant_id: int = Form(0),
     personnel_id: int = Form(0),
+    design: int = Form(0),
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
+    if design:
+        retour = "/admin/impression?design=1"
+        _exiger_csrf(request, csrf, retour)
+        if copies < 1 or copies > 20:
+            flash(request, "erreur", "Le nombre de copies doit être entre 1 et 20.")
+            raise Redirection(retour)
+        sens = "portrait" if orientation == "portrait" else "paysage"
+        ok, message = _imprimer_design_personnel(db, admin, imprimante, copies, duplex == "1", sens)
+        flash(request, "ok" if ok else "erreur", message)
+        raise Redirection(retour)
+
     if personnel_id:
         retour = f"/admin/impression?personnel={personnel_id}"
         _exiger_csrf(request, csrf, retour)

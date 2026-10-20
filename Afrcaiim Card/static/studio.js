@@ -948,14 +948,17 @@ document.getElementById("recherche").oninput = (ev) => {
   dessinerGrille();
   dessinerCarte();
 };
-document.getElementById("imprimer").onclick = () => {
+document.getElementById("imprimer").onclick = async () => {
+  // Atelier personnel : on imprime le design / modèle composé, sans fiche nominative.
+  if (CFG.personnel) {
+    try {
+      await sauverModele();
+    } catch (_) { /* on ouvre quand même la page d'impression */ }
+    window.location.href = "/admin/impression?design=1";
+    return;
+  }
   const etu = courant();
   if (!etu) {
-    // Design importé (personnel) : pas besoin d’une fiche pour composer ; on ouvre l’impression.
-    if (CFG.personnel) {
-      window.location.href = "/admin/impression";
-      return;
-    }
     message(`Choisissez un ${CFG.labelFiche} dans la base.`);
     return;
   }

@@ -1,15 +1,17 @@
 {% extends "base.html" %}
 {% block titre %}Impression{% endblock %}
 {% block contenu %}
-{% set personnel_mode = cible == "personnel" or choisi_personnel %}
+{% set design_mode = design_personnel|default(false) %}
+{% set personnel_mode = cible == "personnel" or choisi_personnel or design_mode %}
 <section class="page-impression">
   <header class="impression-entete">
-    <p class="surtitre">{% if personnel_mode %}Badges personnel{% else %}Cartes étudiantes{% endif %}</p>
+    <p class="surtitre">{% if design_mode %}Design importé{% elif personnel_mode %}Badges personnel{% else %}Cartes étudiantes{% endif %}</p>
     <h1>Impression</h1>
     <p class="intro">Depuis n'importe quel ordinateur, Windows ou Mac. Imprimante ordinaire (jet d'encre, laser) : choisissez « Feuille A4 », la carte sort à taille réelle, recto et verso côte à côte, à découper et plier. Imprimante à cartes Primacy 2 : choisissez « Carte PVC », recto-verso bord long, échelle 100&nbsp;%.</p>
     {% if user.role == "admin" %}<p class="actions"><a class="bouton bouton-secondaire" href="/admin/postes">Ordinateurs d'impression</a></p>{% endif %}
   </header>
 
+  {% if not design_mode %}
   <div class="impression-choix" style="display:flex;flex-wrap:wrap;gap:0.8rem;align-items:end">
     <form method="get">
       <label>Étudiant
@@ -36,16 +38,24 @@
       </label>
     </form>
   </div>
+  {% endif %}
 
-  {% if not etudiants and not personnels %}
+  {% if design_mode %}
+  {% elif not etudiants and not personnels %}
     <p class="impression-vide">Aucune fiche à imprimer.</p>
   {% elif not choisi and not choisi_personnel %}
     <p class="impression-vide">Choisissez un étudiant ou une fiche personnel.</p>
-  {% else %}
+  {% endif %}
+
+  {% if design_mode or choisi or choisi_personnel %}
     <div class="impression-scene">
       <article class="impression-fiche">
-        <p class="surtitre">{% if personnel_mode %}Badge à sortir{% else %}Carte à sortir{% endif %}</p>
-        {% if personnel_mode %}
+        <p class="surtitre">{% if design_mode %}Design à sortir{% elif personnel_mode %}Badge à sortir{% else %}Carte à sortir{% endif %}</p>
+        {% if design_mode %}
+          <h2>Design atelier personnel</h2>
+          <p>Modèle importé — aucune fiche nominative</p>
+          <p class="matricule">CR80 portrait</p>
+        {% elif personnel_mode %}
           <h2>{{ choisi_personnel.nom }} {{ choisi_personnel.prenom }}</h2>
           <p>{{ choisi_personnel.fonction }}</p>
           <p class="matricule">{{ choisi_personnel.numero }}</p>
@@ -62,7 +72,13 @@
         </ul>
         {% if not raison %}
           <div class="impression-locale">
-            {% if personnel_mode %}
+            {% if design_mode %}
+              <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/impression/design/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
+              <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
+              <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/impression/design/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
+              <p class="impression-note">Choisissez la Primacy 2, couleur, recto-verso bord long, orientation {{ orientation }}, taille réelle 100 %, sans « ajuster à la page ».</p>
+              <p class="impression-note"><a href="/admin/impression/design/pdf?format=a4">Télécharger la feuille A4</a> · <a href="/admin/impression/design/pdf">Télécharger le PDF design</a></p>
+            {% elif personnel_mode %}
               <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/personnel/{{ choisi_personnel.id }}/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
               <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
               <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/personnel/{{ choisi_personnel.id }}/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
@@ -87,7 +103,9 @@
 
       <form method="post" action="/admin/impression" class="panneau impression-reglages">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        {% if personnel_mode %}
+        {% if design_mode %}
+          <input type="hidden" name="design" value="1">
+        {% elif personnel_mode %}
           <input type="hidden" name="personnel_id" value="{{ choisi_personnel.id }}">
         {% else %}
           <input type="hidden" name="etudiant_id" value="{{ choisi.id }}">

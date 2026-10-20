@@ -14,7 +14,13 @@ from app.models import BadgePersonnel, Carte, Etudiant, Personnel, PosteImpressi
 from app.services import relais
 from app.services.limite import autoriser
 from app.services.metier import carte_courante, journaliser, marquer_imprimee
-from app.services.pdf_carte import charger_modele_personnel, pdf_feuille_a4, pdf_individuel
+from app.services.pdf_carte import (
+    charger_modele_personnel,
+    element_design_personnel,
+    pdf_design_personnel,
+    pdf_feuille_a4,
+    pdf_individuel,
+)
 from app.services.photos import lire_photo, portrait_initiales
 from app.services.statut import statut_effectif
 
@@ -76,6 +82,26 @@ def _pdf_du_travail(db: Session, travail) -> tuple[bytes | None, str]:
             pdf_individuel(
                 personne, photo, badge.jeton, badge.numero_edition, base_url(),
                 travail.recto_verso, retourner_verso=False, modele=modele,
+            ),
+            "",
+        )
+
+    # Design atelier personnel : pas de fiche nominative.
+    if not travail.etudiant_id:
+        modele = charger_modele_personnel()
+        if _sur_a4(travail):
+            return (
+                pdf_feuille_a4(
+                    [element_design_personnel(base_url())],
+                    base_url(),
+                    "Design badge personnel",
+                    modele=modele,
+                ),
+                "",
+            )
+        return (
+            pdf_design_personnel(
+                recto_verso=travail.recto_verso, retourner_verso=False, base=base_url(),
             ),
             "",
         )
