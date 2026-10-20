@@ -98,6 +98,20 @@ app.disable("x-powered-by");
 // Derrière le proxy HTTPS de l'hébergeur (o2switch : Apache + Passenger), req.secure et req.ip
 // ne sont fiables que si TRUST_PROXY est défini.
 if (process.env.TRUST_PROXY) app.set("trust proxy", trustProxy(process.env.TRUST_PROXY));
+// Derrière o2switch, HTTP reste accessible si la redirection n'est pas forcée : on bascule vers HTTPS.
+app.use((req, res, next) => {
+  if (
+    process.env.NODE_ENV === "production"
+    && process.env.TRUST_PROXY
+    && process.env.FORCE_HTTPS !== "false"
+    && !req.secure
+  ) {
+    const host = String(req.get("host") || "").split(",")[0].trim() || "scolarite.univ-africaiim.com";
+    res.redirect(301, `https://${host}${req.originalUrl}`);
+    return;
+  }
+  next();
+});
 app.use(compression({ filter: (req, res) => !isCardPortal(req) && compression.filter(req, res) }));
 app.use((req, res, next) => {
   if (isCardPortal(req)) {
