@@ -744,9 +744,10 @@ def _imprimer_personnel(
         journaliser(db, "badge_imprime", utilisateur_id=admin.id, details=f"{nom} · A4 · {personne.numero}")
         db.commit()
         return True, f"Feuille A4 envoyée à {nom} : découpez le badge sur les repères et pliez-le."
+    # Portrait + bord long : tourner le verso dans le PDF pour qu'il sorte à l'endroit.
     contenu = pdf_individuel(
         personne, photo, badge.jeton, badge.numero_edition, base_url(),
-        recto_verso, retourner_verso=False, modele=modele,
+        recto_verso, retourner_verso=recto_verso, modele=modele,
     )
     ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, sens, modele=modele)
     if not ok:
@@ -799,7 +800,7 @@ def _imprimer_design_personnel(
         journaliser(db, "badge_imprime", utilisateur_id=admin.id, details=f"{nom} · A4 · design · portrait")
         db.commit()
         return True, f"Feuille A4 (design) envoyée à {nom}."
-    contenu = pdf_design_personnel(recto_verso=recto_verso, retourner_verso=False, base=base_url())
+    contenu = pdf_design_personnel(recto_verso=recto_verso, retourner_verso=recto_verso, base=base_url())
     ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, "portrait", modele=modele)
     if not ok:
         return False, detail

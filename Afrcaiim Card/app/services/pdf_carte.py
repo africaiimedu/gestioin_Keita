@@ -1054,9 +1054,11 @@ def pdf_individuel(
 
 def pdf_badge_personnel(
     personne, photo: bytes, jeton: str, edition: int, base: str,
-    recto_verso: bool = True, retourner_verso: bool = False,
+    recto_verso: bool = True, retourner_verso: bool | None = None,
 ) -> bytes:
-    """Badge personnel en portrait, même moteur d'impression que la carte étudiant."""
+    """Badge personnel en portrait. Verso tourné pour la Primacy (bord long)."""
+    if retourner_verso is None:
+        retourner_verso = bool(recto_verso)
     return pdf_individuel(
         personne, photo, jeton, edition, base,
         recto_verso=recto_verso, retourner_verso=retourner_verso, modele=charger_modele_personnel(),
@@ -1093,11 +1095,13 @@ def element_design_personnel(base: str | None = None) -> tuple:
 
 
 def pdf_design_personnel(
-    recto_verso: bool = True, retourner_verso: bool = False, base: str | None = None,
+    recto_verso: bool = True, retourner_verso: bool | None = None, base: str | None = None,
 ) -> bytes:
-    """PDF du modèle personnel tel que composé (design importé inclus), sans fiche nominative."""
+    """PDF du modèle personnel (design importé). Verso tourné pour la Primacy (bord long)."""
     from app.config import base_url as _base
 
+    if retourner_verso is None:
+        retourner_verso = bool(recto_verso)
     adresse = base or _base()
     fiche, photo, jeton, edition = element_design_personnel(adresse)
     return pdf_individuel(

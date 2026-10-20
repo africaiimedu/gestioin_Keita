@@ -173,6 +173,8 @@ def commande_lp(
     for cle in ("IFColorProfile", "IBColorProfile"):
         _poser_option(commande, choix, cle, "STDPROFILE")
     _poser_option(commande, choix, "GSmoothing", "ADVSMOOTH")
+    # Paysage (étudiants) : demi-tour pilote. Portrait (personnel) : le PDF tourne déjà le verso
+    # (retourner_verso) — ne pas cumuler un second demi-tour ici.
     demi_tour = "ON" if paysage else "OFF"
     for cle in ("FPageRotate180", "BPageRotate180"):
         _poser_option(commande, choix, cle, demi_tour)

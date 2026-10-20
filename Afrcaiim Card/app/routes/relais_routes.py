@@ -81,7 +81,7 @@ def _pdf_du_travail(db: Session, travail) -> tuple[bytes | None, str]:
         return (
             pdf_individuel(
                 personne, photo, badge.jeton, badge.numero_edition, base_url(),
-                travail.recto_verso, retourner_verso=False, modele=modele,
+                travail.recto_verso, retourner_verso=bool(travail.recto_verso), modele=modele,
             ),
             "",
         )
@@ -102,7 +102,9 @@ def _pdf_du_travail(db: Session, travail) -> tuple[bytes | None, str]:
             )
         return (
             pdf_design_personnel(
-                recto_verso=travail.recto_verso, retourner_verso=False, base=base_url(),
+                recto_verso=travail.recto_verso,
+                retourner_verso=bool(travail.recto_verso),
+                base=base_url(),
             ),
             "",
         )

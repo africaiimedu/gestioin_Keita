@@ -537,6 +537,7 @@ def test_impression_recto_verso_et_couleurs():
     assert "Orientation=LANDSCAPE_CC90" not in portrait
     assert "FPageRotate180=OFF" in portrait
     assert "BPageRotate180=OFF" in portrait
+    assert "media=Custom.54x85.6mm" in portrait
     assert "Duplex=None" in sans
     assert "sides=two-sided-long-edge" not in sans
 
