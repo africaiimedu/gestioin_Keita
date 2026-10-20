@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.deps import PERSONNEL, Redirection, get_db, utilisateur_courant
-from app.models import Carte
+from app.models import BadgePersonnel, Carte
 from app.services.cantine import decision_repas, prix_repas, valider_repas
 from app.services.metier import journaliser
 from app.services.courrier import formater_francs
@@ -50,33 +50,59 @@ def verifier(
 
     # Seul le jeton secret compte : une carte imprimée avant un changement de matricule reste lisible.
     carte = db.scalar(select(Carte).where(Carte.jeton == t))
-    if carte is None:
-        return _sans_cache(render(request, "verif.html", mode="invalide"))
+    if carte is not None:
+        statut = statut_effectif(carte.statut, carte.date_validite)
+        etudiant = carte.etudiant
+        prix = prix_repas()
+        solde = int(etudiant.solde_cantine or 0)
+        decision = decision_repas(solde, prix, etudiant.email or "", statut == "active")
+        return _sans_cache(
+            render(
+                request,
+                "verif.html",
+                mode="ok",
+                nom=f"{etudiant.prenom} {etudiant.nom}",
+                statut=statut,
+                jeton=carte.jeton,
+                controle=code_controle(carte.jeton),
+                matricule=etudiant.matricule,
+                email=etudiant.email or "",
+                solde=formater_francs(solde),
+                prix=formater_francs(prix),
+                peut=decision.ok,
+                raison=decision.message,
+                agent=agent is not None,
+                autorise=agent is not None and (agent.role == "admin" or bool(agent.peut_valider_qr)),
+                role=agent.role if agent else "",
+                suivant=f"/verif/{quote(etudiant.matricule)}?t={quote(carte.jeton)}",
+            )
+        )
 
-    statut = statut_effectif(carte.statut, carte.date_validite)
-    etudiant = carte.etudiant
-    prix = prix_repas()
-    solde = int(etudiant.solde_cantine or 0)
-    decision = decision_repas(solde, prix, etudiant.email or "", statut == "active")
+    badge = db.scalar(select(BadgePersonnel).where(BadgePersonnel.jeton == t))
+    if badge is None:
+        return _sans_cache(render(request, "verif.html", mode="invalide"))
+    statut = statut_effectif(badge.statut, badge.date_validite)
+    personne = badge.personnel
     return _sans_cache(
         render(
             request,
             "verif.html",
             mode="ok",
-            nom=f"{etudiant.prenom} {etudiant.nom}",
+            nom=f"{personne.prenom} {personne.nom}",
             statut=statut,
-            jeton=carte.jeton,
-            controle=code_controle(carte.jeton),
-            matricule=etudiant.matricule,
-            email=etudiant.email or "",
-            solde=formater_francs(solde),
-            prix=formater_francs(prix),
-            peut=decision.ok,
-            raison=decision.message,
+            jeton=badge.jeton,
+            controle=code_controle(badge.jeton),
+            matricule=personne.numero,
+            email=personne.email or "",
+            solde="",
+            prix="",
+            peut=False,
+            raison=f"Badge personnel · {personne.fonction}",
             agent=agent is not None,
-            autorise=agent is not None and (agent.role == "admin" or bool(agent.peut_valider_qr)),
+            autorise=False,
             role=agent.role if agent else "",
-            suivant=f"/verif/{quote(etudiant.matricule)}?t={quote(carte.jeton)}",
+            suivant=f"/verif/{quote(personne.numero)}?t={quote(badge.jeton)}",
+            personnel=True,
         )
     )
 

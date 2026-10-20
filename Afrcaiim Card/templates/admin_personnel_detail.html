@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titre %}{{ personne.prenom }} {{ personne.nom }}{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <p class="retour"><a href="/admin/personnel">← Badges personnel</a></p>
+  <h1>{{ personne.prenom }} {{ personne.nom }}</h1>
+  <p class="matricule">{{ personne.numero }} · {{ personne.fonction }}</p>
+
+  <div class="fiche">
+    <div>
+      {% if personne.photo_chemin %}
+        <img class="portrait" src="/admin/personnel/{{ personne.id }}/photo" alt="Photo de {{ personne.prenom }} {{ personne.nom }}">
+      {% else %}
+        <p class="portrait vide">Photo manquante</p>
+      {% endif %}
+      <form method="post" action="/admin/personnel/{{ personne.id }}/photo" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Nouvelle photo
+          <input name="fichier" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" required>
+        </label>
+        <button type="submit">Recadrer et enregistrer</button>
+      </form>
+    </div>
+
+    <form method="post" action="/admin/personnel/{{ personne.id }}" class="panneau">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Prénom <input name="prenom" value="{{ personne.prenom }}" required maxlength="80"></label>
+      <label>Nom <input name="nom" value="{{ personne.nom }}" required maxlength="80"></label>
+      <label>Sexe
+        <select name="sexe" required>
+          <option value="M" {% if personne.sexe != "F" %}selected{% endif %}>Masculin</option>
+          <option value="F" {% if personne.sexe == "F" %}selected{% endif %}>Féminin</option>
+        </select>
+      </label>
+      <label>Fonction / service <input name="fonction" value="{{ personne.fonction }}" required maxlength="150"></label>
+      <label>E-mail <input name="email" type="email" value="{{ personne.email or '' }}" maxlength="120"></label>
+      <p class="aide">Année : {{ personne.annee_academique }}. Valide jusqu'au {{ personne.date_validite | datefr }}.</p>
+      <button type="submit">Enregistrer la fiche</button>
+    </form>
+  </div>
+
+  <h2>Badge (portrait)</h2>
+  {% if badge %}
+    <p>Édition {{ badge.numero_edition }} ·
+      {% if statut %}<span class="pastille pastille-{{ statut }}">{{ statut|statutfr }}</span>{% endif %}
+      · émis le {{ badge.date_emission|datefr }}
+    </p>
+    <div class="actions">
+      <button type="button" class="bouton" data-imprimer-pdf="/admin/personnel/{{ personne.id }}/pdf?inline=1&amp;format=a4" data-note="note-impression">Imprimer sur feuille A4</button>
+      <button type="button" class="bouton" data-imprimer-pdf="/admin/personnel/{{ personne.id }}/pdf?inline=1" data-note="note-impression">Imprimer sur carte PVC (portrait)</button>
+      <a class="bouton bouton-secondaire" href="/admin/personnel/{{ personne.id }}/pdf?format=a4">PDF feuille A4</a>
+      <a class="bouton bouton-secondaire" href="/admin/personnel/{{ personne.id }}/pdf">PDF badge</a>
+      <a class="bouton bouton-secondaire" href="/admin/personnel/{{ personne.id }}/imprimer">Aperçu HTML</a>
+      <form method="post" action="/admin/personnel/{{ personne.id }}/reediter">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="bouton-secondaire">Rééditer le badge</button>
+      </form>
+    </div>
+    <p class="impression-note" id="note-impression">Primacy 2 : couleur, recto-verso bord long, orientation portrait, taille réelle 100 %.</p>
+  {% else %}
+    <p>Aucun badge actif.</p>
+  {% endif %}
+</section>
+{% endblock %}

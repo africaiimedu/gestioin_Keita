@@ -15,6 +15,7 @@ from app.routes.auth_routes import router as auth_router
 from app.routes.espace_routes import router as espace_router
 from app.routes.inscription_routes import router as inscription_router
 from app.routes.menu_routes import router as menu_router
+from app.routes.personnel_routes import router as personnel_router
 from app.routes.public_routes import router as public_router
 from app.routes.relais_routes import router as relais_router
 from app.routes.securite_routes import router as securite_router
@@ -51,6 +52,7 @@ app.include_router(cantine_router)
 app.include_router(menu_router)
 app.include_router(studio_router)
 app.include_router(admin_router)
+app.include_router(personnel_router)
 app.include_router(espace_router)
 app.include_router(public_router)
 app.include_router(securite_router)

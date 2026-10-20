@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="csrf" content="{{ csrf }}">
+  <title>Impression badge — {{ personne.prenom }} {{ personne.nom }}</title>
+  <link rel="stylesheet" href="/static/polices.css">
+  <style>
+    @page { size: 54mm 85.6mm; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { background: #e7e1d6; color: #1a1a1a; font-family: "DejaVu Sans", sans-serif; }
+    .barre {
+      display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+      padding: 0.7rem 1rem; background: #f4f1ea; border-bottom: 3px solid #feab00;
+    }
+    .barre strong { color: #004c22; }
+    .barre button {
+      background: #004c22; color: white; border: 0; border-radius: 6px;
+      padding: 0.55rem 0.9rem; font: 700 0.95rem/1 "DejaVu Sans", sans-serif; cursor: pointer;
+    }
+    .barre p { margin: 0; font-size: 0.82rem; max-width: 42rem; }
+    .feuille {
+      position: relative; overflow: hidden;
+      width: 54mm; height: 85.6mm;
+      margin: 10mm auto; background: white;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+      page-break-after: always;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .feuille:last-child { page-break-after: auto; }
+    .objet { position: absolute; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @media print {
+      body { background: white; }
+      .barre { display: none !important; }
+      .feuille { margin: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="barre">
+    <button type="button" id="lancer">Imprimer le badge (portrait)</button>
+    <strong>{{ personne.nom }} · {{ personne.prenom }} · Badge personnel</strong>
+    <p>Primacy 2 : couleur, recto-verso bord long, orientation <strong>portrait</strong>, échelle 100&nbsp;%.</p>
+  </div>
+  <div id="recto" class="feuille"></div>
+  <div id="verso" class="feuille"></div>
+  <script id="donnees" type="application/json">{{ donnees | tojson }}</script>
+  <script src="/static/rendu-carte.js?v=32"></script>
+  <script>
+    const data = JSON.parse(document.getElementById("donnees").textContent);
+    const recto = document.getElementById("recto");
+    const verso = document.getElementById("verso");
+
+    function dessiner() {
+      const largeur = 54;
+      const hauteur = 85.6;
+      document.querySelectorAll(".feuille").forEach((feuille) => {
+        feuille.style.width = `${largeur}mm`;
+        feuille.style.height = `${hauteur}mm`;
+      });
+      const px = recto.clientWidth / largeur;
+      const ctx = { px, etu: data.etu, urls: data.urls };
+      rendreFace(recto, data.modele.recto, { ...ctx, face: "recto" });
+      rendreFace(verso, data.modele.verso, { ...ctx, face: "verso" });
+    }
+
+    function imagesPretes() {
+      return Promise.all([...document.images].map((img) => img.complete
+        ? Promise.resolve()
+        : new Promise((resoudre) => { img.onload = img.onerror = resoudre; })));
+    }
+
+    dessiner();
+    window.addEventListener("beforeprint", dessiner);
+    document.getElementById("lancer").onclick = () => window.print();
+    window.addEventListener("load", () => {
+      dessiner();
+      imagesPretes().then(() => setTimeout(() => window.print(), 400));
+    });
+  </script>
+</body>
+</html>

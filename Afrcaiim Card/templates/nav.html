@@ -1,5 +1,5 @@
 {% set chemin = request.url.path %}
-{% set service_cartes = chemin == "/admin" or chemin.startswith("/admin/etudiants") or chemin.startswith("/admin/impression") or chemin.startswith("/admin/lot") or chemin.startswith("/admin/import") or chemin.startswith("/admin/journal") %}
+{% set service_cartes = chemin == "/admin" or chemin.startswith("/admin/etudiants") or chemin.startswith("/admin/personnel") or chemin.startswith("/admin/impression") or chemin.startswith("/admin/lot") or chemin.startswith("/admin/import") or chemin.startswith("/admin/journal") %}
 {% set service_cuisine = chemin == "/cantine" or chemin.startswith("/cantine/") %}
 <nav>
   {% if user and user.role in ["admin", "scolarite"] %}
@@ -7,6 +7,7 @@
       <button type="button" class="service-titre{% if service_cartes %} actif{% endif %}" aria-haspopup="true">Cartes</button>
       <div class="sous-menu">
         <a href="/admin/etudiants" {% if chemin.startswith("/admin/etudiants") %}class="actif" aria-current="page"{% endif %}>Étudiants</a>
+        <a href="/admin/personnel" {% if chemin.startswith("/admin/personnel") %}class="actif" aria-current="page"{% endif %}>Badges personnel</a>
         <a href="/admin" {% if chemin == "/admin" %}class="actif" aria-current="page"{% endif %}>Atelier</a>
         <a href="/admin/impression" {% if chemin.startswith("/admin/impression") %}class="actif" aria-current="page"{% endif %}>Impression</a>
         <a href="/admin/lot" {% if chemin.startswith("/admin/lot") %}class="actif" aria-current="page"{% endif %}>Lot d'impression</a>

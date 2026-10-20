@@ -493,9 +493,14 @@ def _nouveau_canvas(taille, recto_verso: bool = True):
     return c, tampon
 
 
-def charger_modele() -> dict:
-    with open(ROOT / "config" / "modele.json", encoding="utf-8") as fichier:
-        return json.load(fichier)
+def charger_modele(fichier: str = "modele.json") -> dict:
+    with open(ROOT / "config" / fichier, encoding="utf-8") as flux:
+        return json.load(flux)
+
+
+def charger_modele_personnel() -> dict:
+    """Modèle portrait pour les badges du personnel (mêmes paramètres, orientation portrait)."""
+    return charger_modele("modele_personnel.json")
 
 
 def _hex(valeur, defaut="#000000"):
@@ -867,9 +872,9 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     c.restoreState()
 
 
-def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, base: str) -> None:
+def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, base: str, modele: dict | None = None) -> None:
     """Dessine une face à partir du modèle. L'origine est le coin bas-gauche de la carte."""
-    modele = charger_modele()
+    modele = modele or charger_modele()
     page_w, page_h = taille_carte(modele)
     c.setFillColor(white)
     c.rect(0, 0, page_w, page_h, fill=1, stroke=0)
@@ -1004,29 +1009,42 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
     c.restoreState()
 
 
-def _dessiner_verso(c, etu, photo, jeton: str, edition: int, base: str, retourner: bool) -> None:
+def _dessiner_verso(c, etu, photo, jeton: str, edition: int, base: str, retourner: bool, modele: dict | None = None) -> None:
     """Tourne le verso de 180° : après le retournement bord long de la Primacy, il est à l'endroit."""
+    modele = modele or charger_modele()
     if retourner:
-        page_w, page_h = taille_carte()
+        page_w, page_h = taille_carte(modele)
         c.saveState()
         c.translate(page_w, page_h)
         c.rotate(180)
-    dessiner_face(c, "verso", etu, photo, jeton, edition, base)
+    dessiner_face(c, "verso", etu, photo, jeton, edition, base, modele=modele)
     if retourner:
         c.restoreState()
 
 
 def pdf_individuel(
     etu, photo: bytes, jeton: str, edition: int, base: str,
-    recto_verso: bool = True, retourner_verso: bool = False,
+    recto_verso: bool = True, retourner_verso: bool = False, modele: dict | None = None,
 ) -> bytes:
-    c, tampon = _nouveau_canvas(taille_carte(), recto_verso)
+    modele = modele or charger_modele()
+    c, tampon = _nouveau_canvas(taille_carte(modele), recto_verso)
     c.setTitle(f"Carte {etu.matricule}")
-    dessiner_face(c, "recto", etu, photo, jeton, edition, base)
+    dessiner_face(c, "recto", etu, photo, jeton, edition, base, modele=modele)
     c.showPage()
-    _dessiner_verso(c, etu, photo, jeton, edition, base, retourner_verso and recto_verso)
+    _dessiner_verso(c, etu, photo, jeton, edition, base, retourner_verso and recto_verso, modele=modele)
     c.save()
     return tampon.getvalue()
+
+
+def pdf_badge_personnel(
+    personne, photo: bytes, jeton: str, edition: int, base: str,
+    recto_verso: bool = True, retourner_verso: bool = False,
+) -> bytes:
+    """Badge personnel en portrait, même moteur d'impression que la carte étudiant."""
+    return pdf_individuel(
+        personne, photo, jeton, edition, base,
+        recto_verso=recto_verso, retourner_verso=retourner_verso, modele=charger_modele_personnel(),
+    )
 
 
 def pdf_primacy(elements: list[tuple], base: str, titre: str) -> bytes:
@@ -1071,25 +1089,26 @@ def _reperes_paire(c, x: float, y: float, largeur: float, hauteur: float) -> Non
     c.restoreState()
 
 
-def _face_decoupee(c, face: str, x: float, y: float, largeur: float, hauteur: float, element: tuple, base: str) -> None:
+def _face_decoupee(c, face: str, x: float, y: float, largeur: float, hauteur: float, element: tuple, base: str, modele: dict | None = None) -> None:
     etu, photo, jeton, edition = element
     c.saveState()
     c.translate(x, y)
     cadre = c.beginPath()
     cadre.rect(0, 0, largeur, hauteur)
     c.clipPath(cadre, stroke=0, fill=0)
-    dessiner_face(c, face, etu, photo, jeton, edition, base)
+    dessiner_face(c, face, etu, photo, jeton, edition, base, modele=modele)
     c.restoreState()
 
 
-def pdf_feuille_a4(elements: list[tuple], base: str, titre: str) -> bytes:
+def pdf_feuille_a4(elements: list[tuple], base: str, titre: str, modele: dict | None = None) -> bytes:
     """Pour toute imprimante : chaque carte en recto | verso côte à côte, taille réelle, à découper et plier.
 
     Pas de recto-verso ni de format spécial : une feuille A4 ordinaire suffit.
     """
     if not elements:
         raise ValueError("Aucune carte à imprimer.")
-    largeur, hauteur = taille_carte()
+    modele = modele or charger_modele()
+    largeur, hauteur = taille_carte(modele)
     places = positions_paires(largeur, hauteur)
     c, tampon = _nouveau_canvas((A4_W, A4_H), recto_verso=False)
     c.setTitle(f"Université AFRICAIIM — {titre}")
@@ -1097,8 +1116,8 @@ def pdf_feuille_a4(elements: list[tuple], base: str, titre: str) -> bytes:
     pages = [elements[i : i + len(places)] for i in range(0, len(elements), len(places))]
     for index, page in enumerate(pages, start=1):
         for element, (x, y) in zip(page, places):
-            _face_decoupee(c, "recto", x, y, largeur, hauteur, element, base)
-            _face_decoupee(c, "verso", x + largeur, y, largeur, hauteur, element, base)
+            _face_decoupee(c, "recto", x, y, largeur, hauteur, element, base, modele=modele)
+            _face_decoupee(c, "verso", x + largeur, y, largeur, hauteur, element, base, modele=modele)
             _reperes_paire(c, x, y, largeur, hauteur)
         c.setFillColor(HexColor("#222222"))
         c.setFont("DejaVu", 7.5)

@@ -10,18 +10,22 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import ROOT
 from app.models import (
+    BadgePersonnel,
     Carte,
     CommandeCantine,
     Etudiant,
     Journal,
     LigneCommande,
     MouvementCantine,
+    Personnel,
     Utilisateur,
     maintenant,
 )
 from app.security import hash_mot_de_passe, mot_de_passe_temporaire, nouveau_jeton
 from app.services.comptes import ADRESSE, adresse_compte, mot_de_passe_depart
-from app.services.photos import enregistrer_photo
+from app.services.ecoles import annee_academique_courante
+from app.services.import_etudiants import validite_par_defaut
+from app.services.photos import enregistrer_photo, enregistrer_photo_personnel
 from app.services.statut import statut_effectif
 
 
@@ -305,6 +309,150 @@ def noter_generation(db, carte: Carte, acteur_id: int | None, details: str) -> N
         details=details,
     )
     db.commit()
+
+
+def prochain_numero_personnel(db) -> str:
+    """PERS + deux chiffres d'année + numéro à 4 chiffres (ex. PERS260001)."""
+    annee = annee_academique_courante()
+    prefixe = f"PERS{annee[2:4]}"
+    exists = db.scalars(select(Personnel.numero).where(Personnel.numero.like(f"{prefixe}%"))).all()
+    maxi = 0
+    for numero in exists:
+        suite = str(numero)[len(prefixe):]
+        if suite.isdigit():
+            maxi = max(maxi, int(suite))
+    return f"{prefixe}{maxi + 1:04d}"
+
+
+def badge_courant(db, personnel_id: int) -> BadgePersonnel | None:
+    badges = db.scalars(select(BadgePersonnel).where(BadgePersonnel.personnel_id == personnel_id)).all()
+    vivants = [badge for badge in badges if badge.statut != "remplacee"]
+    if not vivants:
+        return None
+    return max(vivants, key=lambda badge: badge.numero_edition)
+
+
+def _nouveau_badge(personne: Personnel, edition: int) -> BadgePersonnel:
+    return BadgePersonnel(
+        personnel_id=personne.id,
+        jeton=nouveau_jeton(),
+        statut="active",
+        date_emission=date.today(),
+        date_validite=personne.date_validite,
+        numero_edition=edition,
+        cree_le=maintenant(),
+    )
+
+
+def creer_personnel(
+    db,
+    *,
+    prenom: str,
+    nom: str,
+    fonction: str,
+    numero: str | None = None,
+    date_validite: date | None = None,
+    jpeg: bytes | None = None,
+    email: str = "",
+    sexe: str = "M",
+    acteur_id: int | None = None,
+) -> Personnel:
+    prenom = (prenom or "").strip()
+    nom = (nom or "").strip().upper()
+    fonction = (fonction or "").strip()
+    if len(prenom) < 2 or len(nom) < 2:
+        raise ValueError("Le nom et le prénom sont obligatoires.")
+    if len(fonction) < 2:
+        raise ValueError("Indiquez la fonction ou le service.")
+    annee = annee_academique_courante()
+    validite = date_validite or validite_par_defaut(annee)
+    numero = re.sub(r"\s+", "", (numero or "").strip()).upper() or prochain_numero_personnel(db)
+    try:
+        personne = Personnel(
+            prenom=prenom,
+            nom=nom,
+            numero=numero,
+            fonction=fonction,
+            sexe=sexe if sexe in {"M", "F"} else "M",
+            annee_academique=annee,
+            date_validite=validite,
+            email=(email or "").strip(),
+            cree_le=maintenant(),
+        )
+        db.add(personne)
+        db.flush()
+        if jpeg:
+            personne.photo_chemin = enregistrer_photo_personnel(personne.id, jpeg)
+        badge = _nouveau_badge(personne, 1)
+        db.add(badge)
+        db.flush()
+        journaliser(
+            db,
+            "badge_cree",
+            utilisateur_id=acteur_id,
+            details=f"Badge personnel {numero} · {nom} {prenom} · {fonction}",
+        )
+        db.commit()
+        db.refresh(personne)
+        return personne
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError(f"Le numéro {numero} est déjà attribué.") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+def modifier_personnel(
+    db,
+    personne: Personnel,
+    *,
+    prenom: str,
+    nom: str,
+    fonction: str,
+    email: str = "",
+    sexe: str = "M",
+    acteur_id: int | None = None,
+) -> None:
+    personne.prenom = prenom.strip()
+    personne.nom = nom.strip().upper()
+    personne.fonction = fonction.strip()
+    personne.email = (email or "").strip()
+    personne.sexe = sexe if sexe in {"M", "F"} else "M"
+    badge = badge_courant(db, personne.id)
+    journaliser(
+        db,
+        "badge_modifie",
+        utilisateur_id=acteur_id,
+        details=f"Fiche personnel {personne.numero}",
+    )
+    if badge:
+        badge.date_validite = personne.date_validite
+    db.commit()
+
+
+def remplacer_photo_personnel(db, personne: Personnel, jpeg: bytes, acteur_id: int | None) -> None:
+    personne.photo_chemin = enregistrer_photo_personnel(personne.id, jpeg)
+    journaliser(db, "badge_photo", utilisateur_id=acteur_id, details=f"Portrait {personne.numero}")
+    db.commit()
+
+
+def reediter_badge(db, personne: Personnel, acteur_id: int | None) -> BadgePersonnel:
+    actuel = badge_courant(db, personne.id)
+    edition = (actuel.numero_edition + 1) if actuel else 1
+    if actuel:
+        actuel.statut = "remplacee"
+    nouveau = _nouveau_badge(personne, edition)
+    db.add(nouveau)
+    db.flush()
+    journaliser(
+        db,
+        "badge_reedite",
+        utilisateur_id=acteur_id,
+        details=f"Édition {edition} · {personne.numero}",
+    )
+    db.commit()
+    return nouveau
 
 
 ROLES_PERSONNEL = (

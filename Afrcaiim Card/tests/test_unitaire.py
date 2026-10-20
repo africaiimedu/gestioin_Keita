@@ -18,6 +18,7 @@ from app.services.pdf_carte import (
     mm,
     pdf_individuel,
     positions_lot,
+    taille_carte,
     url_qr,
 )
 from app.services.pdf_liste import pdf_liste_etudiants
@@ -175,6 +176,38 @@ def test_huit_cartes_tiennent_sur_la_feuille():
         assert y - debord > 0
         assert x + CARD_W + debord < A4_W
         assert y + CARD_H + debord < A4_H
+
+
+def test_badge_personnel_portrait():
+    from app.services.pdf_carte import charger_modele_personnel, pdf_badge_personnel
+    from app.services.photos import portrait_initiales
+
+    modele = charger_modele_personnel()
+    assert modele["orientation"] == "portrait"
+    assert taille_carte(modele) == (CARD_H, CARD_W)
+    personne = SimpleNamespace(
+        prenom="Aissatou",
+        nom="DIALLO",
+        matricule="PERS260001",
+        numero="PERS260001",
+        filiere="Scolarité",
+        fonction="Scolarité",
+        annee_academique="2026-2027",
+        date_validite=date(2027, 8, 31),
+        email="aissatou.diallo@univ-africaiim.com",
+        sexe="F",
+    )
+    pdf = pdf_badge_personnel(
+        personne, portrait_initiales("Aissatou", "DIALLO"), "jeton-personnel", 1, "https://exemple.test",
+    )
+    lecteur = PdfReader(io.BytesIO(pdf))
+    assert len(lecteur.pages) == 2
+    boite = lecteur.pages[0].mediabox
+    assert abs(float(boite.width) - CARD_H) < 0.2
+    assert abs(float(boite.height) - CARD_W) < 0.2
+    texte = "\n".join(page.extract_text() or "" for page in lecteur.pages)
+    assert "DIALLO" in texte
+    assert "BADGE" in texte.upper() or "PERSONNEL" in texte.upper()
 
 
 def test_orientation_portrait():

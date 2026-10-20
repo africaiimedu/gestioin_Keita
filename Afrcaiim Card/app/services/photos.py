@@ -93,6 +93,14 @@ def enregistrer_photo(etudiant_id: int, jpeg: bytes) -> str:
     return f"data/photos/{etudiant_id}.jpg"
 
 
+def enregistrer_photo_personnel(personnel_id: int, jpeg: bytes) -> str:
+    """Portrait du personnel : préfixe p pour ne pas écraser une photo d'étudiant."""
+    _DOSSIER.mkdir(parents=True, exist_ok=True)
+    chemin = _DOSSIER / f"p{personnel_id}.jpg"
+    chemin.write_bytes(jpeg)
+    return f"data/photos/p{personnel_id}.jpg"
+
+
 def lire_photo(photo_chemin: str | None) -> bytes | None:
     if not photo_chemin:
         return None

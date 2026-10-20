@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block titre %}Badges personnel{% endblock %}
+{% block contenu %}
+<section class="bloc">
+  <h1>Badges du personnel</h1>
+  <p class="intro">Mêmes paramètres d'impression que la carte étudiant (photo, QR, code-barres, validité, contrôle), en <strong>portrait</strong> (54 × 85,6 mm).</p>
+  <form method="get" class="filtres">
+    <input name="q" value="{{ q }}" placeholder="Nom, numéro ou fonction" maxlength="80">
+    <button type="submit">Filtrer</button>
+  </form>
+
+  <details class="panneau" open>
+    <summary>Créer un badge</summary>
+    <form method="post" action="/admin/personnel" enctype="multipart/form-data" class="grille-form grille-fiche">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="prenom">Prénom <input name="prenom" required maxlength="80"></label>
+      <label class="nom">Nom <input name="nom" required maxlength="80"></label>
+      <label class="sexe">Sexe
+        <select name="sexe" required>
+          <option value="" selected disabled>Choisir</option>
+          <option value="M">Masculin</option>
+          <option value="F">Féminin</option>
+        </select>
+      </label>
+      <label class="matricule">Numéro <input name="numero" value="{{ propose }}" maxlength="40" placeholder="{{ propose }}"></label>
+      <label class="ecole">Fonction / service
+        <input name="fonction" required maxlength="150" placeholder="Ex. Scolarité, Sécurité, Direction">
+      </label>
+      <label>E-mail <input name="email" type="email" maxlength="120" placeholder="prenom.nom@univ-africaiim.com"></label>
+      <p class="aide">Année académique : {{ annee_courante() }}. Validité : un an, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <label class="photo">Photo (optionnel) <input name="photo" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"></label>
+      <button type="submit">Créer la fiche et le badge</button>
+    </form>
+  </details>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Numéro</th>
+          <th>Fonction</th>
+          <th>Statut</th>
+          <th>Photo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ligne in lignes %}
+          <tr>
+            <td><a href="/admin/personnel/{{ ligne.personne.id }}">{{ ligne.personne.nom }} {{ ligne.personne.prenom }}</a></td>
+            <td>{{ ligne.personne.numero }}</td>
+            <td>{{ ligne.personne.fonction }}</td>
+            <td>
+              {% if ligne.statut %}
+                <span class="pastille pastille-{{ ligne.statut }}">{{ ligne.statut|statutfr }}</span>
+              {% else %}
+                <span class="pastille">Sans badge</span>
+              {% endif %}
+            </td>
+            <td>{{ "Oui" if ligne.personne.photo_chemin else "Non" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">Aucun badge pour l'instant.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

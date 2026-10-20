@@ -64,6 +64,50 @@ class Carte(Base):
     etudiant: Mapped[Etudiant] = relationship(back_populates="cartes")
 
 
+class Personnel(Base):
+    """Membre du personnel : badge portrait, mêmes paramètres d'impression que la carte étudiant."""
+
+    __tablename__ = "personnels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    prenom: Mapped[str] = mapped_column(String(80))
+    nom: Mapped[str] = mapped_column(String(80))
+    numero: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    fonction: Mapped[str] = mapped_column(String(150))
+    sexe: Mapped[str] = mapped_column(String(1), default="M")
+    annee_academique: Mapped[str] = mapped_column(String(9))
+    date_validite: Mapped[date] = mapped_column(Date)
+    photo_chemin: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str] = mapped_column(String(120), default="")
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
+
+    badges: Mapped[list["BadgePersonnel"]] = relationship(back_populates="personnel")
+
+    @property
+    def matricule(self) -> str:
+        """Alias pour le rendu de carte (mêmes champs que l'étudiant)."""
+        return self.numero
+
+    @property
+    def filiere(self) -> str:
+        return self.fonction
+
+
+class BadgePersonnel(Base):
+    __tablename__ = "badges_personnel"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    personnel_id: Mapped[int] = mapped_column(ForeignKey("personnels.id"), index=True)
+    jeton: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    statut: Mapped[str] = mapped_column(String(20), index=True)
+    date_emission: Mapped[date] = mapped_column(Date)
+    date_validite: Mapped[date] = mapped_column(Date)
+    numero_edition: Mapped[int] = mapped_column(default=1)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
+
+    personnel: Mapped[Personnel] = relationship(back_populates="badges")
+
+
 class MouvementCantine(Base):
     __tablename__ = "mouvements_cantine"
 
