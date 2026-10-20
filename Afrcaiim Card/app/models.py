@@ -223,6 +223,8 @@ class TravailImpression(Base):
     poste_id: Mapped[int] = mapped_column(ForeignKey("postes_impression.id"), index=True)
     etudiant_id: Mapped[int | None] = mapped_column(ForeignKey("etudiants.id"), nullable=True)
     carte_id: Mapped[int | None] = mapped_column(ForeignKey("cartes.id"), nullable=True)
+    personnel_id: Mapped[int | None] = mapped_column(ForeignKey("personnels.id"), nullable=True)
+    badge_id: Mapped[int | None] = mapped_column(ForeignKey("badges_personnel.id"), nullable=True)
     libelle: Mapped[str] = mapped_column(String(200), default="")
     imprimante: Mapped[str] = mapped_column(String(200))
     copies: Mapped[int] = mapped_column(Integer, default=1)

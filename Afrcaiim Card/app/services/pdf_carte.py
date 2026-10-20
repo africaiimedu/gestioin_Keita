@@ -532,19 +532,27 @@ def _encre(couleur, taille: float | None = None):
 
 
 def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
+    fonction = (getattr(etu, "fonction", None) or getattr(etu, "filiere", None) or "").strip()
+    femme = str(getattr(etu, "sexe", "") or "").upper() == "F"
+    personnel = type(etu).__name__ == "Personnel" or getattr(etu, "__tablename__", None) == "personnels"
+    qualite = (
+        ("Collaboratrice" if femme else "Collaborateur") if personnel
+        else ("Étudiante" if femme else "Étudiant")
+    )
     valeurs = {
         "nom": etu.nom,
         "prenom": etu.prenom,
         "matricule": etu.matricule,
         "filiere": etu.filiere,
-        "ecole": (getattr(etu, "filiere", None) or "").strip(),
+        "fonction": fonction,
+        "ecole": fonction if personnel else (getattr(etu, "filiere", None) or "").strip(),
         "email": getattr(etu, "email", None) or "",
         "annee_academique": etu.annee_academique,
         "date_validite": etu.date_validite.strftime("%d/%m/%Y"),
         "url": url_affichee(base, etu.matricule),
         "edition": f"Éd. {edition}",
         "controle": code_controle(jeton),
-        "qualite": "Étudiante" if str(getattr(etu, "sexe", "") or "").upper() == "F" else "Étudiant",
+        "qualite": qualite,
     }
     return valeurs.get(champ or "", "")
 
@@ -912,18 +920,24 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
             c.setLineWidth(max(0.4, mm(float(obj.get("epaisseur") or 0.3))))
             c.line(x, y + hauteur / 2, x + largeur, y + hauteur / 2)
         elif type_objet == "image":
-            marque = ROOT / "static" / ("marque-blanc.png" if obj.get("id") == "logo" else "marque.png")
-            if marque.is_file():
-                c.drawImage(
-                    str(marque),
-                    x,
-                    y,
-                    largeur,
-                    hauteur,
-                    preserveAspectRatio=True,
-                    anchor="c",
-                    mask="auto",
-                )
+            from app.services.designs import chemin_asset_image
+
+            source = chemin_asset_image(obj)
+            if source is not None and source.is_file():
+                couvrir = str(obj.get("ajustement") or "contain") == "cover"
+                if couvrir:
+                    _poser_couverture(c, source.read_bytes(), x, y, largeur, hauteur)
+                else:
+                    c.drawImage(
+                        str(source),
+                        x,
+                        y,
+                        largeur,
+                        hauteur,
+                        preserveAspectRatio=True,
+                        anchor="c",
+                        mask="auto",
+                    )
         elif type_objet == "photo":
             c.saveState()
             if rayon > 0.4:

@@ -46,17 +46,17 @@
       · émis le {{ badge.date_emission|datefr }}
     </p>
     <div class="actions">
-      <button type="button" class="bouton" data-imprimer-pdf="/admin/personnel/{{ personne.id }}/pdf?inline=1&amp;format=a4" data-note="note-impression">Imprimer sur feuille A4</button>
-      <button type="button" class="bouton" data-imprimer-pdf="/admin/personnel/{{ personne.id }}/pdf?inline=1" data-note="note-impression">Imprimer sur carte PVC (portrait)</button>
+      <button type="button" class="bouton" data-imprimer-pdf="/admin/personnel/{{ personne.id }}/pdf?inline=1&amp;format=a4" data-note="note-impression">Imprimer sur feuille A4 (toute imprimante)</button>
+      <button type="button" class="bouton" data-imprimer-pdf="/admin/personnel/{{ personne.id }}/pdf?inline=1" data-note="note-impression">Imprimer sur carte PVC (Primacy 2)</button>
       <a class="bouton bouton-secondaire" href="/admin/personnel/{{ personne.id }}/pdf?format=a4">PDF feuille A4</a>
       <a class="bouton bouton-secondaire" href="/admin/personnel/{{ personne.id }}/pdf">PDF badge</a>
-      <a class="bouton bouton-secondaire" href="/admin/personnel/{{ personne.id }}/imprimer">Aperçu HTML</a>
+      <a class="bouton" href="/admin/impression?personnel={{ personne.id }}">Page d'impression (relais / Primacy 2)</a>
       <form method="post" action="/admin/personnel/{{ personne.id }}/reediter">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button type="submit" class="bouton-secondaire">Rééditer le badge</button>
       </form>
     </div>
-    <p class="impression-note" id="note-impression">Primacy 2 : couleur, recto-verso bord long, orientation portrait, taille réelle 100 %.</p>
+    <p class="impression-note" id="note-impression">Primacy 2 : couleur, recto-verso bord long, orientation portrait (54 × 85,6 mm), taille réelle 100 %, sans « ajuster à la page ». Sous Windows comme sur Mac.</p>
   {% else %}
     <p>Aucun badge actif.</p>
   {% endif %}

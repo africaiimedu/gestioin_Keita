@@ -8,3 +8,5 @@ data/photos/*
 !data/photos/.gitkeep
 data/courriers/*
 !data/courriers/.gitkeep
+data/designs/*
+!data/designs/.gitkeep

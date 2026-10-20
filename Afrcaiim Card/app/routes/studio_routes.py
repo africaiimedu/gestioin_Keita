@@ -4,18 +4,27 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import ROOT, base_url
 from app.deps import exiger_bureau, get_db
-from app.models import Etudiant, Utilisateur
+from app.models import Etudiant, Personnel, Utilisateur
 from app.services.cantine import crediter
+from app.services.designs import asset_valide, enregistrer_design, lister_designs, supprimer_design, url_design
 from app.services.import_etudiants import controler_fiche
-from app.services.metier import courante_parmi, creer_etudiant, modifier_etudiant
+from app.services.metier import (
+    badge_courant,
+    courante_parmi,
+    creer_etudiant,
+    creer_personnel,
+    modifier_etudiant,
+    modifier_personnel,
+)
 from app.services.pdf_carte import code_controle, url_affichee
 from app.services.statut import statut_effectif
 from app.ui import csrf_valide
@@ -24,8 +33,13 @@ router = APIRouter(prefix="/admin/api")
 
 _MODELE = ROOT / "config" / "modele.json"
 _ORIGINE = ROOT / "config" / "modele_origine.json"
+_MODELE_PERSONNEL = ROOT / "config" / "modele_personnel.json"
+_ORIGINE_PERSONNEL = ROOT / "config" / "modele_personnel_origine.json"
 _TYPES = {"image", "photo", "qr", "codebarres", "rect", "cercle", "ligne", "piste", "champ", "texte", "guilloche", "rosette", "micro"}
-_CHAMPS = {"nom", "prenom", "matricule", "filiere", "ecole", "email", "annee_academique", "date_validite", "url", "edition", "controle", "qualite"}
+_CHAMPS = {
+    "nom", "prenom", "matricule", "filiere", "fonction", "ecole", "email",
+    "annee_academique", "date_validite", "url", "edition", "controle", "qualite",
+}
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _BOOLS = ("gras", "italique", "souligne", "majuscules", "retour", "verrou", "lisible", "initiales", "cadre")
 _CONTENUS_QR = {"securise", *_CHAMPS}
@@ -61,7 +75,15 @@ def _valider_modele(data: dict) -> dict:
                     raise ValueError("Un objet sort de la carte.")
                 obj[cle] = round(valeur, 2)
             if obj["type"] == "image":
-                obj["asset"] = "marque"
+                asset = str(obj.get("asset") or "marque")
+                if not asset_valide(asset):
+                    # Design retiré : on garde le logo officiel plutôt que de casser le modèle.
+                    asset = "marque"
+                obj["asset"] = asset
+                ajustement = str(obj.get("ajustement") or "contain")
+                if ajustement not in ("contain", "cover"):
+                    raise ValueError("Ajustement d'image inconnu.")
+                obj["ajustement"] = ajustement
             if obj["type"] in ("champ", "codebarres", "micro", "qr") and obj.get("champ") not in (None, *_CHAMPS):
                 raise ValueError("Champ de base inconnu.")
             if obj["type"] == "qr":
@@ -101,8 +123,8 @@ def _valider_modele(data: dict) -> dict:
                 "id", "type", "x", "y", "w", "h", "couleur", "couleur_texte", "contour",
                 "epaisseur", "rayon", "taille", "gras", "italique", "souligne", "align",
                 "majuscules", "retour", "texte", "personnalise", "champ", "asset",
-                "verrou", "lisible", "initiales", "police", "interligne", "approche",
-                "contenu", "fond", "cadre", "sens",
+                "ajustement", "verrou", "lisible", "initiales", "police", "interligne",
+                "approche", "contenu", "fond", "cadre", "sens",
             )
             propres.append({cle: obj[cle] for cle in gardes if cle in obj and obj[cle] is not None})
         data[face] = propres
@@ -130,12 +152,44 @@ def _ligne(etudiant: Etudiant) -> dict:
     }
 
 
+def _ligne_personnel(personne: Personnel, db: Session) -> dict:
+    badge = badge_courant(db, personne.id)
+    sexe = personne.sexe if personne.sexe in {"M", "F"} else "M"
+    return {
+        "id": personne.id,
+        "prenom": personne.prenom,
+        "nom": personne.nom,
+        "matricule": personne.numero,
+        "fonction": personne.fonction,
+        "filiere": personne.fonction,
+        "annee_academique": personne.annee_academique,
+        "date_validite": personne.date_validite.isoformat(),
+        "photo": bool(personne.photo_chemin),
+        "statut": statut_effectif(badge.statut, badge.date_validite) if badge else "",
+        "edition": badge.numero_edition if badge else 1,
+        "email": personne.email or "",
+        "sexe": sexe,
+        "url": url_affichee(base_url(), personne.numero),
+        "controle": code_controle(badge.jeton) if badge else "",
+        "qualite": "Collaboratrice" if sexe == "F" else "Collaborateur",
+    }
+
+
 @router.get("/atelier")
 def atelier(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
     etudiants = db.scalars(
         select(Etudiant).options(selectinload(Etudiant.cartes)).order_by(Etudiant.nom, Etudiant.prenom)
     ).all()
     return {"etudiants": [_ligne(e) for e in etudiants], "modele": _lire(_MODELE)}
+
+
+@router.get("/atelier-personnel")
+def atelier_personnel_api(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
+    personnes = db.scalars(select(Personnel).order_by(Personnel.nom, Personnel.prenom)).all()
+    return {
+        "etudiants": [_ligne_personnel(p, db) for p in personnes],
+        "modele": _lire(_MODELE_PERSONNEL),
+    }
 
 
 @router.post("/modele")
@@ -157,6 +211,79 @@ async def restaurer_modele(request: Request, admin: Utilisateur = Depends(exiger
     origine = _lire(_ORIGINE)
     _MODELE.write_text(json.dumps(origine, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return origine
+
+
+@router.post("/modele-personnel")
+async def enregistrer_modele_personnel(request: Request, admin: Utilisateur = Depends(exiger_bureau)):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    try:
+        propre = _valider_modele(await request.json())
+    except (ValueError, TypeError, KeyError) as exc:
+        return JSONResponse({"message": str(exc)}, status_code=400)
+    _MODELE_PERSONNEL.write_text(json.dumps(propre, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"ok": True}
+
+
+@router.post("/modele-personnel/origine")
+async def restaurer_modele_personnel(request: Request, admin: Utilisateur = Depends(exiger_bureau)):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    origine = _lire(_ORIGINE_PERSONNEL)
+    _MODELE_PERSONNEL.write_text(json.dumps(origine, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return origine
+
+
+@router.post("/personnel")
+async def ajouter_personnel(request: Request, admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    corps = await request.json()
+    try:
+        personne = creer_personnel(
+            db,
+            prenom=corps.get("prenom", ""),
+            nom=corps.get("nom", ""),
+            fonction=corps.get("fonction") or corps.get("filiere") or "",
+            email=corps.get("email", ""),
+            sexe=corps.get("sexe", "M"),
+            acteur_id=admin.id,
+        )
+    except ValueError as exc:
+        return JSONResponse({"message": str(exc)}, status_code=400)
+    return _ligne_personnel(personne, db)
+
+
+@router.post("/personnel/{personnel_id}")
+async def modifier_personnel_api(
+    personnel_id: int,
+    request: Request,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    personne = db.get(Personnel, personnel_id)
+    if personne is None:
+        return JSONResponse({"message": "Fiche personnel introuvable."}, status_code=404)
+    corps = await request.json()
+    try:
+        fonction = (corps.get("fonction") or corps.get("filiere") or personne.fonction or "").strip()
+        if len(fonction) < 2:
+            raise ValueError("Indiquez la fonction ou le service.")
+        modifier_personnel(
+            db,
+            personne,
+            prenom=corps.get("prenom", personne.prenom),
+            nom=corps.get("nom", personne.nom),
+            fonction=fonction,
+            email=corps.get("email", personne.email or ""),
+            sexe=corps.get("sexe", personne.sexe),
+            acteur_id=admin.id,
+        )
+    except ValueError as exc:
+        return JSONResponse({"message": str(exc)}, status_code=400)
+    return _ligne_personnel(personne, db)
 
 
 @router.post("/etudiants")
@@ -263,3 +390,38 @@ async def recharger(
         select(Etudiant).options(selectinload(Etudiant.cartes)).where(Etudiant.id == etudiant_id)
     )
     return _ligne(etudiant)
+
+
+@router.get("/designs")
+def api_liste_designs(admin: Utilisateur = Depends(exiger_bureau)):
+    return {
+        "designs": [
+            {**item, "url": url_design(item["id"])}
+            for item in lister_designs()
+        ]
+    }
+
+
+@router.post("/designs")
+async def api_importer_design(
+    request: Request,
+    fichier: UploadFile = File(...),
+    nom: str = Form(""),
+    admin: Utilisateur = Depends(exiger_bureau),
+):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    try:
+        fiche = enregistrer_design(await fichier.read(), nom_affiche=nom, nom_fichier=fichier.filename or "")
+    except ValueError as exc:
+        return JSONResponse({"message": str(exc)}, status_code=400)
+    return {**fiche, "url": url_design(fiche["id"]), "asset": f"design:{fiche['id']}"}
+
+
+@router.delete("/designs/{design_id}")
+async def api_supprimer_design(design_id: str, request: Request, admin: Utilisateur = Depends(exiger_bureau)):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    if not supprimer_design(design_id):
+        return JSONResponse({"message": "Design introuvable."}, status_code=404)
+    return {"ok": True}

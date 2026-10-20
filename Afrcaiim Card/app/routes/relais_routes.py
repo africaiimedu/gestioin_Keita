@@ -10,12 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.config import base_url
 from app.deps import get_db
-from app.models import Etudiant, PosteImpression
+from app.models import BadgePersonnel, Carte, Etudiant, Personnel, PosteImpression
 from app.services import relais
 from app.services.limite import autoriser
 from app.services.metier import carte_courante, journaliser, marquer_imprimee
-from app.services.pdf_carte import pdf_feuille_a4, pdf_individuel
-from app.services.photos import lire_photo
+from app.services.pdf_carte import charger_modele_personnel, pdf_feuille_a4, pdf_individuel
+from app.services.photos import lire_photo, portrait_initiales
 from app.services.statut import statut_effectif
 
 router = APIRouter(prefix="/api/relais")
@@ -53,6 +53,33 @@ async def annonce(request: Request, db: Session = Depends(get_db)):
 
 
 def _pdf_du_travail(db: Session, travail) -> tuple[bytes | None, str]:
+    if getattr(travail, "personnel_id", None):
+        personne = db.get(Personnel, travail.personnel_id)
+        badge = db.get(BadgePersonnel, travail.badge_id) if travail.badge_id else None
+        if personne is None or badge is None or badge.personnel_id != personne.id:
+            return None, "Ce badge a changé depuis la demande. Relancez l'impression."
+        if statut_effectif(badge.statut, badge.date_validite) != "active":
+            return None, "Ce badge n'est plus actif."
+        photo = lire_photo(personne.photo_chemin) or portrait_initiales(personne.prenom, personne.nom)
+        modele = charger_modele_personnel()
+        if _sur_a4(travail):
+            return (
+                pdf_feuille_a4(
+                    [(personne, photo, badge.jeton, badge.numero_edition)],
+                    base_url(),
+                    f"Badge {personne.numero}",
+                    modele=modele,
+                ),
+                "",
+            )
+        return (
+            pdf_individuel(
+                personne, photo, badge.jeton, badge.numero_edition, base_url(),
+                travail.recto_verso, retourner_verso=False, modele=modele,
+            ),
+            "",
+        )
+
     etudiant = db.get(Etudiant, travail.etudiant_id) if travail.etudiant_id else None
     carte = carte_courante(db, etudiant.id) if etudiant else None
     if etudiant is None or carte is None or carte.id != travail.carte_id:
@@ -111,16 +138,15 @@ async def travail_fini(travail_id: int, request: Request, db: Session = Depends(
     travail = relais.terminer(db, poste, travail_id, ok, str(corps.get("message") or ""))
     if travail is None:
         return JSONResponse({"ok": False, "message": "Travail inconnu ou déjà terminé."}, status_code=404)
+    face = "recto-verso, bord long" if travail.recto_verso else "recto seul"
+    detail = f"{travail.imprimante} ({poste.nom}) · {travail.copies} copie(s) · {face} · {travail.sens}"
     if ok and travail.carte_id:
-        from app.models import Carte
-
         carte = db.get(Carte, travail.carte_id)
         if carte is not None:
-            face = "recto-verso, bord long" if travail.recto_verso else "recto seul"
-            marquer_imprimee(
-                db, carte, travail.cree_par,
-                f"{travail.imprimante} ({poste.nom}) · {travail.copies} copie(s) · {face} · {travail.sens}",
-            )
+            marquer_imprimee(db, carte, travail.cree_par, detail)
+    elif ok and getattr(travail, "badge_id", None):
+        journaliser(db, "badge_imprime", utilisateur_id=travail.cree_par, details=detail[:500])
+        db.commit()
     elif not ok:
         journaliser(
             db,

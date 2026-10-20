@@ -35,6 +35,15 @@ a { color: inherit; }
 }
 .logo-officiel { height: 28px; width: auto; display: block; }
 .titre-barre { font-weight: 650; font-size: 0.92rem; letter-spacing: 0.01em; }
+body.atelier-personnel .titre-barre::after {
+  content: " · portrait 54 × 85,6 mm";
+  font-weight: 500;
+  opacity: 0.72;
+  font-size: 0.82em;
+}
+body.atelier-personnel .commande {
+  background: linear-gradient(180deg, #f7f3ea 0%, #eceff1 100%);
+}
 .barre nav { margin-left: auto; display: flex; gap: 0.35rem; align-items: center; flex-wrap: nowrap; }
 .barre a, .barre button.lien, .barre .service-titre {
   color: #d5ddd8;
@@ -157,6 +166,7 @@ a { color: inherit; }
 }
 .atelier.base-ferme { grid-template-rows: 1fr 0px; }
 .atelier.base-ferme .base { display: none; }
+/* En base fermée, la planche doit garder toute la hauteur disponible. */
 
 .outils {
   grid-area: outils;
@@ -458,13 +468,84 @@ dialog input, dialog select { padding: 0.4rem 0.5rem; border: 1px solid #d7ddda;
 }
 .actions-dialogue button[value="ok"] { background: #128a45; color: white; border-color: #128a45; }
 
+#dialogue-design { width: min(520px, 94vw); max-height: 90vh; overflow: auto; }
+#dialogue-design h3 { margin: 1rem 0 0.45rem; font-size: 0.92rem; }
+#apercu-design {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  margin: 0.45rem 0;
+  object-fit: contain;
+  border: 1px solid #d7ddda;
+  border-radius: 10px;
+  background: #f4f6f5;
+}
+.choix-usage {
+  border: 1px solid #e2e7e4;
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem 0.35rem;
+  margin: 0.7rem 0;
+}
+.choix-usage legend { padding: 0 0.25rem; font-weight: 650; font-size: 0.85rem; }
+.choix {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  margin: 0.45rem 0;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.choix input { margin-top: 0.2rem; }
+.grille-designs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.55rem;
+}
+.tuile-design {
+  border: 1px solid #d7ddda;
+  border-radius: 10px;
+  padding: 0.35rem;
+  background: #fbfcfc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.tuile-design img {
+  width: 100%;
+  height: 72px;
+  object-fit: contain;
+  background: #eceff1;
+  border-radius: 6px;
+}
+.tuile-design strong {
+  font-size: 0.72rem;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tuile-design .ligne-boutons { gap: 0.25rem; flex-wrap: wrap; }
+.tuile-design button {
+  border: 1px solid #d7ddda;
+  background: white;
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.7rem;
+}
+.tuile-design button.fond { background: #128a45; color: white; border-color: #128a45; }
+
 @media (max-width: 980px) {
   .atelier {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto 220px;
+    grid-template-rows: auto minmax(280px, 1fr) auto 220px;
     grid-template-areas: "outils" "planche" "props" "base";
+  }
+  .atelier.base-ferme {
+    grid-template-rows: auto minmax(320px, 1fr) auto 0;
   }
   .outils { flex-direction: row; width: 100%; height: auto; overflow-x: auto; }
   .titre-barre { display: none; }
   .zoom input { width: 70px; }
+  .planche { min-height: 280px; }
 }

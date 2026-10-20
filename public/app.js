@@ -138,7 +138,8 @@ function carteGroups() {
     ["Cartes", [
       ["etudiants", "Étudiants", "/portail/cartes/admin/etudiants"],
       ["personnel", "Badges personnel", "/portail/cartes/admin/personnel"],
-      ["atelier", "Atelier", "/portail/cartes/admin"],
+      ["atelier", "Atelier étudiants", "/portail/cartes/admin"],
+      ["atelier-personnel", "Atelier personnel", "/portail/cartes/admin/atelier-personnel"],
       ["impression", "Impression", "/portail/cartes/admin/impression"],
       ["lot", "Lot d'impression", "/portail/cartes/admin/lot"],
       ["import", "Import", "/portail/cartes/admin/import"],

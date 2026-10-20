@@ -31,19 +31,25 @@ function texteCarte(obj, etu) {
   if (obj.personnalise) return obj.personnalise;
   if (obj.type === "texte") return obj.texte || "";
   if (!etu) return "";
+  const femme = String(etu.sexe || "M").toUpperCase() === "F";
+  const fonction = (etu.fonction || etu.filiere || "").trim();
+  const personnel = Boolean(etu.fonction) || String(etu.matricule || "").startsWith("PERS");
   const brut = {
     nom: etu.nom || "",
     prenom: etu.prenom || "",
     matricule: etu.matricule || "",
-    filiere: etu.filiere || "",
-    ecole: (etu.filiere || "").trim(),
+    filiere: etu.filiere || etu.fonction || "",
+    fonction,
+    ecole: fonction || (etu.filiere || "").trim(),
     email: etu.email || "",
     annee_academique: etu.annee_academique || "",
     date_validite: dateCarte(etu.date_validite),
     url: etu.url || "",
     edition: `Éd. ${etu.edition || 1}`,
     controle: etu.controle || "",
-    qualite: String(etu.sexe || "M").toUpperCase() === "F" ? "Étudiante" : "Étudiant",
+    qualite: etu.qualite || (personnel
+      ? (femme ? "Collaboratrice" : "Collaborateur")
+      : (femme ? "Étudiante" : "Étudiant")),
   }[obj.champ] || "";
   return obj.majuscules ? brut.toUpperCase() : brut;
 }
@@ -121,8 +127,15 @@ function rendreFace(carte, objets, ctx) {
       trait.style.background = obj.couleur || "#1A1A1A";
       el.appendChild(trait);
     } else if (obj.type === "image") {
-      const src = obj.id === "logo" ? "/static/marque-blanc.png?v=3" : "/static/marque.png";
-      el.innerHTML = `<img alt="Université AFRICAIIM" src="${src}" style="width:100%;height:100%;object-fit:contain;pointer-events:none">`;
+      const asset = String(obj.asset || "marque");
+      let src = obj.id === "logo" ? "/static/marque-blanc.png?v=3" : "/static/marque.png";
+      let alt = "Université AFRICAIIM";
+      if (asset.startsWith("design:")) {
+        src = `/admin/designs/${encodeURIComponent(asset.slice(7))}`;
+        alt = "Design importé";
+      }
+      const fit = obj.ajustement === "cover" ? "cover" : "contain";
+      el.innerHTML = `<img alt="${alt}" src="${src}" style="width:100%;height:100%;object-fit:${fit};pointer-events:none">`;
     } else if (obj.type === "photo") {
       el.style.background = obj.couleur || "#C5F0DC";
       el.style.borderRadius = `${(obj.rayon || 0) * px}px`;

@@ -1,63 +1,97 @@
 {% extends "base.html" %}
 {% block titre %}Impression{% endblock %}
 {% block contenu %}
+{% set personnel_mode = cible == "personnel" or choisi_personnel %}
 <section class="page-impression">
   <header class="impression-entete">
-    <p class="surtitre">Cartes étudiantes</p>
+    <p class="surtitre">{% if personnel_mode %}Badges personnel{% else %}Cartes étudiantes{% endif %}</p>
     <h1>Impression</h1>
-    <p class="intro">Depuis n'importe quel ordinateur, Windows ou Mac. Imprimante ordinaire (jet d'encre, laser) : choisissez « Feuille A4 », la carte sort à taille réelle, recto et verso côte à côte, à découper et plier. Imprimante à cartes Primacy 2 : choisissez « Carte PVC ». Le relais du bureau reste disponible à droite.</p>
+    <p class="intro">Depuis n'importe quel ordinateur, Windows ou Mac. Imprimante ordinaire (jet d'encre, laser) : choisissez « Feuille A4 », la carte sort à taille réelle, recto et verso côte à côte, à découper et plier. Imprimante à cartes Primacy 2 : choisissez « Carte PVC », recto-verso bord long, échelle 100&nbsp;%.</p>
     {% if user.role == "admin" %}<p class="actions"><a class="bouton bouton-secondaire" href="/admin/postes">Ordinateurs d'impression</a></p>{% endif %}
   </header>
 
-  <form method="get" class="impression-choix">
-    <label>Étudiant
-      <select name="etudiant" onchange="this.form.submit()">
-        <option value="">Choisir un étudiant</option>
-        {% for ligne in etudiants %}
-          <option value="{{ ligne.id }}" {% if choisi and ligne.id == choisi.id %}selected{% endif %}>
-            {{ ligne.nom }} {{ ligne.prenom }} — {{ ligne.matricule }}
-          </option>
-        {% endfor %}
-      </select>
-    </label>
-  </form>
+  <div class="impression-choix" style="display:flex;flex-wrap:wrap;gap:0.8rem;align-items:end">
+    <form method="get">
+      <label>Étudiant
+        <select name="etudiant" onchange="this.form.submit()">
+          <option value="">Choisir un étudiant</option>
+          {% for ligne in etudiants %}
+            <option value="{{ ligne.id }}" {% if choisi and ligne.id == choisi.id %}selected{% endif %}>
+              {{ ligne.nom }} {{ ligne.prenom }} — {{ ligne.matricule }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+    </form>
+    <form method="get">
+      <label>Personnel
+        <select name="personnel" onchange="this.form.submit()">
+          <option value="">Choisir une fiche personnel</option>
+          {% for ligne in personnels %}
+            <option value="{{ ligne.id }}" {% if choisi_personnel and ligne.id == choisi_personnel.id %}selected{% endif %}>
+              {{ ligne.nom }} {{ ligne.prenom }} — {{ ligne.numero }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+    </form>
+  </div>
 
-  {% if not etudiants %}
-    <p class="impression-vide">Aucun étudiant à imprimer.</p>
-  {% elif not choisi %}
-    <p class="impression-vide">Choisissez l'étudiant dont la carte doit sortir.</p>
+  {% if not etudiants and not personnels %}
+    <p class="impression-vide">Aucune fiche à imprimer.</p>
+  {% elif not choisi and not choisi_personnel %}
+    <p class="impression-vide">Choisissez un étudiant ou une fiche personnel.</p>
   {% else %}
     <div class="impression-scene">
       <article class="impression-fiche">
-        <p class="surtitre">Carte à sortir</p>
-        <h2>{{ choisi.nom }} {{ choisi.prenom }}</h2>
-        <p>{{ choisi.filiere }}</p>
-        <p class="matricule">{{ choisi.matricule }}</p>
+        <p class="surtitre">{% if personnel_mode %}Badge à sortir{% else %}Carte à sortir{% endif %}</p>
+        {% if personnel_mode %}
+          <h2>{{ choisi_personnel.nom }} {{ choisi_personnel.prenom }}</h2>
+          <p>{{ choisi_personnel.fonction }}</p>
+          <p class="matricule">{{ choisi_personnel.numero }}</p>
+        {% else %}
+          <h2>{{ choisi.nom }} {{ choisi.prenom }}</h2>
+          <p>{{ choisi.filiere }}</p>
+          <p class="matricule">{{ choisi.matricule }}</p>
+        {% endif %}
         <ul class="impression-faits">
           <li>{{ format_carte }}</li>
           <li>Échelle 100 %</li>
           <li>Couleurs RVB</li>
+          <li>Recto-verso bord long (Primacy 2)</li>
         </ul>
         {% if not raison %}
           <div class="impression-locale">
-            <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
-            <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
-            <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
-            <p class="impression-note">Choisissez la Primacy 2, couleur, recto-verso bord long, taille réelle 100 %, sans « ajuster à la page ».</p>
-            <p class="impression-note"><a href="/admin/etudiants/{{ choisi.id }}/pdf?format=a4">Télécharger la feuille A4</a> · <a href="/admin/etudiants/{{ choisi.id }}/pdf">Télécharger le PDF carte</a></p>
+            {% if personnel_mode %}
+              <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/personnel/{{ choisi_personnel.id }}/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
+              <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
+              <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/personnel/{{ choisi_personnel.id }}/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
+              <p class="impression-note">Choisissez la Primacy 2, couleur, recto-verso bord long, orientation {{ orientation }}, taille réelle 100 %, sans « ajuster à la page ».</p>
+              <p class="impression-note"><a href="/admin/personnel/{{ choisi_personnel.id }}/pdf?format=a4">Télécharger la feuille A4</a> · <a href="/admin/personnel/{{ choisi_personnel.id }}/pdf">Télécharger le PDF badge</a></p>
+            {% else %}
+              <button type="button" class="impression-lancer" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1&amp;format=a4" data-note="note-locale">Feuille A4 · toute imprimante</button>
+              <p class="impression-note">Couleur, taille réelle 100 % (« Taille réelle » ou « Aucune mise à l'échelle »). Découpez sur les repères, pliez sur le pointillé.</p>
+              <button type="button" class="bouton-secondaire" data-imprimer-pdf="/admin/etudiants/{{ choisi.id }}/pdf?inline=1" data-note="note-locale">Carte PVC · Primacy 2</button>
+              <p class="impression-note">Choisissez la Primacy 2, couleur, recto-verso bord long, taille réelle 100 %, sans « ajuster à la page ».</p>
+              <p class="impression-note"><a href="/admin/etudiants/{{ choisi.id }}/pdf?format=a4">Télécharger la feuille A4</a> · <a href="/admin/etudiants/{{ choisi.id }}/pdf">Télécharger le PDF carte</a></p>
+              <form method="post" action="/admin/etudiants/{{ choisi.id }}/imprimee">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="retour" value="impression">
+                <button type="submit" class="bouton-secondaire">Marquer comme imprimée</button>
+              </form>
+            {% endif %}
             <p id="note-locale" class="impression-note note-locale" hidden></p>
-            <form method="post" action="/admin/etudiants/{{ choisi.id }}/imprimee">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <input type="hidden" name="retour" value="impression">
-              <button type="submit" class="bouton-secondaire">Marquer comme imprimée</button>
-            </form>
           </div>
         {% endif %}
       </article>
 
       <form method="post" action="/admin/impression" class="panneau impression-reglages">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <input type="hidden" name="etudiant_id" value="{{ choisi.id }}">
+        {% if personnel_mode %}
+          <input type="hidden" name="personnel_id" value="{{ choisi_personnel.id }}">
+        {% else %}
+          <input type="hidden" name="etudiant_id" value="{{ choisi.id }}">
+        {% endif %}
 
         {% if raison %}
           <p class="flash flash-erreur">{{ raison }}</p>

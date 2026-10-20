@@ -4,15 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="{{ csrf }}">
-  <title>Atelier cartes — Université AFRICAIIM</title>
+  {% set personnel = atelier_cible == "personnel" %}
+  <title>{% if personnel %}Atelier badges personnel{% else %}Atelier cartes{% endif %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/studio.css?v=21">
+  <link rel="stylesheet" href="/static/studio.css?v=24">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 </head>
-<body>
+<body class="{% if personnel %}atelier-personnel{% endif %}">
   <header class="barre">
     <span class="puce-logo"><img class="logo-officiel" src="/static/marque.png" alt="Université AFRICAIIM"></span>
-    <strong class="titre-barre">Atelier cartes</strong>
+    <strong class="titre-barre">{% if personnel %}Atelier badges personnel{% else %}Atelier cartes{% endif %}</strong>
     {% include "nav.html" %}
   </header>
 
@@ -23,8 +24,8 @@
       <button type="button" id="vue-double">Double face</button>
     </div>
     <div class="faces" role="group" aria-label="Orientation">
-      <button type="button" id="orient-paysage" class="actif">Paysage</button>
-      <button type="button" id="orient-portrait">Portrait</button>
+      <button type="button" id="orient-paysage"{% if not personnel %} class="actif"{% endif %}>Paysage</button>
+      <button type="button" id="orient-portrait"{% if personnel %} class="actif"{% endif %}>Portrait</button>
     </div>
     <div class="zoom">
       <button type="button" id="zoom-moins" title="Réduire" aria-label="Réduire">−</button>
@@ -52,6 +53,7 @@
       <button type="button" data-outil="marque" title="Logo" aria-label="Logo"><svg viewBox="0 0 24 24"><path d="M5 18V8l7-4 7 4v10M9 18v-5h6v5"/></svg></button>
       <button type="button" data-outil="rosette" title="Rosace" aria-label="Rosace"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5 19 19M19 5l-2.5 2.5M7.5 16.5 5 19"/></svg></button>
       <button type="button" data-outil="micro" title="Microtexte" aria-label="Microtexte"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h10"/></svg></button>
+      <button type="button" id="ouvrir-import-design" title="Importer un design (Photoshop, Canva…)" aria-label="Importer un design"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M5 14v5h14v-5"/><rect x="4" y="19" width="16" height="2" rx="0.5"/></svg></button>
     </aside>
 
     <main class="planche">
@@ -72,10 +74,10 @@
     <aside class="proprietes">
       <h2 class="titre-doc">Informations</h2>
       <dl class="infos">
-        <div><dt>Format</dt><dd id="info-format">CR80 · 85,6 × 54 mm</dd></div>
+        <div><dt>Format</dt><dd id="info-format">{% if personnel %}CR80 · 54 × 85,6 mm{% else %}CR80 · 85,6 × 54 mm{% endif %}</dd></div>
         <div><dt>Face</dt><dd id="info-face">Recto</dd></div>
-        <div><dt>Étudiant</dt><dd id="info-etu">—</dd></div>
-        <div><dt>Matricule</dt><dd id="info-matricule">—</dd></div>
+        <div><dt>{% if personnel %}Personne{% else %}Étudiant{% endif %}</dt><dd id="info-etu">—</dd></div>
+        <div><dt>{% if personnel %}N° badge{% else %}Matricule{% endif %}</dt><dd id="info-matricule">—</dd></div>
         <div><dt>Validité</dt><dd id="info-validite">—</dd></div>
         <div><dt>Ce qui protège</dt><dd>QR à jeton, trame dorée, microtexte, code de contrôle</dd></div>
       </dl>
@@ -93,8 +95,12 @@
         <span id="compteur">0 / 0</span>
         <button type="button" id="suivant" title="Suivant">&gt;</button>
         <button type="button" id="dernier" title="Dernier">&gt;|</button>
-        <input id="recherche" type="search" placeholder="Rechercher nom ou matricule">
+        <input id="recherche" type="search" placeholder="{% if personnel %}Rechercher nom, n° ou fonction{% else %}Rechercher nom ou matricule{% endif %}">
+        {% if not personnel %}
         <button type="button" id="recharger">Recharger la cantine</button>
+        {% else %}
+        <button type="button" id="recharger" hidden disabled>Recharger la cantine</button>
+        {% endif %}
         <button type="button" id="ajouter">Nouvelle fiche</button>
       </div>
       <div class="grille-scroll">
@@ -104,11 +110,11 @@
               <th>Photo</th>
               <th>Nom</th>
               <th>Prénom</th>
-              <th>Matricule</th>
-              <th>École</th>
+              <th>{% if personnel %}N° badge{% else %}Matricule{% endif %}</th>
+              <th>{% if personnel %}Fonction{% else %}École{% endif %}</th>
               <th>Année</th>
               <th>Validité</th>
-              <th>Compte cantine</th>
+              {% if not personnel %}<th>Compte cantine</th>{% endif %}
               <th>Statut</th>
             </tr>
           </thead>
@@ -134,9 +140,37 @@
     </form>
   </dialog>
 
+  <dialog id="dialogue-design">
+    <form id="form-design">
+      <h2>Importer un design</h2>
+      <p class="aide-photo">Exportez depuis Photoshop, Illustrator, Canva ou Inkscape en <strong>PNG</strong> ou <strong>JPG</strong> (pas le fichier .psd). Idéalement aux dimensions CR80 : 85,6 × 54 mm (paysage) ou 54 × 85,6 mm (portrait), 300 dpi.</p>
+      <label>Fichier image
+        <input id="fichier-design" name="fichier" type="file" accept="image/png,image/jpeg,image/webp,image/tiff,.png,.jpg,.jpeg,.webp,.tif,.tiff" required>
+      </label>
+      <img id="apercu-design" alt="Aperçu du design" hidden>
+      <label>Nom (optionnel)
+        <input name="nom" maxlength="80" placeholder="Recto Photoshop, Badge direction…">
+      </label>
+      <fieldset class="choix-usage">
+        <legend>Utilisation sur la face active</legend>
+        <label class="choix"><input type="radio" name="usage" value="fond" checked> <span><strong>Fond de carte</strong> — le dessin remplit la face ; photo, QR et textes restent au-dessus.</span></label>
+        <label class="choix"><input type="radio" name="usage" value="badge"> <span><strong>Badge complet</strong> — remplace le contenu de la face par votre badge confectionné (vous pourrez encore ajouter un QR).</span></label>
+        <label class="choix"><input type="radio" name="usage" value="element"> <span><strong>Élément</strong> — image déplaçable (logo, motif, vignette).</span></label>
+      </fieldset>
+      <div class="actions-dialogue">
+        <button type="submit" value="ok">Importer et poser</button>
+        <button type="button" id="fermer-design">Annuler</button>
+      </div>
+    </form>
+    <div class="designs-recents">
+      <h3>Designs déjà importés</h3>
+      <div id="liste-designs" class="grille-designs"></div>
+    </div>
+  </dialog>
+
   <dialog id="dialogue">
     <form id="form-ajout" method="dialog">
-      <h2>Nouvelle fiche</h2>
+      <h2>Nouvelle fiche{% if personnel %} personnel{% endif %}</h2>
       <label>Prénom <input name="prenom" required maxlength="80"></label>
       <label>Nom <input name="nom" required maxlength="80"></label>
       <label>Sexe
@@ -146,6 +180,15 @@
           <option value="F">Féminin</option>
         </select>
       </label>
+      {% if personnel %}
+      <label>Fonction / service
+        <input name="fonction" required maxlength="120" placeholder="Scolarité, Direction, Sécurité…">
+      </label>
+      <label>E-mail
+        <input name="email" type="email" maxlength="120" placeholder="prenom.nom@univ-africaiim.com">
+      </label>
+      <p class="aide-photo">Le numéro de badge (PERS…) est attribué automatiquement. Validité : un an, jusqu'au {{ validite_courante() | datefr }}.</p>
+      {% else %}
       <label>Matricule <input name="matricule" required placeholder="UA26AT0001" maxlength="40"></label>
       <label>École
         <select name="filiere" required>
@@ -155,6 +198,7 @@
         </select>
       </label>
       <p class="aide-photo">Année académique : {{ annee_courante() }}. Validité : un an, jusqu'au {{ validite_courante() | datefr }}.</p>
+      {% endif %}
       <label>Photo d'identité
         <input id="photo-fiche" name="photo" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
       </label>
@@ -167,8 +211,11 @@
     </form>
   </dialog>
 
+  <script id="atelier-config" type="application/json">{{ {
+    "cible": atelier_cible or "etudiants"
+  } | tojson }}</script>
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
-  <script src="/static/rendu-carte.js?v=32"></script>
-  <script src="/static/studio.js?v=25"></script>
+  <script src="/static/rendu-carte.js?v=34"></script>
+  <script src="/static/studio.js?v=27"></script>
 </body>
 </html>

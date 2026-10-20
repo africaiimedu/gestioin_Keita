@@ -190,19 +190,30 @@ def modifier(
 async def photo(
     personnel_id: int,
     request: Request,
-    fichier: UploadFile = File(...),
+    fichier: UploadFile = File(None),
     csrf: str = Form(""),
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
     personne = _personne(db, personnel_id)
-    _exiger_csrf(request, csrf, f"/admin/personnel/{personnel_id}")
+    attend_json = "application/json" in request.headers.get("accept", "")
+    if attend_json:
+        if not csrf_valide(request, csrf or request.headers.get("x-csrf")):
+            return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    else:
+        _exiger_csrf(request, csrf, f"/admin/personnel/{personnel_id}")
     try:
+        if fichier is None or not fichier.filename:
+            raise ValueError("Choisissez une photo.")
         jpeg = normaliser_photo(await fichier.read())
         remplacer_photo_personnel(db, personne, jpeg, admin.id)
     except ValueError as exc:
+        if attend_json:
+            return JSONResponse({"message": str(exc)}, status_code=400)
         flash(request, "erreur", str(exc))
         raise Redirection(f"/admin/personnel/{personnel_id}") from exc
+    if attend_json:
+        return {"photo": True}
     flash(request, "ok", "Photo enregistrée.")
     raise Redirection(f"/admin/personnel/{personnel_id}")
 
@@ -267,43 +278,10 @@ def pdf(
 
 
 @router.get("/{personnel_id}/imprimer")
-def page_imprimer(personnel_id: int, request: Request, admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
-    """Page HTML d'impression portrait (navigateur). Les PDF restent disponibles sur la fiche."""
-    personne = _personne(db, personnel_id)
-    badge = badge_courant(db, personne.id)
-    if badge is None:
-        raise Redirection(f"/admin/personnel/{personnel_id}")
-    modele = charger_modele_personnel()
-    etu = {
-        "nom": personne.nom,
-        "prenom": personne.prenom,
-        "matricule": personne.numero,
-        "filiere": personne.fonction,
-        "email": personne.email or "",
-        "annee_academique": personne.annee_academique,
-        "date_validite": personne.date_validite.isoformat(),
-        "url": url_affichee(base_url(), personne.numero),
-        "controle": code_controle(badge.jeton),
-        "edition": badge.numero_edition,
-        "sexe": personne.sexe,
-        "photo": bool(personne.photo_chemin),
-    }
-    return render(
-        request,
-        "imprimer_personnel.html",
-        user=admin,
-        personne=personne,
-        badge=badge,
-        donnees={
-            "modele": modele,
-            "etu": etu,
-            "urls": {
-                "photo": f"/admin/personnel/{personne.id}/photo",
-                "qr": f"/admin/personnel/{personne.id}/qr.png",
-                "barre": f"/admin/personnel/{personne.id}/code128.png",
-            },
-        },
-    )
+def page_imprimer(personnel_id: int, admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
+    """Même page d'impression que les étudiants (Primacy 2, recto-verso bord long)."""
+    _personne(db, personnel_id)
+    raise Redirection(f"/admin/impression?personnel={personnel_id}")
 
 
 @router.get("/{personnel_id}/qr.png")

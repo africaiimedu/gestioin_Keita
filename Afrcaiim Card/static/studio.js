@@ -4,6 +4,23 @@ function pxActuel() {
   return PX * zoom;
 }
 const csrf = document.querySelector('meta[name="csrf"]').content;
+const CFG = (() => {
+  const brut = JSON.parse(document.getElementById("atelier-config")?.textContent || '{"cible":"etudiants"}');
+  const personnel = brut.cible === "personnel";
+  return {
+    personnel,
+    apiAtelier: personnel ? "/admin/api/atelier-personnel" : "/admin/api/atelier",
+    apiModele: personnel ? "/admin/api/modele-personnel" : "/admin/api/modele",
+    apiOrigine: personnel ? "/admin/api/modele-personnel/origine" : "/admin/api/modele/origine",
+    apiFiches: personnel ? "/admin/api/personnel" : "/admin/api/etudiants",
+    photo: (id) => (personnel ? `/admin/personnel/${id}/photo` : `/admin/etudiants/${id}/photo`),
+    qr: (id) => (personnel ? `/admin/personnel/${id}/qr.png` : `/admin/etudiants/${id}/qr.png`),
+    barre: (id) => (personnel ? `/admin/personnel/${id}/code128.png` : `/admin/etudiants/${id}/code128.png`),
+    impression: (id) => (personnel ? `/admin/impression?personnel=${id}` : `/admin/impression?etudiant=${id}`),
+    labelFiche: personnel ? "personne" : "étudiant",
+    orientationDefaut: personnel ? "portrait" : "paysage",
+  };
+})();
 let etudiants = [];
 let modele = null;
 let index = 0;
@@ -18,20 +35,35 @@ let enEdition = false;
 const ecoles = JSON.parse(document.getElementById("ecoles-officielles").textContent);
 let clicPrecedent = { id: "", moment: 0 };
 
-const CHAMPS = [
-  ["nom", "Nom"],
-  ["prenom", "Prénom"],
-  ["matricule", "Matricule"],
-  ["filiere", "École"],
-  ["ecole", "École"],
-  ["email", "E-mail étudiant"],
-  ["annee_academique", "Année"],
-  ["date_validite", "Validité"],
-  ["url", "Adresse de vérification"],
-  ["edition", "Édition"],
-  ["controle", "Code de contrôle"],
-  ["qualite", "Étudiant ou étudiante"],
-];
+const CHAMPS = CFG.personnel
+  ? [
+      ["nom", "Nom"],
+      ["prenom", "Prénom"],
+      ["matricule", "N° badge"],
+      ["fonction", "Fonction / service"],
+      ["filiere", "Fonction / service"],
+      ["email", "E-mail"],
+      ["annee_academique", "Année"],
+      ["date_validite", "Validité"],
+      ["url", "Adresse de vérification"],
+      ["edition", "Édition"],
+      ["controle", "Code de contrôle"],
+      ["qualite", "Collaborateur ou collaboratrice"],
+    ]
+  : [
+      ["nom", "Nom"],
+      ["prenom", "Prénom"],
+      ["matricule", "Matricule"],
+      ["filiere", "École"],
+      ["ecole", "École"],
+      ["email", "E-mail étudiant"],
+      ["annee_academique", "Année"],
+      ["date_validite", "Validité"],
+      ["url", "Adresse de vérification"],
+      ["edition", "Édition"],
+      ["controle", "Code de contrôle"],
+      ["qualite", "Étudiant ou étudiante"],
+    ];
 
 const NOMS = {
   texte: "Texte fixe",
@@ -43,11 +75,18 @@ const NOMS = {
   cercle: "Cercle",
   ligne: "Ligne",
   piste: "Piste magnétique",
-  image: "Logo Université AFRICAIIM",
+  image: "Image / design",
   guilloche: "Trame de sécurité",
   rosette: "Rosace de sécurité",
   micro: "Microtexte",
 };
+
+function libelleImage(obj) {
+  const asset = String(obj?.asset || "marque");
+  if (asset.startsWith("design:")) return "Design importé";
+  if (obj?.id === "logo") return "Logo Université AFRICAIIM";
+  return "Logo Université AFRICAIIM";
+}
 
 const GABARITS = {
   texte: { type: "texte", texte: "Texte", w: 32, h: 6, taille: 8, couleur: "#1A1A1A" },
@@ -84,7 +123,7 @@ function vue() {
   const q = recherche.trim().toLowerCase();
   if (!q) return etudiants;
   return etudiants.filter((e) =>
-    `${e.nom} ${e.prenom} ${e.matricule} ${e.filiere}`.toLowerCase().includes(q)
+    `${e.nom} ${e.prenom} ${e.matricule} ${e.filiere || ""} ${e.fonction || ""}`.toLowerCase().includes(q)
   );
 }
 
@@ -103,9 +142,9 @@ function contexte() {
     etu,
     urls: etu
       ? {
-          photo: `/admin/etudiants/${etu.id}/photo`,
-          qr: `/admin/etudiants/${etu.id}/qr.png`,
-          barre: `/admin/etudiants/${etu.id}/code128.png`,
+          photo: CFG.photo(etu.id),
+          qr: CFG.qr(etu.id),
+          barre: CFG.barre(etu.id),
         }
       : {},
     selection,
@@ -334,10 +373,12 @@ function objetChoisi() {
 }
 
 async function appliquerEdition(obj, valeur) {
-  const fiche = ["nom", "prenom", "filiere", "email"];
+  const fiche = CFG.personnel
+    ? ["nom", "prenom", "filiere", "fonction", "email"]
+    : ["nom", "prenom", "filiere", "email"];
   if (obj.type === "champ" && fiche.includes(obj.champ) && !obj.personnalise) {
     const etu = courant();
-    if (etu) await sauverFiche(etu, obj.champ, valeur);
+    if (etu) await sauverFiche(etu, obj.champ === "filiere" && CFG.personnel ? "fonction" : obj.champ, valeur);
     return;
   }
   if (obj.type === "texte") obj.texte = valeur;
@@ -436,7 +477,7 @@ function proprietes() {
   }
   const forme = obj.type === "rect" || obj.type === "cercle" || obj.type === "piste" || obj.type === "photo";
   zone.innerHTML = `
-    <p class="nom-objet">${NOMS[obj.type] || obj.type}</p>
+    <p class="nom-objet">${obj.type === "image" ? libelleImage(obj) : (NOMS[obj.type] || obj.type)}</p>
     ${estTexte(obj) ? '<p class="vide">Double-cliquez le texte sur la carte pour l’écrire.</p>' : ""}
     <label>X mm<input data-cle="x" type="number" step="0.1" value="${obj.x}"></label>
     <label>Y mm<input data-cle="y" type="number" step="0.1" value="${obj.y}"></label>
@@ -453,6 +494,15 @@ function proprietes() {
     ` : ""}
     ${obj.type === "rect" || obj.type === "photo" ? `<label>Coins mm<input data-cle="rayon" type="number" step="0.1" min="0" max="20" value="${obj.rayon || 0}"></label>` : ""}
     ${obj.type === "ligne" ? `<label>Épaisseur mm<input data-cle="epaisseur" type="number" step="0.05" min="0.05" max="2" value="${obj.epaisseur || 0.3}"></label>` : ""}
+    ${obj.type === "image" ? `
+      <label>Ajustement<select data-cle="ajustement">
+        <option value="contain" ${(obj.ajustement || "contain") === "contain" ? "selected" : ""}>Contenir (sans rogner)</option>
+        <option value="cover" ${obj.ajustement === "cover" ? "selected" : ""}>Couvrir (remplir la zone)</option>
+      </select></label>
+      <p class="vide">${String(obj.asset || "").startsWith("design:")
+        ? "Design importé depuis Photoshop ou un autre logiciel."
+        : "Logo officiel Université AFRICAIIM."}</p>
+    ` : ""}
     ${obj.type === "piste" ? `<p class="vide">Ce rectangle noir montre seulement l'emplacement de la bande magnétique du PVC. HiCo et LoCo se règlent sur l'encodeur de l'Evolis. Une piste se recopie avec un lecteur : elle ne remplace pas le QR sécurisé.</p>` : ""}
     ${obj.type === "photo" ? `
       <label>Couleur des initiales<input data-cle="couleur_texte" type="color" value="${obj.couleur_texte || "#0C4630"}"></label>
@@ -571,8 +621,12 @@ function calques() {
   [...(modele[face] || [])].reverse().forEach((obj) => {
     const li = document.createElement("li");
     if (obj.id === selection) li.className = "actif";
-    const detail = obj.type === "texte" ? obj.texte : obj.type === "champ" || obj.type === "codebarres" ? obj.champ : "";
-    li.textContent = `${NOMS[obj.type] || obj.type}${detail ? " · " + detail : ""}`;
+    const detail = obj.type === "texte" ? obj.texte
+      : obj.type === "champ" || obj.type === "codebarres" ? obj.champ
+      : obj.type === "image" && String(obj.asset || "").startsWith("design:") ? "importé"
+      : "";
+    const titre = obj.type === "image" ? libelleImage(obj) : (NOMS[obj.type] || obj.type);
+    li.textContent = `${titre}${detail ? " · " + detail : ""}`;
     li.addEventListener("click", () => {
       selection = obj.id;
       outil = "selection";
@@ -585,7 +639,7 @@ function calques() {
 }
 
 async function sauverModele() {
-  const reponse = await fetch("/admin/api/modele", { method: "POST", headers: entetes(), body: JSON.stringify(modele) });
+  const reponse = await fetch(CFG.apiModele, { method: "POST", headers: entetes(), body: JSON.stringify(modele) });
   if (!reponse.ok) {
     const corps = await reponse.json();
     message(corps.message || "Le modèle n'a pas été enregistré.");
@@ -600,25 +654,27 @@ function dessinerGrille() {
   vue().forEach((etu, i) => {
     const tr = document.createElement("tr");
     if (i === index) tr.className = "actif";
+    const champService = CFG.personnel ? "fonction" : "filiere";
     tr.innerHTML = `
-      <td class="mini">${etu.photo ? `<img src="/admin/etudiants/${etu.id}/photo" alt="">` : "—"}</td>
+      <td class="mini">${etu.photo ? `<img src="${CFG.photo(etu.id)}" alt="">` : "—"}</td>
       <td data-champ="nom"></td>
       <td data-champ="prenom"></td>
       <td>${etu.matricule}</td>
-      <td data-champ="filiere"></td>
+      <td data-champ="${champService}"></td>
       <td data-champ="annee_academique"></td>
       <td data-champ="date_validite"></td>
-      <td>${francs(etu.solde_cantine)}</td>
+      ${CFG.personnel ? "" : `<td>${francs(etu.solde_cantine)}</td>`}
       <td>${etu.statut === "active" ? "Valide" : etu.statut || "—"}</td>
     `;
     tr.querySelectorAll("[data-champ]").forEach((td) => {
       const champ = td.dataset.champ;
-      td.textContent = champ === "date_validite" ? dateCarte(etu[champ]) : etu[champ];
+      const valeur = champ === "fonction" ? (etu.fonction || etu.filiere || "") : etu[champ];
+      td.textContent = champ === "date_validite" ? dateCarte(etu[champ]) : valeur;
       if (champ === "annee_academique" || champ === "date_validite") return;
       td.addEventListener("dblclick", (ev) => {
         ev.stopPropagation();
         td.textContent = "";
-        if (champ === "filiere") {
+        if (champ === "filiere" && !CFG.personnel) {
           const select = document.createElement("select");
           ecoles.forEach((nom) => {
             const option = document.createElement("option");
@@ -634,7 +690,7 @@ function dessinerGrille() {
           return;
         }
         const input = document.createElement("input");
-        input.value = etu[champ];
+        input.value = champ === "fonction" ? (etu.fonction || etu.filiere || "") : (etu[champ] || "");
         td.appendChild(input);
         input.focus();
         input.addEventListener("blur", () => sauverFiche(etu, champ, input.value));
@@ -716,18 +772,27 @@ async function changerOrientation(nom) {
 }
 
 async function sauverFiche(etu, champ, valeur) {
-  const corps = {
-    prenom: etu.prenom,
-    nom: etu.nom,
-    filiere: etu.filiere,
-    annee_academique: etu.annee_academique,
-    date_validite: etu.date_validite,
-    email: etu.email || "",
-  };
-  corps[champ] = champ === "date_validite" && valeur.includes("/")
+  const corps = CFG.personnel
+    ? {
+        prenom: etu.prenom,
+        nom: etu.nom,
+        fonction: etu.fonction || etu.filiere || "",
+        email: etu.email || "",
+        sexe: etu.sexe || "M",
+      }
+    : {
+        prenom: etu.prenom,
+        nom: etu.nom,
+        filiere: etu.filiere,
+        annee_academique: etu.annee_academique,
+        date_validite: etu.date_validite,
+        email: etu.email || "",
+      };
+  const cle = champ === "filiere" && CFG.personnel ? "fonction" : champ;
+  corps[cle] = champ === "date_validite" && valeur.includes("/")
     ? valeur.split("/").reverse().join("-")
     : valeur;
-  const reponse = await fetch(`/admin/api/etudiants/${etu.id}`, {
+  const reponse = await fetch(`${CFG.apiFiches}/${etu.id}`, {
     method: "POST",
     headers: entetes(),
     body: JSON.stringify(corps),
@@ -886,16 +951,16 @@ document.getElementById("recherche").oninput = (ev) => {
 document.getElementById("imprimer").onclick = () => {
   const etu = courant();
   if (!etu) {
-    message("Choisissez un étudiant dans la base.");
+    message(`Choisissez un${CFG.personnel ? "e" : ""} ${CFG.labelFiche} dans la base.`);
     return;
   }
-  window.location.href = `/admin/impression?etudiant=${etu.id}`;
+  window.location.href = CFG.impression(etu.id);
 };
 document.getElementById("origine").onclick = async () => {
-  const reponse = await fetch("/admin/api/modele/origine", { method: "POST", headers: entetes(), body: "{}" });
+  const reponse = await fetch(CFG.apiOrigine, { method: "POST", headers: entetes(), body: "{}" });
   if (!reponse.ok) return;
   modele = await reponse.json();
-  if (modele.orientation !== "portrait") modele.orientation = "paysage";
+  if (!CFG.personnel && modele.orientation !== "portrait") modele.orientation = "paysage";
   selection = null;
   poserRegles();
   dessinerCarte();
@@ -908,6 +973,7 @@ function francs(montant) {
   return `${nombre} GNF`;
 }
 document.getElementById("recharger").onclick = () => {
+  if (CFG.personnel) return;
   const etu = courant();
   if (!etu) {
     message("Choisissez un étudiant dans la base.");
@@ -959,7 +1025,7 @@ document.getElementById("form-ajout").addEventListener("submit", async (ev) => {
   const photo = formulaire.get("photo");
   const donnees = Object.fromEntries(formulaire.entries());
   delete donnees.photo;
-  const reponse = await fetch("/admin/api/etudiants", { method: "POST", headers: entetes(), body: JSON.stringify(donnees) });
+  const reponse = await fetch(CFG.apiFiches, { method: "POST", headers: entetes(), body: JSON.stringify(donnees) });
   const corps = await reponse.json();
   if (!reponse.ok) {
     message(corps.message || "Création impossible.");
@@ -969,7 +1035,7 @@ document.getElementById("form-ajout").addEventListener("submit", async (ev) => {
     const envoi = new FormData();
     envoi.append("csrf", csrf);
     envoi.append("fichier", photo);
-    const photoReponse = await fetch(`/admin/etudiants/${corps.id}/photo`, {
+    const photoReponse = await fetch(CFG.photo(corps.id), {
       method: "POST",
       headers: { Accept: "application/json", "X-CSRF": csrf },
       body: envoi,
@@ -980,7 +1046,9 @@ document.getElementById("form-ajout").addEventListener("submit", async (ev) => {
   document.getElementById("dialogue").close();
   ev.target.reset();
   document.getElementById("apercu-photo").hidden = true;
-  message(`Mot de passe temporaire de ${corps.matricule} : ${corps.mot_de_passe}`);
+  message(CFG.personnel
+    ? `Badge ${corps.matricule} créé — prêt à composer et imprimer.`
+    : `Mot de passe temporaire de ${corps.matricule} : ${corps.mot_de_passe}`);
   etudiants.push(corps);
   etudiants.sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   index = vue().findIndex((e) => e.id === corps.id);
@@ -996,6 +1064,160 @@ document.addEventListener("keydown", (ev) => {
     ev.preventDefault();
     action("supprimer");
   }
+});
+
+function poserDesign(asset, usage) {
+  if (!modele || !asset) return;
+  const format = formatCarte();
+  const id = `d${Date.now().toString(36)}`;
+  if (usage === "badge") {
+    if (!window.confirm("Remplacer tout le contenu de cette face par le badge importé ? Vous pourrez ensuite ajouter un QR ou une photo.")) {
+      return;
+    }
+    modele[face] = [{
+      id,
+      type: "image",
+      asset,
+      ajustement: "cover",
+      x: 0,
+      y: 0,
+      w: format.w,
+      h: format.h,
+    }];
+  } else if (usage === "fond") {
+    const reste = (modele[face] || []).filter((obj) => {
+      const plein = obj.w >= format.w - 0.5 && obj.h >= format.h - 0.5 && obj.x <= 0.2 && obj.y <= 0.2;
+      if (obj.type === "image" && String(obj.asset || "").startsWith("design:") && plein) return false;
+      if (obj.id === "fond" && obj.type === "rect") return false;
+      return true;
+    });
+    reste.unshift({
+      id,
+      type: "image",
+      asset,
+      ajustement: "cover",
+      x: 0,
+      y: 0,
+      w: format.w,
+      h: format.h,
+    });
+    modele[face] = reste;
+  } else {
+    modele[face].push({
+      id,
+      type: "image",
+      asset,
+      ajustement: "contain",
+      x: Math.round((format.w - 36) / 2 * 10) / 10,
+      y: Math.round((format.h - 20) / 2 * 10) / 10,
+      w: 36,
+      h: 20,
+    });
+  }
+  selection = id;
+  marquerOutil("selection");
+  dessinerCarte();
+  proprietes();
+  sauverModele();
+  message(usage === "badge"
+    ? "Badge importé sur toute la face. Ajoutez un QR si besoin, puis enregistrez."
+    : usage === "fond"
+      ? "Fond importé. Déplacez photo, textes et QR au-dessus du dessin."
+      : "Élément importé. Déplacez-le et réglez-le dans Propriétés.");
+}
+
+async function rafraichirListeDesigns() {
+  const zone = document.getElementById("liste-designs");
+  if (!zone) return;
+  const reponse = await fetch("/admin/api/designs", { headers: { Accept: "application/json" } });
+  if (!reponse.ok) {
+    zone.innerHTML = "<p class=\"vide\">Impossible de charger les designs.</p>";
+    return;
+  }
+  const data = await reponse.json();
+  const designs = data.designs || [];
+  if (!designs.length) {
+    zone.innerHTML = "<p class=\"vide\">Aucun design pour l’instant.</p>";
+    return;
+  }
+  zone.innerHTML = "";
+  designs.forEach((item) => {
+    const tuile = document.createElement("div");
+    tuile.className = "tuile-design";
+    tuile.innerHTML = `
+      <img src="${item.url}" alt="">
+      <strong title="${echapper(item.nom)}">${echapper(item.nom)}</strong>
+      <div class="ligne-boutons">
+        <button type="button" class="fond" data-pose="fond">Fond</button>
+        <button type="button" data-pose="badge">Badge</button>
+        <button type="button" data-pose="element">Élément</button>
+        <button type="button" data-supprimer="1" title="Supprimer">×</button>
+      </div>
+    `;
+    tuile.querySelectorAll("[data-pose]").forEach((bouton) => {
+      bouton.addEventListener("click", () => {
+        poserDesign(`design:${item.id}`, bouton.dataset.pose);
+        document.getElementById("dialogue-design").close();
+      });
+    });
+    tuile.querySelector("[data-supprimer]").addEventListener("click", async () => {
+      if (!window.confirm(`Retirer « ${item.nom} » de la bibliothèque ?`)) return;
+      const del = await fetch(`/admin/api/designs/${item.id}`, { method: "DELETE", headers: entetes() });
+      if (!del.ok) {
+        message("Suppression impossible.");
+        return;
+      }
+      rafraichirListeDesigns();
+    });
+    zone.appendChild(tuile);
+  });
+}
+
+document.getElementById("ouvrir-import-design")?.addEventListener("click", () => {
+  document.getElementById("dialogue-design").showModal();
+  rafraichirListeDesigns();
+});
+document.getElementById("fermer-design")?.addEventListener("click", () => {
+  document.getElementById("dialogue-design").close();
+});
+document.getElementById("fichier-design")?.addEventListener("change", (ev) => {
+  const apercu = document.getElementById("apercu-design");
+  const fichier = ev.target.files && ev.target.files[0];
+  if (!fichier) {
+    apercu.hidden = true;
+    apercu.removeAttribute("src");
+    return;
+  }
+  apercu.src = URL.createObjectURL(fichier);
+  apercu.hidden = false;
+});
+document.getElementById("form-design")?.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const formulaire = new FormData(ev.target);
+  const fichier = formulaire.get("fichier");
+  if (!(fichier instanceof File) || !fichier.size) {
+    message("Choisissez un fichier PNG ou JPG exporté depuis Photoshop.");
+    return;
+  }
+  const envoi = new FormData();
+  envoi.append("fichier", fichier);
+  envoi.append("nom", formulaire.get("nom") || fichier.name);
+  const reponse = await fetch("/admin/api/designs", {
+    method: "POST",
+    headers: { Accept: "application/json", "X-CSRF": csrf },
+    body: envoi,
+  });
+  const corps = await reponse.json();
+  if (!reponse.ok) {
+    message(corps.message || "Import impossible.");
+    return;
+  }
+  const usage = formulaire.get("usage") || "fond";
+  poserDesign(corps.asset, usage);
+  document.getElementById("dialogue-design").close();
+  ev.target.reset();
+  document.getElementById("apercu-design").hidden = true;
+  rafraichirListeDesigns();
 });
 
 function garderMenus() {
@@ -1029,12 +1251,13 @@ poserRegles();
 document.getElementById("toile").addEventListener("scroll", dessinerRegles);
 document.getElementById("toile").addEventListener("pointermove", suivreRegles);
 window.addEventListener("resize", dessinerRegles);
-fetch("/admin/api/atelier")
+fetch(CFG.apiAtelier)
   .then((r) => r.json())
   .then((data) => {
     etudiants = data.etudiants;
     modele = data.modele;
-    if (modele.orientation !== "portrait") modele.orientation = "paysage";
+    if (!CFG.personnel && modele.orientation !== "portrait") modele.orientation = "paysage";
+    if (CFG.personnel && !modele.orientation) modele.orientation = "portrait";
     choisirAffichage(affichage);
     poserRegles();
     dessinerGrille();

@@ -111,7 +111,7 @@
       "taille": 7.2,
       "align": "center",
       "retour": true,
-      "champ": "filiere"
+      "champ": "fonction"
     },
     {
       "id": "annee",

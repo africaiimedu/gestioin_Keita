@@ -18,9 +18,10 @@ from app.services.cantine import crediter, prix_repas, regler_prix
 from app.services.comptes import adresse_compte
 from app.services.courrier import formater_francs
 from app.deps import Redirection, exiger_admin, exiger_bureau, get_db
-from app.models import Etudiant, Journal, MouvementCantine, Utilisateur
+from app.models import Etudiant, Journal, MouvementCantine, Personnel, Utilisateur
 from app.services.import_etudiants import analyser_lignes, controler_fiche, lire_tableau
 from app.services.metier import (
+    badge_courant,
     carte_courante,
     changer_statut,
     courante_parmi,
@@ -42,6 +43,7 @@ from app.services.metier import (
 )
 from app.services.pdf_carte import (
     charger_modele,
+    charger_modele_personnel,
     code_controle,
     pdf_feuille_a4,
     pdf_individuel,
@@ -49,7 +51,7 @@ from app.services.pdf_carte import (
     url_affichee,
 )
 from app.services.pdf_liste import pdf_liste_etudiants
-from app.services.photos import lire_photo, normaliser_photo, photos_depuis_zip
+from app.services.photos import lire_photo, normaliser_photo, photos_depuis_zip, portrait_initiales
 from app.services.statut import libelle_statut, statut_effectif
 from app.ui import csrf_valide, flash, render, retour_sur
 
@@ -74,10 +76,10 @@ _commande_lp = cups.commande_lp
 MEDIA_A4 = "A4"
 
 
-def _media_cr80() -> str:
+def _media_cr80(modele: dict | None = None) -> str:
     from app.services.pdf_carte import MM, taille_carte
 
-    largeur, hauteur = taille_carte()
+    largeur, hauteur = taille_carte(modele)
 
     def _fmt(points: float) -> str:
         return f"{points / MM:.1f}".rstrip("0").rstrip(".")
@@ -85,8 +87,9 @@ def _media_cr80() -> str:
     return f"Custom.{_fmt(largeur)}x{_fmt(hauteur)}mm"
 
 
-def _orientation_modele() -> str:
-    return "portrait" if str(charger_modele().get("orientation") or "paysage") == "portrait" else "paysage"
+def _orientation_modele(modele: dict | None = None) -> str:
+    data = modele if modele is not None else charger_modele()
+    return "portrait" if str(data.get("orientation") or "paysage") == "portrait" else "paysage"
 
 
 def _lister_imprimantes(db: Session | None = None) -> list[dict]:
@@ -97,9 +100,11 @@ def _lister_imprimantes(db: Session | None = None) -> list[dict]:
     return locales + relais.imprimantes_relais(db)
 
 
-def _envoyer_vers(pdf: bytes, nom: str, duplex: bool, copies: int, orientation: str | None = None) -> tuple[bool, str]:
-    sens = orientation if orientation in ("paysage", "portrait") else _orientation_modele()
-    return cups.envoyer(pdf, nom, duplex, copies, _media_cr80(), sens)
+def _envoyer_vers(
+    pdf: bytes, nom: str, duplex: bool, copies: int, orientation: str | None = None, modele: dict | None = None,
+) -> tuple[bool, str]:
+    sens = orientation if orientation in ("paysage", "portrait") else _orientation_modele(modele)
+    return cups.envoyer(pdf, nom, duplex, copies, _media_cr80(modele), sens)
 
 
 def _raison_blocage(etudiant: Etudiant, carte) -> str | None:
@@ -143,7 +148,27 @@ def _lot(db: Session, filiere: str, annee: str):
 
 @router.get("")
 def atelier(request: Request, admin: Utilisateur = Depends(exiger_bureau)):
-    return render(request, "studio.html", user=admin)
+    return render(request, "studio.html", user=admin, atelier_cible="etudiants")
+
+
+@router.get("/atelier-personnel")
+def atelier_personnel(request: Request, admin: Utilisateur = Depends(exiger_bureau)):
+    """Même atelier d'impression, branché sur le modèle et les fiches du personnel (portrait)."""
+    return render(request, "studio.html", user=admin, atelier_cible="personnel")
+
+
+@router.get("/designs/{design_id}")
+def servir_design(design_id: str, admin: Utilisateur = Depends(exiger_bureau)):
+    """Image de design importée (atelier), pour l'aperçu et l'impression."""
+    from app.services.designs import chemin_design
+
+    chemin = chemin_design(design_id)
+    if chemin is None:
+        return Response(status_code=404)
+    media = "image/png" if chemin.suffix.lower() == ".png" else "image/jpeg"
+    if chemin.suffix.lower() == ".webp":
+        media = "image/webp"
+    return FileResponse(chemin, media_type=media, headers={"Cache-Control": "private, max-age=3600"})
 
 
 def _lignes_etudiants(db: Session, q: str, filiere: str, annee: str) -> list[dict]:
@@ -596,10 +621,10 @@ def imprimer(etudiant_id: int, admin: Utilisateur = Depends(exiger_bureau)):
     raise Redirection(f"/admin/impression?etudiant={etudiant_id}")
 
 
-def _format_carte() -> str:
+def _format_carte(modele: dict | None = None) -> str:
     from app.services.pdf_carte import MM, taille_carte
 
-    largeur, hauteur = taille_carte()
+    largeur, hauteur = taille_carte(modele)
 
     def _fr(points: float) -> str:
         texte = f"{points / MM:.1f}".rstrip("0").rstrip(".")
@@ -661,36 +686,115 @@ def _imprimer(
     return True, f"Carte envoyée à {nom} ({face}, {sens}, {_format_carte()}, 100 %)."
 
 
+def _raison_blocage_personnel(personne: Personnel, badge) -> str | None:
+    if badge is None:
+        return "Cette personne n'a pas de badge actif."
+    effectif = statut_effectif(badge.statut, badge.date_validite)
+    if effectif != "active":
+        return f"Impression refusée : le badge est « {libelle_statut(effectif)} »."
+    return None
+
+
+def _imprimer_personnel(
+    db: Session, admin: Utilisateur, personne: Personnel, badge, cle: str, copies: int, recto_verso: bool, sens: str,
+) -> tuple[bool, str]:
+    """Mêmes paramètres Primacy 2 que la carte étudiant (recto-verso bord long, 100 %, RVB)."""
+    face = "recto-verso, bord long" if recto_verso else "recto seul"
+    modele = charger_modele_personnel()
+    photo = lire_photo(personne.photo_chemin) or portrait_initiales(personne.prenom, personne.nom)
+    if cle.startswith("poste:"):
+        cible = next((imp for imp in relais.imprimantes_relais(db) if imp["cle"] == cle), None)
+        if cible is None:
+            return False, "Cette imprimante n'est plus en ligne. Vérifiez que l'ordinateur du bureau est allumé, puis rechargez la page."
+        a4 = not cible.get("primacy")
+        relais.mettre_en_file(
+            db,
+            cible["poste_id"],
+            cible["nom"],
+            personnel_id=personne.id,
+            badge_id=badge.id,
+            libelle=f"{personne.nom} {personne.prenom} · {personne.numero}",
+            copies=copies,
+            recto_verso=recto_verso and not a4,
+            sens=sens,
+            media=MEDIA_A4 if a4 else _media_cr80(modele),
+            cree_par=admin.id,
+        )
+        if a4:
+            return True, f"Feuille A4 confiée à {cible['nom']} ({cible['lieu']}) : découpez le badge sur les repères et pliez-le."
+        return True, f"Badge confié à {cible['nom']} ({cible['lieu']}, {face}, {sens}). Il sort dans quelques secondes."
+    nom = cle.split(":", 1)[1] if cle.startswith("local:") else cle
+    locale = next((imp for imp in cups.lister_imprimantes() if imp["nom"] == nom), None)
+    if locale is None:
+        return False, "Cette imprimante n'est pas installée."
+    if not locale.get("primacy"):
+        contenu = pdf_feuille_a4(
+            [(personne, photo, badge.jeton, badge.numero_edition)],
+            base_url(),
+            f"Badge {personne.numero}",
+            modele=modele,
+        )
+        ok, detail = cups.envoyer(contenu, nom, False, copies, MEDIA_A4, "portrait")
+        if not ok:
+            return False, detail
+        journaliser(db, "badge_imprime", utilisateur_id=admin.id, details=f"{nom} · A4 · {personne.numero}")
+        db.commit()
+        return True, f"Feuille A4 envoyée à {nom} : découpez le badge sur les repères et pliez-le."
+    contenu = pdf_individuel(
+        personne, photo, badge.jeton, badge.numero_edition, base_url(),
+        recto_verso, retourner_verso=False, modele=modele,
+    )
+    ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, sens, modele=modele)
+    if not ok:
+        return False, detail
+    journaliser(
+        db, "badge_imprime", utilisateur_id=admin.id,
+        details=f"{nom} · {copies} copie(s) · {face} · {sens} · {personne.numero}",
+    )
+    db.commit()
+    return True, f"Badge envoyé à {nom} ({face}, {sens}, {_format_carte(modele)}, 100 %)."
+
+
 @router.get("/impression")
 def page_impression(
     request: Request,
     etudiant: int = 0,
+    personnel: int = 0,
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
     etudiants = db.scalars(select(Etudiant).order_by(Etudiant.nom, Etudiant.prenom)).all()
-    choisi = next((ligne for ligne in etudiants if ligne.id == etudiant), None)
+    personnels = db.scalars(select(Personnel).order_by(Personnel.nom, Personnel.prenom)).all()
+    choisi = next((ligne for ligne in etudiants if ligne.id == etudiant), None) if not personnel else None
+    choisi_personnel = next((ligne for ligne in personnels if ligne.id == personnel), None)
     imprimantes = _lister_imprimantes(db)
     preferee = next((imp["cle"] for imp in imprimantes if imp["primacy"]), "")
     raison = None
+    modele = charger_modele_personnel() if choisi_personnel else charger_modele()
     if choisi is not None:
         raison = _raison_blocage(choisi, carte_courante(db, choisi.id))
+    elif choisi_personnel is not None:
+        raison = _raison_blocage_personnel(choisi_personnel, badge_courant(db, choisi_personnel.id))
     return render(
         request,
         "admin_impression.html",
         user=admin,
         etudiants=etudiants,
+        personnels=personnels,
         choisi=choisi,
+        choisi_personnel=choisi_personnel,
+        badge=badge_courant(db, choisi_personnel.id) if choisi_personnel else None,
         imprimantes=imprimantes,
         preferee=preferee,
         raison=raison,
-        format_carte=_format_carte(),
+        format_carte=_format_carte(modele),
         duplex=bool(preferee),
-        orientation=_orientation_modele(),
+        orientation=_orientation_modele(modele),
         postes=relais.postes(db),
         en_ligne=relais.en_ligne,
         travaux=relais.derniers(db),
         libelles_travaux=relais.LIBELLES,
+        cible="personnel" if choisi_personnel else "etudiant",
     )
 
 
@@ -712,15 +816,36 @@ def travaux_impression(admin: Utilisateur = Depends(exiger_bureau), db: Session 
 @router.post("/impression")
 def lancer_page_impression(
     request: Request,
-    etudiant_id: int = Form(...),
     imprimante: str = Form(...),
     copies: int = Form(1),
     duplex: str | None = Form(None),
     orientation: str = Form("paysage"),
     csrf: str = Form(""),
+    etudiant_id: int = Form(0),
+    personnel_id: int = Form(0),
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
+    if personnel_id:
+        retour = f"/admin/impression?personnel={personnel_id}"
+        _exiger_csrf(request, csrf, retour)
+        personne = db.get(Personnel, personnel_id)
+        if personne is None:
+            flash(request, "erreur", "Cette fiche personnel n'existe pas.")
+            raise Redirection("/admin/impression")
+        badge = badge_courant(db, personne.id)
+        raison = _raison_blocage_personnel(personne, badge)
+        if raison:
+            flash(request, "erreur", raison)
+            raise Redirection(retour)
+        if copies < 1 or copies > 20:
+            flash(request, "erreur", "Le nombre de copies doit être entre 1 et 20.")
+            raise Redirection(retour)
+        sens = "portrait" if orientation == "portrait" else "paysage"
+        ok, message = _imprimer_personnel(db, admin, personne, badge, imprimante, copies, duplex == "1", sens)
+        flash(request, "ok" if ok else "erreur", message)
+        raise Redirection(retour)
+
     retour = f"/admin/impression?etudiant={etudiant_id}"
     _exiger_csrf(request, csrf, retour)
     etudiant = db.get(Etudiant, etudiant_id)

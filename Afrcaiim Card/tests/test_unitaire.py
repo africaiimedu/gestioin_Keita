@@ -178,6 +178,17 @@ def test_huit_cartes_tiennent_sur_la_feuille():
         assert y + CARD_H + debord < A4_H
 
 
+def test_atelier_personnel_valide_fonction():
+    from app.routes.studio_routes import _valider_modele
+    from app.services.pdf_carte import charger_modele_personnel
+
+    modele = charger_modele_personnel()
+    propre = _valider_modele(modele)
+    assert propre["orientation"] == "portrait"
+    champs = {obj.get("champ") for face in ("recto", "verso") for obj in propre[face] if obj.get("type") == "champ"}
+    assert "fonction" in champs or "filiere" in champs
+
+
 def test_badge_personnel_portrait():
     from app.services.pdf_carte import charger_modele_personnel, pdf_badge_personnel
     from app.services.photos import portrait_initiales
