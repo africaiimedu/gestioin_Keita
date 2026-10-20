@@ -67,6 +67,28 @@ def test_validite_une_annee_apres_la_rentree():
     assert validite_par_defaut("2026-2027") == date(2027, 8, 31)
 
 
+def test_fiche_respecte_la_date_de_validite_fournie():
+    """La date passée (API Université / formulaire) doit être conservée, pas écrasée."""
+    fiche = controler_fiche(
+        "Awa",
+        "Camara",
+        "UA26AT0001",
+        "AFRICAIIM Tech",
+        "2026-2027",
+        "2029-08-31",
+    )
+    assert fiche.date_validite == date(2029, 8, 31)
+    fiche2 = controler_fiche(
+        "Awa",
+        "Camara",
+        "UA26AT0002",
+        "AFRICAIIM Tech",
+        "2026-2027",
+        "31/08/2031",
+    )
+    assert fiche2.date_validite == date(2031, 8, 31)
+
+
 def test_carte_active_perimee_s_affiche_expiree():
     assert statut_effectif("active", date(2020, 7, 31), date(2026, 9, 29)) == "expiree"
     assert statut_effectif("suspendue", date(2020, 7, 31), date(2026, 9, 29)) == "suspendue"

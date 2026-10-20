@@ -209,11 +209,11 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
                     raw["matricule"],
                     raw["ecole"],
                     raw["annee"],
-                    None,
+                    raw["date_validite"].isoformat(),
                     raw["email"] or None,
                     None,
                 )
-                # 100 % API : année d'entrée + validité selon durée du programme.
+                # 100 % API : année d'entrée + validité = entrée + durée du programme.
                 fiche.annee_academique = raw["annee"] or fiche.annee_academique
                 fiche.date_validite = raw["date_validite"]
                 matricules_api.add(fiche.matricule)

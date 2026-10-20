@@ -140,6 +140,14 @@ def controler_fiche(
 
     avertissement = None
     date_validite = validite_par_defaut(annee)
+    if date_texte not in (None, ""):
+        if isinstance(date_texte, date):
+            date_validite = date_texte
+        else:
+            lu = _lire_date(str(date_texte))
+            if lu is None:
+                raise ValueError("la date de validité est illisible (jj/mm/aaaa).")
+            date_validite = lu
 
     return Fiche(
         prenom,
