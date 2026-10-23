@@ -76,7 +76,21 @@ def test_synchro_upsert_et_retrait_hors_api(monkeypatch):
             "duration_years": 3,
             "photo_url": "",
             "status": "active",
-        }
+            "user_id": 1,
+        },
+        {
+            "student_number": "UA26INACTIF1",
+            "first_name": "Inactif",
+            "last_name": "Testeur",
+            "school": "AFRICAIIM Tech",
+            "programme": "Licence",
+            "institutional_email": "inactif.testeur@etu.univ-africaiim.com",
+            "intake_year": 2026,
+            "duration_years": 3,
+            "photo_url": "",
+            "status": "inactive",
+            "user_id": 2,
+        },
     ]
 
     def faux_lister(client=None):
@@ -113,6 +127,7 @@ def test_synchro_upsert_et_retrait_hors_api(monkeypatch):
             assert etu is not None
             assert etu.date_validite == date(2029, 8, 31)
             assert db.scalar(select(Etudiant).where(Etudiant.matricule == _HORS_API)) is None
+            assert db.scalar(select(Etudiant).where(Etudiant.matricule == "UA26INACTIF1")) is None
 
         with SessionLocal() as db:
             second = synchro_etudiants(db)
@@ -153,7 +168,7 @@ def test_synchro_upsert_et_retrait_hors_api(monkeypatch):
             assert db.scalar(select(Etudiant).where(Etudiant.matricule == "UA26HORSCOMPTE")) is None
     finally:
         with SessionLocal() as db:
-            for mat in (_MATRICULE, _HORS_API, "UA26HORSCOMPTE"):
+            for mat in (_MATRICULE, _HORS_API, "UA26HORSCOMPTE", "UA26INACTIF1"):
                 existant = db.scalar(select(Etudiant).where(Etudiant.matricule == mat))
                 if existant:
                     supprimer_etudiant(db, existant)

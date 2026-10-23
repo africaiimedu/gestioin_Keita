@@ -217,7 +217,7 @@ async function interceptMatricule(req, res, user, pathOnly, renameMatricule) {
   return body;
 }
 
-export function attachCardPortal(app, resolveUser = () => null, { renameMatricule = null, comptesEtudiants = null } = {}) {
+export function attachCardPortal(app, resolveUser = () => null, { renameMatricule = null } = {}) {
   app.use("/static", (req, res) => forward(req, res, req.originalUrl, true));
   app.use("/fonts", (req, res) => forward(req, res, req.originalUrl, false));
   app.use("/photo", (req, res) => forward(req, res, req.originalUrl, false));
@@ -247,39 +247,10 @@ export function attachCardPortal(app, resolveUser = () => null, { renameMatricul
       if (!res.headersSent) res.status(400).type("text").send("Formulaire illisible");
       return;
     }
-    if (req.method === "POST" && pathOnly === "/admin/api/atelier/synchro-universite" && comptesEtudiants) {
-      try {
-        const raw = body || await readBody(req, 65536);
-        let payload = {};
-        try {
-          payload = JSON.parse(raw.toString("utf8") || "{}");
-        } catch {
-          payload = {};
-        }
-        if (!payload || typeof payload !== "object" || Array.isArray(payload)) payload = {};
-        payload.matricules_comptes = await comptesEtudiants();
-        body = Buffer.from(JSON.stringify(payload));
-      } catch {
-        if (!res.headersSent) {
-          res.status(503).json({ message: "Les comptes étudiants de la scolarité sont illisibles. La base atelier n'a pas été modifiée." });
-        }
-        return;
-      }
-    }
     if (!(await cardReady())) return unavailable(req, res);
-    ensureCardSession(req, user).then(async () => {
+    ensureCardSession(req, user).then(() => {
       if (user && (tail === "/login" || tail.startsWith("/login?"))) {
         tail = can(user, "kitchen.manage") && !can(user, "cards.manage") ? "/cantine" : "/admin/etudiants";
-      }
-      if (req.method === "GET" && pathOnly === "/admin/api/atelier" && comptesEtudiants) {
-        const upstream = await cardCall(tail, { cookie: req.headers.cookie || "", timeoutMs: 30_000 });
-        const allowed = new Set(await comptesEtudiants());
-        const data = upstream.body && typeof upstream.body === "object" ? upstream.body : {};
-        if (Array.isArray(data.etudiants)) {
-          data.etudiants = data.etudiants.filter((item) => allowed.has(String(item.matricule || "").replace(/\s+/g, "").toUpperCase()));
-        }
-        if (!res.headersSent) res.status(upstream.status || 502).json(data);
-        return;
       }
       forward(req, res, tail, true, body);
     });

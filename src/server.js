@@ -136,13 +136,6 @@ app.get("/api/sante", async (_req, res) => {
   }
 });
 attachCardPortal(app, loadUser, {
-  comptesEtudiants: async () => {
-    const rows = await db.prepare(`
-      SELECT matricule FROM students
-      WHERE status != 'archive' AND matricule IS NOT NULL AND btrim(matricule) <> ''
-    `).all();
-    return rows.map((row) => String(row.matricule).replace(/\s+/g, "").toUpperCase());
-  },
   renameMatricule: async (user, previous, next) => {
     const student = await db.prepare("SELECT id FROM students WHERE upper(matricule) = ?")
       .get(String(previous).replace(/\s+/g, "").toUpperCase());

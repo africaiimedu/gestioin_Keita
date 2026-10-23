@@ -185,6 +185,25 @@ def _matricule_cle(valeur: str) -> str:
     return re.sub(r"\s+", "", str(valeur or "")).upper()
 
 
+_STATUTS_INSCRITS = {"", "active", "actif", "enrolled", "inscrit"}
+
+
+def _compte_inscrit(brut: dict) -> bool:
+    """Garde un étudiant inscrit qui a un compte sur la plateforme de l'université."""
+    if not isinstance(brut, dict):
+        return False
+    if not str(brut.get("student_number") or "").strip():
+        return False
+    statut = str(brut.get("status") or "active").strip().lower()
+    if statut not in _STATUTS_INSCRITS:
+        return False
+    if brut.get("is_alumni") is True:
+        return False
+    if "user_id" in brut and not brut.get("user_id"):
+        return False
+    return True
+
+
 def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tuple[str, str, bool]:
     """Enregistre une fiche API. Retourne (matricule, url photo, créée)."""
     raw = fiche_depuis_api(brut)
@@ -273,9 +292,13 @@ def synchro_etudiants(
             raise RuntimeError("Aucun compte étudiant transmis par la scolarité. La base atelier n'a pas été modifiée.")
 
     hors_compte = 0
+    non_inscrits = 0
     for brut in bruts:
         numero = str((brut or {}).get("student_number") or "").strip()
         cle = _matricule_cle(numero)
+        if not _compte_inscrit(brut):
+            non_inscrits += 1
+            continue
         if comptes is not None and cle not in comptes:
             hors_compte += 1
             continue
@@ -295,6 +318,10 @@ def synchro_etudiants(
             journal.warning("Synchro Université échouée pour %s : %s", numero or "?", exc)
 
     if crees + maj == 0:
+        if non_inscrits and not erreurs and not hors_compte:
+            raise RuntimeError(
+                "L'API Université n'a renvoyé aucun étudiant inscrit avec un compte. La base atelier n'a pas été modifiée."
+            )
         if comptes is not None and hors_compte and not erreurs:
             raise RuntimeError(
                 "Aucun étudiant de l'API Université n'est dans les comptes étudiants. La base atelier n'a pas été modifiée."
@@ -327,7 +354,7 @@ def synchro_etudiants(
             (
                 f"{len(matricules_api)} étudiant(s) affiché(s), présents dans l'API Université et dans les comptes étudiants"
                 if comptes is not None
-                else f"{len(matricules_api)} étudiant(s) affiché(s), uniquement ceux de l'API Université"
+                else f"{len(matricules_api)} étudiant(s) inscrits à l'université affiché(s), et aucun autre"
             )
             + (f", {retires} retiré(s) de l'atelier" if retires else "")
             + "."
