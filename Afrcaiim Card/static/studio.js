@@ -1013,12 +1013,14 @@ document.getElementById("synchro-universite")?.addEventListener("click", async (
   if (CFG.personnel) return;
   const bouton = document.getElementById("synchro-universite");
   if (bouton) bouton.disabled = true;
-  message("Synchronisation avec l'université…");
+  message("Appel de l'API Université…");
+  const racine = window.location.pathname.replace(/\/admin(?:\/.*)?$/, "");
   try {
-    const reponse = await fetch("/admin/api/atelier/synchro-universite", {
+    const reponse = await fetch(`${racine}/admin/api/atelier/synchro-universite`, {
       method: "POST",
       headers: entetes(),
       body: "{}",
+      credentials: "same-origin",
     });
     const corps = await reponse.json();
     if (!reponse.ok) {
@@ -1027,13 +1029,16 @@ document.getElementById("synchro-universite")?.addEventListener("click", async (
     }
     if (Array.isArray(corps.etudiants)) {
       etudiants = corps.etudiants;
-      if (index >= etudiants.length) index = Math.max(0, etudiants.length - 1);
+      recherche = "";
+      const champ = document.getElementById("recherche");
+      if (champ) champ.value = "";
+      index = 0;
       dessinerGrille();
       dessinerCarte();
     }
-    message(corps.message || "Base mise à jour depuis l'université.");
-  } catch (_) {
-    message("Synchronisation impossible (réseau).");
+    message(corps.message || "Base atelier alignée sur l'API Université.");
+  } catch (erreur) {
+    message(erreur && erreur.message ? `Synchronisation impossible : ${erreur.message}` : "Synchronisation impossible (réseau).");
   } finally {
     if (bouton) bouton.disabled = false;
   }

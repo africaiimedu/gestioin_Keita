@@ -494,12 +494,19 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
     .sort((a, b) => a.student.last_name.localeCompare(b.student.last_name, "fr") || a.student.first_name.localeCompare(b.student.first_name, "fr"));
 }
 
-/** Effectifs par cycle : Bachelor (et ancienne Licence), Master, CPI et MIAGE d'Africaiim Tech. */
+/** CPI 1 et CPI 2 comptent avec le Bachelor. MIAGE reste à part. */
+function isPreparatoryBachelor(level) {
+  const code = String(level || "").toLowerCase();
+  return code === "cpi" || code === "cpi1" || code === "cpi2" || code.startsWith("cpi_");
+}
+
+/** Effectifs par cycle : Bachelor (Licence, années de bachelor, CPI), Master, MIAGE. */
 function cycleCounts(rows) {
   const counts = { bachelor: 0, master: 0, tech: 0 };
   for (const { student } of rows) {
     const level = String(student.level || "");
     if (level.startsWith("master")) counts.master += 1;
+    else if (isPreparatoryBachelor(level)) counts.bachelor += 1;
     else if (TECH_LEVELS.has(level) || level === "tech") counts.tech += 1;
     else counts.bachelor += 1;
   }

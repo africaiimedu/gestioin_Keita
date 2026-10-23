@@ -778,14 +778,7 @@ console.log(`Année ${year.label} · ${control.students} étudiants · encaissé
 await purgeExpiredSessions();
 setInterval(() => purgeExpiredSessions().catch((error) => console.error(`Sessions : ${error.message}`)), 3600 * 1000).unref();
 startEmbeddedCards();
-const server = app.listen(port, () => {
-  syncStudentsToCard(db).then((report) => {
-    const detail = report.ignored ? ` · ${report.ignored} fiche non envoyée` : "";
-    console.log(`Cartes liées : ${report.sent} matricules${detail}`);
-  }).catch((error) => {
-    console.error(`Cartes : ${error.message}`);
-  });
-});
+const server = app.listen(port);
 
 function shutdown(signal) {
   console.log(`${signal} reçu : arrêt propre.`);

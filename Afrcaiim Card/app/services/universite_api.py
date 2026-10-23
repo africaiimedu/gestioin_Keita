@@ -180,128 +180,157 @@ def telecharger_photo(url: str, client: httpx.Client | None = None) -> bytes | N
             http.close()
 
 
+def _matricule_cle(valeur: str) -> str:
+    return re.sub(r"\s+", "", str(valeur or "")).upper()
+
+
+def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tuple[str, str, bool]:
+    """Enregistre une fiche API. Retourne (matricule, url photo, créée)."""
+    raw = fiche_depuis_api(brut)
+    if not raw["date_validite"]:
+        raise ValueError("année d'entrée ou durée de programme manquante dans l'API.")
+    fiche = controler_fiche(
+        raw["prenom"],
+        raw["nom"],
+        raw["matricule"],
+        raw["ecole"],
+        raw["annee"],
+        raw["date_validite"].isoformat(),
+        raw["email"] or None,
+        None,
+    )
+    fiche.annee_academique = raw["annee"] or fiche.annee_academique
+    fiche.date_validite = raw["date_validite"]
+    detail = (
+        f"API Université · {raw['programme'] or 'programme'} · "
+        f"{raw['duree_ans']} an(s) · valide jusqu'au {fiche.date_validite.isoformat()}"
+    )
+    existant = db.scalar(select(Etudiant).where(Etudiant.matricule == fiche.matricule))
+    if existant is None:
+        creer_etudiant(
+            db,
+            prenom=fiche.prenom,
+            nom=fiche.nom,
+            matricule=fiche.matricule,
+            filiere=fiche.filiere,
+            annee_academique=fiche.annee_academique,
+            date_validite=fiche.date_validite,
+            email=fiche.email,
+            programme=raw["programme"],
+            sexe="M",
+            jpeg=None,
+            acteur_id=acteur_id,
+            action="importee",
+            details=detail,
+        )
+    else:
+        modifier_etudiant(
+            db,
+            existant,
+            prenom=fiche.prenom,
+            nom=fiche.nom,
+            filiere=fiche.filiere,
+            annee_academique=fiche.annee_academique,
+            date_validite=fiche.date_validite,
+            email=fiche.email,
+            programme=raw["programme"],
+            sexe=existant.sexe or "M",
+            acteur_id=acteur_id,
+        )
+    return fiche.matricule, raw["photo_url"], existant is None
+
+
 def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
-    """Aligne la base atelier sur l'API Université (création, maj, retrait hors API)."""
+    """Remplace la base atelier par les fiches renvoyées par l'API Université."""
     if not api_configuree():
         raise RuntimeError(
             "UNIVERSITE_API_KEY est absent du fichier .env des cartes. "
             "Ajoutez la clé API Université pour synchroniser les étudiants."
         )
 
-    crees = maj = photos = retires = 0
+    crees = maj = retires = 0
     erreurs: list[str] = []
     matricules_api: set[str] = set()
+    photos_a_prendre: list[dict[str, str]] = []
 
-    with httpx.Client(timeout=TIMEOUT, headers=_entetes(), follow_redirects=True) as http:
+    try:
+        bruts = lister_etudiants()
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"API Université injoignable : {exc}") from exc
+    if not bruts:
+        raise RuntimeError("L'API Université n'a renvoyé aucun étudiant. La base atelier n'a pas été modifiée.")
+
+    for brut in bruts:
         try:
-            bruts = lister_etudiants(http)
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"API Université injoignable : {exc}") from exc
+            matricule, photo, cree = _enregistrer_fiche_api(db, brut, acteur_id)
+            matricules_api.add(_matricule_cle(matricule))
+            if cree:
+                crees += 1
+            else:
+                maj += 1
+            if photo:
+                photos_a_prendre.append({"matricule": matricule, "url": photo})
+        except Exception as exc:
+            numero = str((brut or {}).get("student_number") or "").strip()
+            if numero:
+                matricules_api.add(_matricule_cle(numero))
+            erreurs.append(f"{numero or '?'} : {exc}")
+            journal.warning("Synchro Université échouée pour %s : %s", numero or "?", exc)
 
-        for brut in bruts:
-            try:
-                raw = fiche_depuis_api(brut)
-                if not raw["date_validite"]:
-                    raise ValueError("année d'entrée ou durée de programme manquante dans l'API.")
-                fiche = controler_fiche(
-                    raw["prenom"],
-                    raw["nom"],
-                    raw["matricule"],
-                    raw["ecole"],
-                    raw["annee"],
-                    raw["date_validite"].isoformat(),
-                    raw["email"] or None,
-                    None,
-                )
-                # 100 % API : année d'entrée + validité = entrée + durée du programme.
-                fiche.annee_academique = raw["annee"] or fiche.annee_academique
-                fiche.date_validite = raw["date_validite"]
-                matricules_api.add(fiche.matricule)
+    if crees + maj == 0:
+        raise RuntimeError(
+            "Aucune fiche API n'a pu être enregistrée. La base atelier n'a pas été modifiée."
+            + (f" {erreurs[0]}" if erreurs else "")
+        )
 
-                existant = db.scalar(select(Etudiant).where(Etudiant.matricule == fiche.matricule))
-                jpeg = telecharger_photo(raw["photo_url"], http) if raw["photo_url"] else None
-                detail = (
-                    f"API Université · {raw['programme'] or 'programme'} · "
-                    f"{raw['duree_ans']} an(s) · valide jusqu'au {fiche.date_validite.isoformat()}"
-                )
-
-                if existant is None:
-                    etudiant, _secret, _compte = creer_etudiant(
-                        db,
-                        prenom=fiche.prenom,
-                        nom=fiche.nom,
-                        matricule=fiche.matricule,
-                        filiere=fiche.filiere,
-                        annee_academique=fiche.annee_academique,
-                        date_validite=fiche.date_validite,
-                        email=fiche.email,
-                        programme=raw["programme"],
-                        sexe="M",
-                        jpeg=jpeg,
-                        acteur_id=acteur_id,
-                        action="importee",
-                        details=detail,
-                    )
-                    crees += 1
-                    if jpeg:
-                        photos += 1
-                    elif raw["photo_url"]:
-                        erreurs.append(f"{fiche.matricule} : photo non récupérée")
-                else:
-                    modifier_etudiant(
-                        db,
-                        existant,
-                        prenom=fiche.prenom,
-                        nom=fiche.nom,
-                        filiere=fiche.filiere,
-                        annee_academique=fiche.annee_academique,
-                        date_validite=fiche.date_validite,
-                        email=fiche.email,
-                        programme=raw["programme"],
-                        sexe=existant.sexe or "M",
-                        acteur_id=acteur_id,
-                    )
-                    maj += 1
-                    if jpeg:
-                        remplacer_photo(db, existant, jpeg, acteur_id)
-                        photos += 1
-            except Exception as exc:
-                matricule = str((brut or {}).get("student_number") or "?")
-                erreurs.append(f"{matricule} : {exc}")
-                journal.warning("Synchro Université échouée pour %s : %s", matricule, exc)
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
-
-        # N'afficher / garder que les étudiants présents dans l'API Université.
-        locaux = list(db.scalars(select(Etudiant)).all())
-        for local in locaux:
-            if local.matricule in matricules_api:
-                continue
-            try:
-                supprimer_etudiant(db, local)
-                retires += 1
-            except Exception as exc:
-                erreurs.append(f"{local.matricule} : retrait impossible ({exc})")
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
+    locaux = list(db.scalars(select(Etudiant)).all())
+    for local in locaux:
+        if _matricule_cle(local.matricule) in matricules_api:
+            continue
+        try:
+            supprimer_etudiant(db, local)
+            retires += 1
+        except Exception as exc:
+            erreurs.append(f"{local.matricule} : retrait impossible ({exc})")
 
     return {
         "ok": True,
         "recus": len(bruts),
         "crees": crees,
         "maj": maj,
-        "photos": photos,
+        "photos": 0,
         "retires": retires,
         "erreurs": erreurs[:40],
+        "photos_a_prendre": photos_a_prendre,
         "message": (
-            f"{len(bruts)} étudiant(s) Université : {crees} créé(s), {maj} mis à jour"
-            + (f", {photos} photo(s)" if photos else "")
+            f"{len(matricules_api)} étudiant(s) affiché(s), uniquement ceux de l'API Université"
             + (f", {retires} retiré(s) hors API" if retires else "")
-            + (f", {len(erreurs)} erreur(s) ({erreurs[0]})" if erreurs else "")
-            + ". Validité = année d'entrée + durée du programme."
+            + "."
+            + (f" {len(erreurs)} fiche(s) refusée(s) : {erreurs[0]}" if erreurs else "")
+            + " Validité = année d'entrée + durée du programme."
         ),
     }
+
+
+def completer_photos(paires: list[dict[str, str]], acteur_id: int | None = None) -> None:
+    """Pose les photos API après la réponse, sans réintroduire d'anciennes fiches."""
+    if not paires:
+        return
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        with httpx.Client(timeout=20.0, headers=_entetes(), follow_redirects=True) as http:
+            for paire in paires:
+                matricule = paire.get("matricule") or ""
+                url = paire.get("url") or ""
+                if not matricule or not url:
+                    continue
+                try:
+                    jpeg = telecharger_photo(url, http)
+                    if not jpeg:
+                        continue
+                    etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == matricule))
+                    if etudiant is not None:
+                        remplacer_photo(db, etudiant, jpeg, acteur_id)
+                except Exception as exc:
+                    journal.warning("Photo Université non posée pour %s : %s", matricule, exc)

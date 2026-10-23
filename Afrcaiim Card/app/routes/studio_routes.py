@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -27,7 +27,7 @@ from app.services.metier import (
 )
 from app.services.pdf_carte import code_controle, url_affichee
 from app.services.statut import statut_effectif
-from app.services.universite_api import api_configuree, synchro_etudiants
+from app.services.universite_api import api_configuree, completer_photos, synchro_etudiants
 from app.ui import csrf_valide
 
 router = APIRouter(prefix="/admin/api")
@@ -192,10 +192,11 @@ def atelier(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(g
 @router.post("/atelier/synchro-universite")
 def atelier_synchro_universite(
     request: Request,
+    background: BackgroundTasks,
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
-    """Crée / met à jour les fiches atelier depuis l'API Université (sans suppression)."""
+    """Remplace la base atelier par la liste de l'API Université."""
     if not _verifier_csrf(request):
         return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
     if not api_configuree():
@@ -207,6 +208,9 @@ def atelier_synchro_universite(
         bilan = synchro_etudiants(db, acteur_id=admin.id)
     except RuntimeError as exc:
         return JSONResponse({"message": str(exc)}, status_code=502)
+    photos = bilan.pop("photos_a_prendre", [])
+    if photos:
+        background.add_task(completer_photos, photos, admin.id)
     etudiants = db.scalars(
         select(Etudiant).options(selectinload(Etudiant.cartes)).order_by(Etudiant.nom, Etudiant.prenom)
     ).all()

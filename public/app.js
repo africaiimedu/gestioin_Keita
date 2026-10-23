@@ -914,6 +914,11 @@ function patchDashboard(root, data, control) {
     tile.querySelector("strong").textContent = value;
     tile.querySelector(".muted").textContent = note;
   }
+  const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
+  const bachelor = root.querySelector(".dash-bachelor");
+  if (bachelor) bachelor.textContent = String(cycles.bachelor);
+  const master = root.querySelector(".dash-master");
+  if (master) master.textContent = String(cycles.master);
   const count = root.querySelector(".dash-count");
   if (count) count.textContent = String(data.students);
   const plural = root.querySelector(".dash-plural");
@@ -967,9 +972,9 @@ function peopleFigures(data) {
   const first = { unpaid: 0, none: 0, reste: 0, ...data.firstInstallment };
   const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
   return [
-    ["bachelor", "Étudiants en Bachelor", String(cycles.bachelor), "Toutes écoles, 1re à 3e année"],
-    ["master", "Étudiants en Master", String(cycles.master), "Master 1 et Master 2"],
-    ["tech", "CPI et MIAGE (Africaiim Tech)", String(cycles.tech), "Cycle préparatoire et MIAGE"],
+    ["bachelor", "Total Bachelor", String(cycles.bachelor), "Bachelor et Cycle Préparatoire Intégré (CPI, CPI 2)"],
+    ["master", "Total Master", String(cycles.master), "Master 1 et Master 2"],
+    ["tech", "MIAGE (Africaiim Tech)", String(cycles.tech), "MIAGE, hors Bachelor et Master"],
     ["costume", "Costume payé (étudiants)", String(costume.paid), `${plural(costume.costumesPaid, "costume")} payé${costume.costumesPaid > 1 ? "s" : ""} · ${gnf(costume.amount)} versés sur ${gnf(costume.expected)}`, "costumes"],
     ["costume-reste", "Costume non payé (étudiants)", String(costume.unpaid), `Reste à payer ${gnf(costume.reste)}${costume.partial ? ` · dont ${costume.partial} payé${costume.partial > 1 ? "s" : ""} en partie` : ""}`, "costumes"],
     ["tranche", "1re tranche non payée (étudiants)", String(first.unpaid), `${first.none} sans aucun versement · reste ${gnf(first.reste)}`, "etudiants", "premiere_tranche"],
@@ -985,6 +990,7 @@ function peopleHtml(data) {
 }
 
 function dashboardHtml(data, control) {
+  const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
   const programs = sortSchools(data.byProgram);
   const rate = Math.min(100, (data.rate.tenths || 0) / 10);
   const circ = (2 * Math.PI * 46).toFixed(2);
@@ -1014,6 +1020,10 @@ function dashboardHtml(data, control) {
           </time>
           <span>Conakry · <span class="dash-count">${data.students}</span> étudiant<span class="dash-plural">${data.students > 1 ? "s" : ""}</span></span>
         </p>
+        <ul class="dash-cycles" aria-label="Totaux par cycle">
+          <li>Total Bachelor <strong class="dash-bachelor">${cycles.bachelor}</strong></li>
+          <li>Total Master <strong class="dash-master">${cycles.master}</strong></li>
+        </ul>
         <ul class="dash-schools" aria-label="Étudiants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><strong>${item.students}</strong><span>${esc(shortSchool(item.program))}</span></li>`).join("")}</ul>
       </div>
       <div class="dash-hero-side">

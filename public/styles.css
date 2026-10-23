@@ -1265,6 +1265,13 @@ tr.clickable:hover { background: #f3f8f4; }
 }
 .dash-hero h1 { color: #fff; font-size: 2.2rem; }
 .dash-schools { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; max-width: 760px; }
+.dash-cycles { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.dash-cycles li {
+  display: inline-flex; align-items: baseline; gap: 8px; padding: 8px 14px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff; font-weight: 700;
+}
+.dash-cycles strong { color: #e2a31a; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
 .dash-schools li {
   display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 11px; border-radius: 999px;
   background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.22);
