@@ -838,8 +838,16 @@ function bindDashboard(screen) {
 
 /** Toutes les écoles, même sans étudiant, avec leur nombre d'inscrits. */
 function schoolCounts(data) {
-  const counts = new Map(data.byProgram.map((item) => [item.program, item.students || 0]));
-  return sortSchools((state.catalog?.programs || []).map((item) => ({ program: item.name, students: counts.get(item.name) || 0 })));
+  const counts = new Map((data.byProgram || []).map((item) => [item.program, item]));
+  return sortSchools((state.catalog?.programs || []).map((item) => {
+    const found = counts.get(item.name) || {};
+    return {
+      program: item.name,
+      students: found.students || 0,
+      bachelor: found.bachelor || 0,
+      master: found.master || 0,
+    };
+  }));
 }
 
 function shortSchool(name) {
@@ -924,8 +932,12 @@ function patchDashboard(root, data, control) {
   const plural = root.querySelector(".dash-plural");
   if (plural) plural.textContent = data.students > 1 ? "s" : "";
   for (const item of schoolCounts(data)) {
-    const chip = root.querySelector(`[data-school-count="${CSS.escape(item.program)}"] strong`);
-    if (chip) chip.textContent = String(item.students);
+    const chip = root.querySelector(`[data-school-count="${CSS.escape(item.program)}"]`);
+    if (!chip) continue;
+    const bachelor = chip.querySelector(".school-bachelor");
+    const master = chip.querySelector(".school-master");
+    if (bachelor) bachelor.textContent = String(item.bachelor);
+    if (master) master.textContent = String(item.master);
   }
   for (const item of sortSchools(data.byProgram)) {
     const block = root.querySelector(`[data-program="${CSS.escape(item.program)}"]`);
@@ -933,11 +945,16 @@ function patchDashboard(root, data, control) {
     const share = Math.min(100, Math.round(item.paid / Math.max(item.due, 1) * 100));
     block.querySelector(".dash-school-top strong").textContent = `${share} %`;
     block.querySelector(".meter .paid").style.width = `${share}%`;
-    const figures = block.querySelectorAll(".figures strong");
-    figures[0].textContent = String(item.students || 0);
-    figures[1].textContent = gnf(item.paid);
-    figures[2].textContent = gnf(item.reste);
-    figures[3].textContent = gnf(item.due);
+    const writeFigure = (name, text) => {
+      const node = block.querySelector(`.${name}`);
+      if (node) node.textContent = text;
+    };
+    writeFigure("school-students", String(item.students || 0));
+    writeFigure("school-bachelor", String(item.bachelor || 0));
+    writeFigure("school-master", String(item.master || 0));
+    writeFigure("school-paid", gnf(item.paid));
+    writeFigure("school-reste", gnf(item.reste));
+    writeFigure("school-due", gnf(item.due));
   }
   for (const [status, countValue] of Object.entries(data.counts)) {
     const row = root.querySelector(`.dash-status-row[data-status="${CSS.escape(status)}"]`);
@@ -974,7 +991,6 @@ function peopleFigures(data) {
   return [
     ["bachelor", "Total Bachelor", String(cycles.bachelor), "Bachelor et Cycle Préparatoire Intégré (CPI, CPI 2)"],
     ["master", "Total Master", String(cycles.master), "Master 1 et Master 2"],
-    ["tech", "MIAGE (Africaiim Tech)", String(cycles.tech), "MIAGE, hors Bachelor et Master"],
     ["costume", "Costume payé (étudiants)", String(costume.paid), `${plural(costume.costumesPaid, "costume")} payé${costume.costumesPaid > 1 ? "s" : ""} · ${gnf(costume.amount)} versés sur ${gnf(costume.expected)}`, "costumes"],
     ["costume-reste", "Costume non payé (étudiants)", String(costume.unpaid), `Reste à payer ${gnf(costume.reste)}${costume.partial ? ` · dont ${costume.partial} payé${costume.partial > 1 ? "s" : ""} en partie` : ""}`, "costumes"],
     ["tranche", "1re tranche non payée (étudiants)", String(first.unpaid), `${first.none} sans aucun versement · reste ${gnf(first.reste)}`, "etudiants", "premiere_tranche"],
@@ -1024,7 +1040,7 @@ function dashboardHtml(data, control) {
           <li>Total Bachelor <strong class="dash-bachelor">${cycles.bachelor}</strong></li>
           <li>Total Master <strong class="dash-master">${cycles.master}</strong></li>
         </ul>
-        <ul class="dash-schools" aria-label="Étudiants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><strong>${item.students}</strong><span>${esc(shortSchool(item.program))}</span></li>`).join("")}</ul>
+        <ul class="dash-schools" aria-label="Bachelor et Master par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span></li>`).join("")}</ul>
       </div>
       <div class="dash-hero-side">
         <div class="donut-wrap">
@@ -1055,7 +1071,7 @@ function dashboardHtml(data, control) {
           return `<section class="dash-school" data-program="${esc(item.program)}">
             <div class="dash-school-top"><h3>${esc(item.program)}</h3><strong>${share} %</strong></div>
             <div class="meter" aria-hidden="true"><span class="paid" style="width:${share}%"></span></div>
-            <div class="figures"><p class="muted">Étudiants<strong>${item.students || 0}</strong></p><p class="muted">Encaissé<strong>${gnf(item.paid)}</strong></p><p class="muted">Reste<strong>${gnf(item.reste)}</strong></p><p class="muted">Frais annuels<strong>${gnf(item.due)}</strong></p></div>
+            <div class="figures"><p class="muted">Bachelor<strong class="school-bachelor">${item.bachelor || 0}</strong></p><p class="muted">Master<strong class="school-master">${item.master || 0}</strong></p><p class="muted">Étudiants<strong class="school-students">${item.students || 0}</strong></p><p class="muted">Encaissé<strong class="school-paid">${gnf(item.paid)}</strong></p><p class="muted">Reste<strong class="school-reste">${gnf(item.reste)}</strong></p><p class="muted">Frais annuels<strong class="school-due">${gnf(item.due)}</strong></p></div>
           </section>`;
         }).join("")}
       </article>
