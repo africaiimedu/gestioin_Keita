@@ -1656,7 +1656,6 @@ tbody tr:last-child td { border-bottom: 0; }
   .acc-toolbar .acc-seg { width: 100%; overflow-x: auto; }
 }
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
-@keyframes tiroir { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 @media (max-width: 760px) and (prefers-reduced-motion: reduce) {
   .app-top nav, .nav-scrim { transition: none; }
 }
@@ -1881,7 +1880,6 @@ h1, h2, h3 { font-family: "Avenir Next", "Segoe UI", sans-serif; }
   .retour span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 }
 .rail .puce-logo img { height: 100%; width: 100%; object-fit: contain; }
-.puce-entete { display: none; }
 .rail nav {
   margin: 0;
   flex: 1;
@@ -2171,46 +2169,26 @@ th { color: #3d6b52; }
   .ecoles { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 760px) {
-  html, body { overflow-x: clip; max-width: 100%; }
   .shell {
     display: block;
     height: auto;
     min-height: 100dvh;
-    max-width: 100%;
     padding: 0;
     overflow: visible;
   }
   .rail {
-    position: static;
-    width: 0;
-    height: 0;
+    width: auto;
     flex: none;
     margin: 0;
     padding: 0;
-    overflow: visible;
     background: transparent;
     border: 0;
     box-shadow: none;
     border-radius: 0;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
-  .rail .puce-logo, .rail-plier { display: none; }
-  .puce-entete {
-    display: grid;
-    place-items: center;
-    width: 42px;
-    height: 42px;
-    padding: 5px;
-    border: 0;
-    border-radius: 14px;
-    background: #fff;
-    box-shadow: 0 8px 18px rgba(12, 61, 46, 0.08);
-  }
-  .puce-entete img { width: 100%; height: 100%; object-fit: contain; }
+  .rail .puce-logo { display: none; }
   .coque {
     min-height: 100dvh;
-    max-width: 100%;
     border-radius: 0;
     background: transparent;
     border: 0;
@@ -2221,45 +2199,33 @@ th { color: #3d6b52; }
     position: sticky;
     top: 0;
     z-index: 60;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: calc(env(safe-area-inset-top) + 10px) 12px 10px;
-    background: rgba(232, 243, 236, 0.94);
-    backdrop-filter: blur(14px);
-    box-shadow: 0 8px 22px rgba(12, 61, 46, 0.06);
+    padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+    background: rgba(230, 227, 244, 0.92);
+    backdrop-filter: blur(12px);
   }
   .nav-toggle {
     display: grid;
     align-content: center;
     justify-items: center;
     gap: 4px;
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     border: 0;
     border-radius: 14px;
     background: #fff;
     color: #0c3d2e;
-    box-shadow: 0 8px 18px rgba(12, 61, 46, 0.08);
   }
-  .nav-toggle span { display: block; width: 18px; height: 2px; border-radius: 2px; background: currentColor; transition: transform 0.28s ease, opacity 0.2s ease; }
-  .salut { flex: 1; min-width: 0; }
-  .salut-titre { font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .salut-sous { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .recherche { display: block; flex: 1 1 100%; width: 100%; margin: 2px 0 0; order: 8; }
-  .entete-outils { margin-left: 0; }
+  .nav-toggle span { display: block; width: 20px; height: 2px; border-radius: 2px; background: currentColor; }
+  .salut-titre { font-size: 1.15rem; }
+  .recherche { display: none; }
   .entete-outils .rond { display: none; }
-  .dash-kpi { overflow: hidden; }
-  .dash-kpi .muted, .dash-kpi .value { white-space: normal; overflow-wrap: anywhere; }
-  .dash-kpi .muted { padding-right: 42px; font-size: 0.82rem; line-height: 1.25; }
-  .dash-kpi .value { font-size: 1.12rem; }
-  .dash-badge { width: 38px; height: 38px; top: 10px; right: 10px; font-size: 0.62rem; }
   .rail nav {
     position: fixed;
     top: 0;
     right: 0;
     bottom: 0;
     z-index: 90;
-    width: min(86vw, 360px);
+    width: min(88vw, 380px);
     margin: 0;
     align-items: stretch;
     justify-content: flex-start;
@@ -2267,31 +2233,12 @@ th { color: #3d6b52; }
     padding: calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 24px);
     background: #fff;
     overflow-y: auto;
-    border-left: 3px solid #e2a31a;
-    box-shadow: -24px 0 60px rgba(12, 61, 46, 0.22);
+    border-left: 0;
+    box-shadow: -24px 0 60px rgba(60, 40, 120, 0.22);
     transform: translateX(105%);
     visibility: hidden;
-    transition: transform 0.38s cubic-bezier(.22, 1, .36, 1), visibility 0s linear 0.38s;
   }
-  body.menu-open .app-top { visibility: hidden; }
-  body.menu-open .rail nav {
-    transform: none;
-    visibility: visible;
-    transition: transform 0.38s cubic-bezier(.22, 1, .36, 1), visibility 0s;
-  }
-  body.menu-open .rail nav > button,
-  body.menu-open .rail .nav-menu button {
-    animation: tiroir 0.42s cubic-bezier(.22, 1, .36, 1) both;
-  }
-  body.menu-open .rail nav > button:nth-child(2),
-  body.menu-open .rail .nav-menu button:nth-child(1) { animation-delay: 40ms; }
-  body.menu-open .rail nav > button:nth-child(3),
-  body.menu-open .rail .nav-menu button:nth-child(2) { animation-delay: 70ms; }
-  body.menu-open .rail nav > button:nth-child(4),
-  body.menu-open .rail .nav-menu button:nth-child(3) { animation-delay: 100ms; }
-  body.menu-open .rail .nav-menu button:nth-child(4) { animation-delay: 130ms; }
-  body.menu-open .rail .nav-menu button:nth-child(5) { animation-delay: 160ms; }
-  body.menu-open .rail .nav-menu button:nth-child(n + 6) { animation-delay: 190ms; }
+  body.menu-open .rail nav { transform: none; visibility: visible; }
   .rail-label {
     position: static;
     width: auto;

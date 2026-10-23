@@ -612,7 +612,6 @@ function shell() {
     <div class="coque">
       <header class="app-top">
         <button type="button" class="nav-toggle" id="nav-toggle" aria-label="${railCache ? "Afficher le menu" : "Masquer le menu"}" title="${railCache ? "Afficher le menu" : "Masquer le menu"}" aria-expanded="false" aria-controls="main-nav"><span></span><span></span><span></span></button>
-        <button type="button" class="puce-logo puce-entete" data-screen="tableau" aria-label="Tableau de bord" title="Tableau de bord"><img src="/logo.png?v=clair" alt=""></button>
         <button type="button" class="retour" id="page-precedente" ${(state.historique.length || !(state.suite === "finances" && state.screen === "tableau")) ? "" : "disabled"} aria-label="Page précédente" title="Page précédente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6 9 12l6 6"/></svg><span>Retour</span></button>
         <div class="salut">
           <h1 class="salut-titre">${formuleSalut()}${prenom ? ` ${esc(prenom)}` : ""}</h1>
@@ -1406,7 +1405,7 @@ async function showStudents(screen) {
   screen.innerHTML = `    <div class="top"><div><p class="mark">Registre</p><h1>Étudiants</h1>
       <p class="top-total"><strong id="student-total">…</strong> <span id="student-total-label">étudiants inscrits</span></p>
       <p class="filtre-actif" id="filtre-actif" hidden></p></div>
-      <div class="row-actions"><button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
+      <div class="row-actions">${allowed("student.write") ? `<button class="btn secondary" id="link-cards" type="button">Lier les cartes</button>` : ""}<button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
     <div class="filters"><input id="q" placeholder="Nom, matricule ou téléphone" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
       <select id="niveau"><option value="">Tous les niveaux</option>${(state.catalog.levels || []).map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
@@ -1452,6 +1451,19 @@ async function showStudents(screen) {
     document.querySelector("#page-next").addEventListener("click", () => { state.studentPage += 1; load(); });
   };
   ["q", "filiere", "niveau", "statut", "tri"].forEach((id) => document.querySelector(`#${id}`).addEventListener("input", () => { state.studentPage = 1; load(); }));
+  document.querySelector("#link-cards")?.addEventListener("click", async () => {
+    const button = document.querySelector("#link-cards");
+    button.disabled = true;
+    try {
+      const report = await api("/api/cartes/synchroniser", { method: "POST", body: "{}" });
+      const ignored = report.ignored ? ` ${report.ignored} fiche n'a pas pu partir.` : "";
+      saved(`${report.sent} matricules liés aux cartes.${ignored}`);
+    } catch (error) {
+      saved(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
   document.querySelector("#new-student").addEventListener("click", () => {
     const methods = state.catalog.methods.map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("");
     const dialog = document.querySelector("#fiche-dialog");
