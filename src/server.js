@@ -60,9 +60,11 @@ import {
   setCostumeQuantity,
   suggestMatricule,
   unpaidCostumes,
+  costumeRegister,
 } from "./services/domain.js";
 import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseForPrint, listExpenses, markExpenseHanded } from "./services/expenses.js";
 import { renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
+import { renderListPdf } from "./services/listPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { syncStudentsToCard } from "./services/cardSync.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
@@ -234,6 +236,7 @@ app.get("/api/etudiants", requireAction("student.read"), async (req, res) => {
     level: req.query.niveau || null,
     paymentStatus: req.query.statut || null,
     studentStatus: req.query.fiche || null,
+    phone: req.query.telephone || null,
   });
   res.json({
     students: rows.map((row) => ({ ...publicStudent(row.student), situation: row.situation })),
@@ -444,6 +447,141 @@ app.get("/api/journal", requireAction("report.read"), async (req, res) => {
 });
 app.get("/api/retards", requireAction("student.read"), async (_req, res) => res.json({ students: await lateStudents(db) }));
 app.get("/api/costumes/impayes", requireAction("student.read"), async (_req, res) => res.json(await unpaidCostumes(db)));
+app.get("/api/listes/:kind.pdf", requireAction("student.read"), async (req, res) => {
+  const kind = req.params.kind;
+  const today = todayInConakry();
+  let title = "Liste";
+  let subtitle = `Université AFRICAIIM · ${today}`;
+  let columns = [];
+  let rows = [];
+  if (kind === "etudiants") {
+    const listed = await listStudents(db, {
+      q: req.query.q,
+      yearId: numberOrNull(req.query.annee),
+      programId: numberOrNull(req.query.filiere),
+      level: req.query.niveau || null,
+      paymentStatus: req.query.statut || null,
+      phone: req.query.telephone || null,
+    });
+    title = "Liste des étudiants";
+    subtitle = `${listed.length} fiche(s) · téléphone inclus · ${today}`;
+    columns = [
+      { label: "Matricule", width: 100 },
+      { label: "Nom", width: 160 },
+      { label: "Téléphone", width: 110 },
+      { label: "École", width: 190 },
+      { label: "Niveau", width: 90 },
+      { label: "Reste", width: 90, align: "right" },
+      { label: "Statut", width: 80 },
+    ];
+    rows = listed.map((row) => [
+      row.student.matricule,
+      `${row.student.last_name} ${row.student.first_name}`.trim(),
+      row.student.phone || "",
+      row.student.program_name,
+      row.student.level,
+      formatGnf(row.situation.reste),
+      row.situation.statusLabel,
+    ]);
+  } else if (kind === "costumes-payes" || kind === "costumes-impayes") {
+    const register = await costumeRegister(db);
+    const paid = kind === "costumes-payes";
+    const lines = paid ? register.paid : register.unpaid;
+    title = paid ? "Costumes payés" : "Costumes non payés";
+    subtitle = `${lines.length} étudiant(s) · ${today}`;
+    columns = [
+      { label: "Matricule", width: 100 },
+      { label: "Nom", width: 170 },
+      { label: "Téléphone", width: 110 },
+      { label: "École", width: 180 },
+      { label: "À payer", width: 90, align: "right" },
+      { label: "Versé", width: 90, align: "right" },
+      { label: "Reste", width: 80, align: "right" },
+    ];
+    rows = lines.map((line) => [
+      line.student.matricule,
+      line.student.name,
+      line.student.phone || "",
+      line.student.program,
+      formatGnf(line.price),
+      formatGnf(line.paid),
+      formatGnf(line.reste),
+    ]);
+  } else if (kind === "retards") {
+    const late = await lateStudents(db);
+    title = "Étudiants en retard";
+    subtitle = `${late.length} fiche(s) · ${today}`;
+    columns = [
+      { label: "Matricule", width: 100 },
+      { label: "Nom", width: 180 },
+      { label: "Téléphone", width: 110 },
+      { label: "École", width: 190 },
+      { label: "Échu", width: 100, align: "right" },
+      { label: "Reste", width: 100, align: "right" },
+    ];
+    rows = late.map((row) => [
+      row.student.matricule,
+      row.student.name,
+      row.student.phone || "",
+      row.student.program,
+      formatGnf(row.situation.overdueAmount),
+      formatGnf(row.situation.reste),
+    ]);
+  } else if (kind === "journal") {
+    const journal = await cashJournal(db, req.query.date || today);
+    title = `Journal du ${req.query.date || today}`;
+    subtitle = `${journal.count} encaissement(s) · total ${formatGnf(journal.total)}`;
+    columns = [
+      { label: "Reçu", width: 120 },
+      { label: "Étudiant", width: 240 },
+      { label: "Montant", width: 140, align: "right" },
+      { label: "Agent", width: 200 },
+    ];
+    rows = journal.rows.map((row) => [
+      row.receipt || "",
+      `${row.last_name} ${row.first_name}`.trim(),
+      formatGnf(row.amount),
+      row.agent || "",
+    ]);
+  } else if (kind === "depenses") {
+    if (!can(req.user, "expense.write")) {
+      res.status(403).json({ error: "Vous n'avez pas le droit de télécharger les dépenses" });
+      return;
+    }
+    const data = await listExpenses(db, {
+      from: req.query.du,
+      to: req.query.au,
+      q: req.query.q,
+      category: req.query.categorie,
+      status: req.query.statut,
+    });
+    title = "Dépenses";
+    subtitle = `${data.expenses.length} décharge(s) · du ${data.from} au ${data.to}`;
+    columns = [
+      { label: "Numéro", width: 110 },
+      { label: "Date", width: 80 },
+      { label: "Bénéficiaire", width: 170 },
+      { label: "Motif", width: 220 },
+      { label: "Montant", width: 110, align: "right" },
+      { label: "Statut", width: 80 },
+    ];
+    rows = data.expenses.map((row) => [
+      row.number,
+      row.issued_on,
+      row.receiver_name,
+      row.reason,
+      formatGnf(row.amount),
+      row.status === "annule" ? "Annulée" : row.handed_at ? "Remis" : "À remettre",
+    ]);
+  } else {
+    res.status(404).json({ error: "Liste inconnue" });
+    return;
+  }
+  const pdf = await renderListPdf({ title, subtitle, columns, rows });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${kind}.pdf"`);
+  res.send(pdf);
+});
 app.post("/api/relances", requireAction("reminder.create"), async (req, res) => {
   res.status(201).json(await createReminder(db, req.user, Number(req.body?.studentId), req.body?.channel || "copie"));
 });

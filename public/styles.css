@@ -212,6 +212,12 @@ a.btn { display: inline-block; text-decoration: none; }
   border-radius: 8px;
   flex: none;
 }
+button.puce-logo {
+  border: 0;
+  margin: 0;
+  cursor: pointer;
+  box-shadow: none;
+}
 .puce-logo img { height: 44px; width: auto; display: block; }
 .app-top.finance-bar .puce-logo { height: 58px; }
 .app-top.finance-bar .puce-logo img { height: 48px; }
@@ -1455,6 +1461,15 @@ tbody tr:last-child td { border-bottom: 0; }
 
 @media (max-width: 760px) {
   html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; }
+  .login-photo {
+    min-height: 100dvh;
+    align-content: center;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom));
+  }
+  .login-stack { width: min(100%, 440px); }
+  .login-card { max-height: calc(100dvh - 28px); overflow: auto; padding: 16px 14px 14px; }
+  .login-card .brand-logo { width: min(180px, 64%); }
+  .login-card .lead, .welcome-toggle { font-size: 1rem; }
   body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
   body.menu-open { overflow: hidden; }
   button, a, input, select, textarea, summary { touch-action: manipulation; }

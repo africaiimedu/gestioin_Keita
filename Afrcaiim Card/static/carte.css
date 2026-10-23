@@ -597,9 +597,29 @@ code { font-size: 0.95rem; }
   .login form.panneau {
     justify-self: center;
     align-self: center;
-    width: min(100% - 1.7rem, 390px);
+    width: min(100% - 1.4rem, 420px);
+    max-height: calc(100dvh - 1.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: auto;
     margin: 0;
+    padding: 1rem 1rem 0.95rem;
   }
+  .login .logo-page { width: min(68%, 190px); }
+  .login h1 { font-size: 1.35rem; }
+  .login .intro { font-size: 0.92rem; }
+  body:has(.login) .barre { display: none; }
+  body:has(.login) main {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100dvh;
+    padding: max(10px, env(safe-area-inset-top)) 0 max(10px, env(safe-area-inset-bottom));
+  }
+  body:has(.login) .flash {
+    position: relative;
+    z-index: 4;
+    margin: 0 0.75rem 0.55rem;
+  }
+  body:has(.login) .login { min-height: 0; flex: 0 1 auto; }
   .barre { flex-direction: column; align-items: stretch; padding: 0.6rem 0.85rem; }
   .marque { display: block; max-width: 100%; }
   .logo-barre { height: 42px; max-width: min(240px, 78vw); object-fit: contain; }

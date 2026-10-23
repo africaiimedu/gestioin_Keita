@@ -483,7 +483,7 @@ function shell() {
         ${liens.map(([id, name]) => `<button type="button" data-carte="${id}" class="${carteCurrent === id ? "actif" : ""}">${name}</button>`).join("")}`;
   return `<div class="shell">
     <header class="app-top${onlyFinance ? " finance-bar" : ""}">
-      <span class="puce-logo"><img src="/logo.png?v=clair" alt="Université AFRICAIIM"></span>
+      <button type="button" class="puce-logo" data-screen="tableau" aria-label="Tableau de bord"><img src="/logo.png?v=clair" alt="Université AFRICAIIM"></button>
       <strong class="titre-barre" id="titre-barre">${esc(pageTitle())}</strong>
       <nav aria-label="Menu" id="main-nav">
         <div class="drawer-head"><span><small>Connecté</small><strong>${esc(state.user?.name || "")}</strong></span><button type="button" class="drawer-close" data-close-menu aria-label="Fermer le menu">Fermer</button></div>
@@ -1153,6 +1153,7 @@ const STUDENT_SORTS = [
   ["recent", "Plus récents d'abord"],
   ["enregistrement", "Ordre d'enregistrement (1er inscrit en haut)"],
   ["ecole", "Trier par école"],
+  ["telephone", "Trier par numéro de téléphone"],
 ];
 
 function stampKey(value) {
@@ -1171,6 +1172,7 @@ function sortStudents(students, mode) {
     recent: (a, b) => byOrder(b, a),
     enregistrement: byOrder,
     ecole: (a, b) => String(a.program || "").localeCompare(String(b.program || ""), "fr") || byName(a, b),
+    telephone: (a, b) => String(a.phone || "￿").localeCompare(String(b.phone || "￿"), "fr") || byName(a, b),
   }[mode];
   if (compare) students.sort(compare);
   return students;
@@ -1180,11 +1182,12 @@ async function showStudents(screen) {
   const program = state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("");
   screen.innerHTML = `    <div class="top"><div><p class="mark">Registre</p><h1>Étudiants</h1>
       <p class="top-total"><strong id="student-total">…</strong> <span id="student-total-label">étudiants inscrits</span></p></div>
-      <div class="row-actions">${allowed("student.write") ? `<button class="btn secondary" id="link-cards" type="button">Lier les cartes</button>` : ""}<button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
-    <div class="filters"><input id="q" placeholder="Nom ou matricule" value="${esc(state.q || "")}">
+      <div class="row-actions">${allowed("student.write") ? `<button class="btn secondary" id="link-cards" type="button">Lier les cartes</button>` : ""}<a class="btn secondary" id="download-students" href="/api/listes/etudiants.pdf">Télécharger la liste</a><button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
+    <div class="filters"><input id="q" placeholder="Nom, matricule ou téléphone" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
       <select id="niveau"><option value="">Tous les niveaux</option>${(state.catalog.levels || []).map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
       <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}<option value="premiere_tranche" ${state.status === "premiere_tranche" ? "selected" : ""}>1re tranche non payée</option></select>
+      <select id="telephone" aria-label="Filtrer par téléphone"><option value="">Tous les téléphones</option><option value="avec">Avec numéro</option><option value="sans">Sans numéro</option></select>
       <select id="tri" aria-label="Trier par">${STUDENT_SORTS.map(([code, label]) => `<option value="${code}" ${(state.studentSort || "nom") === code ? "selected" : ""}>${label}</option>`).join("")}</select></div>
     <div id="student-table"></div>
     <dialog id="fiche-dialog" class="sheet" closedby="none"></dialog>`;
@@ -1201,7 +1204,10 @@ async function showStudents(screen) {
       filiere: document.querySelector("#filiere").value,
       niveau: document.querySelector("#niveau").value,
       statut: document.querySelector("#statut").value,
+      telephone: document.querySelector("#telephone").value,
     });
+    const download = document.querySelector("#download-students");
+    if (download) download.href = `/api/listes/etudiants.pdf?${params}`;
     const data = await api(`/api/etudiants?${params}`);
     state.studentSort = document.querySelector("#tri").value;
     sortStudents(data.students, state.studentSort);
@@ -1209,8 +1215,8 @@ async function showStudents(screen) {
     const pages = Math.max(1, Math.ceil(data.students.length / pageSize));
     if (state.studentPage > pages) state.studentPage = pages;
     const visible = data.students.slice((state.studentPage - 1) * pageSize, state.studentPage * pageSize);
-    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>Enregistré le</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th></tr></thead><tbody>
-      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td class="when">${esc(shortStamp(student.createdAt))}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td></tr>`).join("")}
+    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>Téléphone</th><th>Enregistré le</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th></tr></thead><tbody>
+      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td>${esc(student.phone || "—")}</td><td class="when">${esc(shortStamp(student.createdAt))}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td></tr>`).join("")}
     </tbody></table></div>
       <div class="pager"><button type="button" id="page-prev" ${state.studentPage <= 1 ? "disabled" : ""}>Précédent</button><span>${data.students.length} étudiants · page ${state.studentPage} / ${pages}</span><button type="button" id="page-next" ${state.studentPage >= pages ? "disabled" : ""}>Suivant</button></div>
     </article>`;
@@ -1218,7 +1224,7 @@ async function showStudents(screen) {
     document.querySelector("#page-prev").addEventListener("click", () => { state.studentPage -= 1; load(); });
     document.querySelector("#page-next").addEventListener("click", () => { state.studentPage += 1; load(); });
   };
-  ["q", "filiere", "niveau", "statut", "tri"].forEach((id) => document.querySelector(`#${id}`).addEventListener("input", () => { state.studentPage = 1; load(); }));
+  ["q", "filiere", "niveau", "statut", "telephone", "tri"].forEach((id) => document.querySelector(`#${id}`).addEventListener("input", () => { state.studentPage = 1; load(); }));
   document.querySelector("#link-cards")?.addEventListener("click", async () => {
     const button = document.querySelector("#link-cards");
     button.disabled = true;
@@ -1239,7 +1245,8 @@ async function showStudents(screen) {
         <div class="dialog-head"><h2>Nouvelle fiche</h2><button class="dialog-close" type="button" id="close-fiche">Fermer</button></div>
         <div class="duo"><p><label>Nom</label><input name="lastName" required autocomplete="off"></p><p><label>Prénom</label><input name="firstName" required autocomplete="off"></p></div>
         <div class="duo"><p><label>Matricule <span class="muted">(proposé, modifiable)</span></label><input name="matricule" autocomplete="off" placeholder="UA26AT0001" maxlength="31"></p>
-          <p><label>E-mail étudiant <span class="muted">(automatique)</span></label><input name="accountPreview" readonly tabindex="-1" placeholder="prenom.nom@univ-africaiim.com"></p></div>
+          <p><label>Téléphone <span class="muted">(n'apparaît pas sur le reçu)</span></label><input name="phone" inputmode="tel" autocomplete="tel" required placeholder="620 00 00 00"></p></div>
+        <p><label>E-mail étudiant <span class="muted">(automatique)</span></label><input name="accountPreview" readonly tabindex="-1" placeholder="prenom.nom@univ-africaiim.com"></p>
         <div class="duo"><p><label>École</label><select name="programId" required>${state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("")}</select></p>
           <p><label>Niveau</label><select name="level" required><option value="bachelor">Bachelor</option><option value="master">Master</option></select></p></div>
         <p id="year-row"><label id="year-label">Année de bachelor</label><select name="studyYear" required></select></p>
@@ -1341,6 +1348,7 @@ async function showStudents(screen) {
       const missing = [];
       if (form.lastName.value.trim().length < 2) missing.push("le nom");
       if (form.firstName.value.trim().length < 2) missing.push("le prénom");
+      if ((form.phone.value || "").replace(/\D/g, "").length < 8) missing.push("le téléphone");
       if (!form.programId.value) missing.push("l'école");
       if (!form.level.value) missing.push("le niveau");
       if (!form.studyYear.value) missing.push("l'année");
@@ -1368,6 +1376,7 @@ async function showStudents(screen) {
         const created = await api("/api/etudiants", { method: "POST", body: JSON.stringify({
           lastName: form.lastName.value,
           firstName: form.firstName.value,
+          phone: form.phone.value.trim(),
           programId: Number(form.programId.value),
           level,
           scholarship: form.scholarship.checked,
@@ -1408,7 +1417,8 @@ async function showStudent(screen, id) {
   const situation = data.situation;
   screen.innerHTML = `<div class="top"><div><p class="mark">${esc(student.matricule)}</p><h1>${esc(student.name)}</h1>
       <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)}</p>
-      ${student.accountEmail ? `<p class="muted">Compte étudiant : ${esc(student.accountEmail)}</p>` : ""}</div>
+      ${student.accountEmail ? `<p class="muted">Compte étudiant : ${esc(student.accountEmail)}</p>` : ""}
+      <p class="muted">Téléphone : ${esc(student.phone || "non renseigné")}</p></div>
       <div class="row-actions">
         <button class="btn" id="pay-this" type="button">Encaisser</button>
         ${allowed("student.write") ? `<button class="btn secondary" id="edit-name" type="button">Corriger le nom</button>` : ""}
@@ -2421,11 +2431,14 @@ function fileToData(file) {
 async function showJournal(screen) {
   screen.innerHTML = `<div class="top"><div><p class="mark">Caisse</p><h1>Journal du jour</h1>
       <p class="lead">Les encaissements d'une journée, avec leur total de contrôle.</p></div>
-      <label class="top-field">Date du journal<input id="journal-date" type="date"></label></div>
+      <div class="row-actions"><a class="btn secondary" id="download-journal" href="/api/listes/journal.pdf">Télécharger la liste</a>
+      <label class="top-field">Date du journal<input id="journal-date" type="date"></label></div></div>
     <div id="journal"></div>`;
   const input = document.querySelector("#journal-date");
   input.value = new Date().toISOString().slice(0, 10);
   const load = async () => {
+    const download = document.querySelector("#download-journal");
+    if (download) download.href = `/api/listes/journal.pdf?date=${encodeURIComponent(input.value)}`;
     const data = await api(`/api/journal?date=${input.value}`);
     document.querySelector("#journal").innerHTML = `<div class="stat-row">
         <div class="stat-tile strong"><span>Total encaissé</span><strong>${gnf(data.total)}</strong></div>
@@ -2583,7 +2596,7 @@ async function showExpenses(screen) {
   };
   screen.innerHTML = `<div class="top"><div><p class="mark">Trésorerie</p><h1>Dépenses</h1>
       <p class="lead">Chaque sortie d'argent fait l'objet d'une décharge de responsabilité financière numérotée, signée par les deux parties et imprimable tout de suite.</p></div>
-      <button class="btn" id="new-expense" type="button">Nouvelle décharge</button></div>
+      <div class="row-actions"><a class="btn secondary" href="/api/listes/depenses.pdf${query ? `?${query}` : ""}">Télécharger la liste</a><button class="btn" id="new-expense" type="button">Nouvelle décharge</button></div></div>
     <section class="exp-kpis">
       <article class="exp-kpi main"><span>Dépensé aujourd'hui</span><strong>${gnf(summary.today)}</strong><small>${plural(summary.todayCount, "décharge")}</small></article>
       <article class="exp-kpi"><span>Ce mois-ci</span><strong>${gnf(summary.month)}</strong><small>${plural(summary.monthCount, "décharge")}</small></article>
@@ -2792,7 +2805,8 @@ async function showLate(screen) {
       </div>
     </article>`;
   };
-  screen.innerHTML = `<div class="top"><div><p class="mark">Communication</p><h1>Étudiants en retard</h1></div></div>
+  screen.innerHTML = `<div class="top"><div><p class="mark">Communication</p><h1>Étudiants en retard</h1></div>
+    <a class="btn secondary" href="/api/listes/retards.pdf">Télécharger la liste</a></div>
     <section class="late-hero">
       <article class="late-stat">
         <p><span class="pulse" aria-hidden="true"></span> À relancer</p>
@@ -2854,8 +2868,9 @@ async function showCostumes(screen) {
   const statusTag = (row) => row.status === "partiel"
     ? `<span class="tag partiel">Partiellement payé</span>`
     : `<span class="tag en_retard">Non payé</span>`;
-  screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Costumes impayés</h1>
-      <p class="lead">Étudiants de l'année dont le costume n'est pas entièrement payé. Le montant d'un étudiant est son nombre de costumes × ${esc(gnf(totals.unitPrice))}.</p></div></div>
+  screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Costumes</h1>
+      <p class="lead">Étudiants de l'année dont le costume n'est pas entièrement payé. Le montant d'un étudiant est son nombre de costumes × ${esc(gnf(totals.unitPrice))}.</p></div>
+      <div class="row-actions"><a class="btn secondary" href="/api/listes/costumes-payes.pdf">PDF costumes payés</a><a class="btn secondary" href="/api/listes/costumes-impayes.pdf">PDF costumes non payés</a></div></div>
     ${totals.unitPrice ? `<div class="stat-row">
       <div class="stat-tile"><span>Montant total à payer</span><strong>${gnf(totals.expected)}</strong><span class="muted">${plural(totals.costumes, "costume")} × ${esc(gnf(totals.unitPrice))} · ${plural(totals.students, "étudiant")}</span></div>
       <div class="stat-tile ok"><span>Déjà versé</span><strong>${gnf(totals.amount)}</strong><span class="muted">${plural(totals.costumesPaid, "costume")} payé${totals.costumesPaid > 1 ? "s" : ""} · ${plural(totals.paid, "étudiant")} soldé${totals.paid > 1 ? "s" : ""}</span></div>

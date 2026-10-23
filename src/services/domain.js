@@ -487,9 +487,14 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
       if (filters.paymentStatus === FIRST_INSTALLMENT_UNPAID) {
         if (firstInstallmentLeft(row.situation).left <= 0) return false;
       } else if (filters.paymentStatus && row.situation.status !== filters.paymentStatus) return false;
+      const phone = `${row.student.phone || ""} ${row.student.guardian_phone || ""}`;
+      const digits = phone.replace(/\D/g, "");
+      if (filters.phone === "avec" && !digits) return false;
+      if (filters.phone === "sans" && digits) return false;
       if (!query) return true;
-      const blob = `${row.student.matricule} ${row.student.last_name} ${row.student.first_name}`.toLowerCase();
-      return blob.includes(query);
+      const blob = `${row.student.matricule} ${row.student.last_name} ${row.student.first_name} ${phone}`.toLowerCase();
+      const queryDigits = query.replace(/\D/g, "");
+      return blob.includes(query) || (queryDigits.length >= 3 && digits.includes(queryDigits));
     })
     .sort((a, b) => a.student.last_name.localeCompare(b.student.last_name, "fr") || a.student.first_name.localeCompare(b.student.first_name, "fr"));
 }
@@ -575,6 +580,25 @@ export async function unpaidCostumes(db, asOf = todayInConakry()) {
         reste: line.reste,
         status: line.paid > 0 ? "partiel" : "non_paye",
       })),
+  };
+}
+
+/** Costumes payés et non payés, pour les listes téléchargeables. */
+export async function costumeRegister(db, asOf = todayInConakry()) {
+  const { unitPrice, lines } = await costumeLines(db, await listStudents(db, {}, asOf));
+  const mapped = lines.map((line) => ({
+    student: publicStudent(line.student),
+    quantity: line.quantity,
+    price: line.price,
+    paid: line.paid,
+    reste: line.reste,
+    status: line.price > 0 && line.reste === 0 ? "paye" : line.paid > 0 ? "partiel" : "non_paye",
+  }));
+  const byName = (a, b) => a.student.name.localeCompare(b.student.name, "fr");
+  return {
+    totals: costumeTotals(unitPrice, lines),
+    paid: mapped.filter((line) => line.status === "paye").sort(byName),
+    unpaid: mapped.filter((line) => line.status !== "paye").sort((a, b) => b.reste - a.reste || byName(a, b)),
   };
 }
 
@@ -1462,7 +1486,9 @@ export async function createStudent(db, user, input) {
   if (!can(user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit de créer une fiche");
   const last = String(input.lastName || "").trim();
   const first = String(input.firstName || "").trim();
+  const phone = clean(input.phone);
   if (last.length < 2 || first.length < 2) throw new HttpError(400, "Le nom et le prénom sont obligatoires");
+  if (!phone || phone.replace(/\D/g, "").length < 8) throw new HttpError(400, "Indiquez le numéro de téléphone de l'étudiant");
   if (!LEVELS.has(input.level)) throw new HttpError(400, "Niveau inconnu");
   const scholarship = truthy(input.scholarship);
   const paymentAmount = parseMoney(input.paymentAmount);
@@ -1490,7 +1516,7 @@ export async function createStudent(db, user, input) {
     const result = await db.prepare(`
       INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source, costume_quantity)
       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie', ?) RETURNING id
-    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1);
+    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, phone, clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1);
     const studentId = result.lastInsertRowid;
     await assignAccountEmail(db, { id: studentId, first_name: first, last_name: last });
     await audit(db, user.id, "etudiant.creer", "students", studentId, null, {
@@ -1711,9 +1737,20 @@ export async function updateStudent(db, user, studentId, input) {
     if (!before) throw new HttpError(404, "Étudiant introuvable");
     const status = input.status || before.status;
     if (!["actif", "suspendu", "archive"].includes(status)) throw new HttpError(400, "Statut inconnu");
+    const phone = Object.hasOwn(input, "phone") ? clean(input.phone) : before.phone;
+    if (Object.hasOwn(input, "phone") && (!phone || phone.replace(/\D/g, "").length < 8)) {
+      throw new HttpError(400, "Indiquez le numéro de téléphone de l'étudiant");
+    }
     await db.prepare(`
       UPDATE students SET phone = ?, email = ?, guardian_name = ?, guardian_phone = ?, status = ? WHERE id = ?
-    `).run(clean(input.phone), clean(input.email), clean(input.guardianName), clean(input.guardianPhone), status, studentId);
+    `).run(
+      phone,
+      Object.hasOwn(input, "email") ? clean(input.email) : before.email,
+      Object.hasOwn(input, "guardianName") ? clean(input.guardianName) : before.guardian_name,
+      Object.hasOwn(input, "guardianPhone") ? clean(input.guardianPhone) : before.guardian_phone,
+      status,
+      studentId,
+    );
     const current = await studentSituation(db, studentId);
     await refreshCard(db, current.student, current.situation);
     await audit(db, user.id, "etudiant.modifier", "students", studentId, { status: before.status }, { status });
