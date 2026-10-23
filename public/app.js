@@ -846,6 +846,8 @@ function schoolCounts(data) {
       students: found.students || 0,
       bachelor: found.bachelor || 0,
       master: found.master || 0,
+      paid: found.paid || 0,
+      due: found.due || 0,
     };
   }));
 }
@@ -936,8 +938,12 @@ function patchDashboard(root, data, control) {
     if (!chip) continue;
     const bachelor = chip.querySelector(".school-bachelor");
     const master = chip.querySelector(".school-master");
+    const paid = chip.querySelector(".school-paid");
+    const due = chip.querySelector(".school-due");
     if (bachelor) bachelor.textContent = String(item.bachelor);
     if (master) master.textContent = String(item.master);
+    if (paid) paid.textContent = gnf(item.paid);
+    if (due) due.textContent = gnf(item.due);
   }
   for (const item of sortSchools(data.byProgram)) {
     const block = root.querySelector(`[data-program="${CSS.escape(item.program)}"]`);
@@ -984,13 +990,10 @@ function patchDashboard(root, data, control) {
 }
 
 function peopleFigures(data) {
-  const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
   const costume = { paid: 0, partial: 0, unpaid: 0, amount: 0, expected: 0, reste: 0, costumesPaid: 0, ...data.costume };
   const first = { unpaid: 0, none: 0, reste: 0, ...data.firstInstallment };
   const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
   return [
-    ["bachelor", "Total Bachelor", String(cycles.bachelor), "Bachelor et Cycle Préparatoire Intégré (CPI, CPI 2)"],
-    ["master", "Total Master", String(cycles.master), "Master 1 et Master 2"],
     ["costume", "Costume payé (étudiants)", String(costume.paid), `${plural(costume.costumesPaid, "costume")} payé${costume.costumesPaid > 1 ? "s" : ""} · ${gnf(costume.amount)} versés sur ${gnf(costume.expected)}`, "costumes"],
     ["costume-reste", "Costume non payé (étudiants)", String(costume.unpaid), `Reste à payer ${gnf(costume.reste)}${costume.partial ? ` · dont ${costume.partial} payé${costume.partial > 1 ? "s" : ""} en partie` : ""}`, "costumes"],
     ["tranche", "1re tranche non payée (étudiants)", String(first.unpaid), `${first.none} sans aucun versement · reste ${gnf(first.reste)}`, "etudiants", "premiere_tranche"],
@@ -998,7 +1001,7 @@ function peopleFigures(data) {
 }
 
 function peopleHtml(data) {
-  return `<section class="stat-row dash-people" aria-label="Effectifs, costumes et première tranche">
+  return `<section class="stat-row dash-people" aria-label="Costumes et première tranche">
     ${peopleFigures(data).map(([key, label, value, note, go = "etudiants", filter = ""]) => `<button class="stat-tile" data-people="${key}" data-go="${go}" ${filter ? `data-filter="${filter}"` : ""} type="button">
       <span>${esc(label)}</span><strong>${esc(value)}</strong><span class="muted">${esc(note)}</span>
     </button>`).join("")}
@@ -1040,7 +1043,7 @@ function dashboardHtml(data, control) {
           <li>Total Bachelor <strong class="dash-bachelor">${cycles.bachelor}</strong></li>
           <li>Total Master <strong class="dash-master">${cycles.master}</strong></li>
         </ul>
-        <ul class="dash-schools" aria-label="Bachelor et Master par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span></li>`).join("")}</ul>
+        <ul class="dash-schools" aria-label="Bachelor, Master et montants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span><span>Montant payé <strong class="school-paid">${gnf(item.paid)}</strong></span><span>Montant attendu <strong class="school-due">${gnf(item.due)}</strong></span></li>`).join("")}</ul>
       </div>
       <div class="dash-hero-side">
         <div class="donut-wrap">

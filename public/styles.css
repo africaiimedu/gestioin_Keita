@@ -1285,6 +1285,7 @@ tr.clickable:hover { background: #f3f8f4; }
 }
 .dash-schools .name { flex: 1 0 100%; color: #fff; font-weight: 700; }
 .dash-schools strong { color: #e2a31a; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.dash-schools li > span { white-space: nowrap; }
 @media (min-width: 720px) {
   .dash-schools { grid-template-columns: 1fr 1fr; }
 }
