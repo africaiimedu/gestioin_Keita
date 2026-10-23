@@ -63,6 +63,7 @@ const CHAMPS = CFG.personnel
       ["url", "Adresse de vérification"],
       ["edition", "Édition"],
       ["controle", "Code de contrôle"],
+      ["sceau", "Sceau université"],
       ["qualite", "Étudiant ou étudiante"],
     ];
 

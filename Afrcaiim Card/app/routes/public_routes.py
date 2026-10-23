@@ -1,6 +1,7 @@
 """Page ouverte par le QR code : le personnel voit la validité de la carte, l'étudiant arrive sur le menu."""
 
 from urllib.parse import quote
+import re
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
@@ -24,6 +25,12 @@ router = APIRouter()
 def _sans_cache(reponse):
     reponse.headers["Cache-Control"] = "no-store"
     return reponse
+
+
+def _meme_matricule(lien: str, carte: str) -> bool:
+    def cle(valeur: str) -> str:
+        return re.sub(r"\s+", "", str(valeur or "")).upper()
+    return cle(lien) == cle(carte)
 
 
 @router.get("/verif/{matricule}")
@@ -53,6 +60,8 @@ def verifier(
     if carte is not None:
         statut = statut_effectif(carte.statut, carte.date_validite)
         etudiant = carte.etudiant
+        if not _meme_matricule(matricule, etudiant.matricule):
+            return _sans_cache(render(request, "verif.html", mode="invalide"))
         prix = prix_repas()
         solde = int(etudiant.solde_cantine or 0)
         decision = decision_repas(solde, prix, etudiant.email or "", statut == "active")
@@ -66,6 +75,8 @@ def verifier(
                 jeton=carte.jeton,
                 controle=code_controle(carte.jeton),
                 matricule=etudiant.matricule,
+                ecole=etudiant.filiere or "",
+                programme=etudiant.programme or "",
                 email=etudiant.email or "",
                 solde=formater_francs(solde),
                 prix=formater_francs(prix),
@@ -75,14 +86,17 @@ def verifier(
                 autorise=agent is not None and (agent.role == "admin" or bool(agent.peut_valider_qr)),
                 role=agent.role if agent else "",
                 suivant=f"/verif/{quote(etudiant.matricule)}?t={quote(carte.jeton)}",
+                personnel=False,
             )
         )
 
     badge = db.scalar(select(BadgePersonnel).where(BadgePersonnel.jeton == t))
     if badge is None:
         return _sans_cache(render(request, "verif.html", mode="invalide"))
-    statut = statut_effectif(badge.statut, badge.date_validite)
     personne = badge.personnel
+    if not _meme_matricule(matricule, personne.numero):
+        return _sans_cache(render(request, "verif.html", mode="invalide"))
+    statut = statut_effectif(badge.statut, badge.date_validite)
     return _sans_cache(
         render(
             request,
@@ -93,6 +107,8 @@ def verifier(
             jeton=badge.jeton,
             controle=code_controle(badge.jeton),
             matricule=personne.numero,
+            ecole=personne.fonction or "",
+            programme="",
             email=personne.email or "",
             solde="",
             prix="",

@@ -48,6 +48,7 @@ function texteCarte(obj, etu) {
     url: etu.url || "",
     edition: `Éd. ${etu.edition || 1}`,
     controle: etu.controle || "",
+    sceau: `UNIVERSITÉ AFRICAIIM · ${etu.matricule || ""} · ${etu.controle || ""}`,
     qualite: etu.qualite || (personnel
       ? (femme ? "Collaboratrice" : "Collaborateur")
       : (femme ? "Étudiante" : "Étudiant")),

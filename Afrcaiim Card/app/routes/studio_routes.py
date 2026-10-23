@@ -39,7 +39,7 @@ _ORIGINE_PERSONNEL = ROOT / "config" / "modele_personnel_origine.json"
 _TYPES = {"image", "photo", "qr", "codebarres", "rect", "cercle", "ligne", "piste", "champ", "texte", "guilloche", "rosette", "micro"}
 _CHAMPS = {
     "nom", "prenom", "matricule", "filiere", "fonction", "ecole", "programme", "email",
-    "annee_academique", "date_validite", "url", "edition", "controle", "qualite",
+    "annee_academique", "date_validite", "url", "edition", "controle", "qualite", "sceau",
 }
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _BOOLS = ("gras", "italique", "souligne", "majuscules", "retour", "verrou", "lisible", "initiales", "cadre")

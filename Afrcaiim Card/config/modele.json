@@ -195,6 +195,15 @@
       "couleur": "#FEAB00"
     },
     {
+      "id": "trame",
+      "type": "guilloche",
+      "x": 27.4,
+      "y": 11.0,
+      "w": 56.4,
+      "h": 27.4,
+      "couleur": "#FEAB00"
+    },
+    {
       "id": "qr",
       "type": "qr",
       "x": 3.39,
@@ -309,6 +318,17 @@
       "taille": 5.2,
       "retour": true,
       "champ": "email"
+    },
+    {
+      "id": "sceau",
+      "type": "micro",
+      "x": 3.4,
+      "y": 46.2,
+      "w": 78.8,
+      "h": 2.4,
+      "couleur": "#004C22",
+      "taille": 2.2,
+      "champ": "sceau"
     },
     {
       "id": "mention",

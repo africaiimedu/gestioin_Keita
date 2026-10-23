@@ -556,6 +556,7 @@ def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
         "edition": f"Éd. {edition}",
         "controle": code_controle(jeton),
         "qualite": qualite,
+        "sceau": f"UNIVERSITÉ AFRICAIIM · {etu.matricule} · {code_controle(jeton)}",
     }
     return valeurs.get(champ or "", "")
 
