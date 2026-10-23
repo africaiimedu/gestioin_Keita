@@ -43,6 +43,7 @@ services:
       - "${PORT:-4317}:4317"
     volumes:
       - ./data/uploads:/app/data/uploads
+      - ./public:/app/public:ro
 
   sauvegarde:
     image: postgres:16-alpine

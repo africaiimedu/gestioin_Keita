@@ -8,7 +8,7 @@ function newKey() {
   const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-const state = { user: null, screen: "tableau", suite: "finances", carte: "etudiants", demo: null, catalog: null, idempotencyKey: newKey(), studentPage: 1 };
+const state = { user: null, screen: "tableau", suite: "finances", carte: "etudiants", demo: null, catalog: null, idempotencyKey: newKey(), studentPage: 1, costumeVue: "", historique: [], lieu: null, retour: false };
 
 const labels = {
   licence: "Licence", master: "Master", tech: "Tech Ingénieur",
@@ -175,7 +175,7 @@ function financeGroups() {
       (allowed("student.read") || allowed("student.write")) && ["etudiants", "Étudiants"],
       allowed("payment.create") && ["paiement", "Encaisser"],
       allowed("student.read") && ["retards", "Relances"],
-      allowed("student.read") && ["costumes", "Costumes impayés"],
+      allowed("student.read") && ["costumes", "Costumes"],
     ]],
     ["Caisse", [
       allowed("report.read") && ["journal", "Journal de caisse"],
@@ -237,7 +237,9 @@ const MENU_ICONS = {
   list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
   plate: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8",
   menu: "M3 3h18v18H3zM7 8h10M7 12h10M7 16h6",
-  bag: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0",};
+  bag: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0",
+  logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+};
 const MENU_INFO = {
   "screen:tableau": ["chart", "Encaissements et recouvrement"],
   "screen:etudiants": ["people", "Fiches et situation de paiement"],
@@ -261,11 +263,29 @@ function menuIcon(name) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${MENU_ICONS[name] || MENU_ICONS.list}"/></svg>`;
 }
 
+const GROUP_ICONS = {
+  Pilotage: "chart",
+  Scolarité: "people",
+  Caisse: "cash",
+  Réglages: "tag",
+  Finances: "chart",
+  Cartes: "card",
+  Cuisine: "plate",
+  Dépenses: "cash",
+  Comptes: "people",
+  Contrôle: "shield",
+};
+
+function railFace(label, iconName) {
+  const icon = iconName || GROUP_ICONS[label] || "list";
+  return `<span class="rail-ico" aria-hidden="true">${menuIcon(icon)}</span><span class="rail-label">${label}</span>`;
+}
+
 function dropHtml(label, items, attr, current) {
   if (!items.length) return "";
   const here = items.some(([id]) => id === current);
   return `<div class="nav-group${here ? " has-current" : ""}">
-      <button type="button" class="nav-drop${here ? " actif" : ""}" aria-expanded="false" aria-haspopup="true">${label}</button>
+      <button type="button" class="nav-drop${here ? " actif" : ""}" aria-expanded="false" aria-haspopup="true" aria-label="${label}" title="${label}">${railFace(label)}</button>
       <div class="nav-menu" role="menu"><p class="nav-menu-title">${label}</p>${items.map(([id, name]) => {
         const [icon, hint] = MENU_INFO[`${attr}:${id}`] || ["list", ""];
         return `<button type="button" role="menuitem" data-${attr}="${id}" class="${current === id ? "active" : ""}">
@@ -278,9 +298,16 @@ function dropHtml(label, items, attr, current) {
 
 function closeMenus() {
   document.querySelectorAll(".nav-group").forEach((group) => {
-    if (group.classList.contains("is-open") || group.matches(":hover")) group.classList.add("is-dismissed");
     group.classList.remove("is-open");
     group.querySelector(".nav-drop")?.setAttribute("aria-expanded", "false");
+  });
+}
+
+function openMenu(group) {
+  document.querySelectorAll(".nav-group").forEach((other) => {
+    const on = other === group;
+    other.classList.toggle("is-open", on);
+    other.querySelector(".nav-drop")?.setAttribute("aria-expanded", on ? "true" : "false");
   });
 }
 
@@ -320,6 +347,56 @@ function rememberPlace() {
   if (location.hash !== next) history.replaceState(null, "", next);
 }
 
+function lieuActuel() {
+  return {
+    suite: state.suite,
+    screen: state.screen,
+    carte: state.carte,
+    cartePath: state.cartePath || "",
+    studentId: state.studentId || null,
+  };
+}
+
+function memeLieu(a, b) {
+  return a.suite === b.suite && a.screen === b.screen && a.carte === b.carte && a.cartePath === b.cartePath && a.studentId === b.studentId;
+}
+
+function memoriserApres() {
+  if (!state.user || state.user.mustChangePassword) return;
+  const maintenant = lieuActuel();
+  if (state.retour) {
+    state.lieu = maintenant;
+    state.retour = false;
+    return;
+  }
+  if (state.lieu && !memeLieu(state.lieu, maintenant)) {
+    state.historique.push(state.lieu);
+    if (state.historique.length > 40) state.historique.shift();
+  }
+  state.lieu = maintenant;
+  const bouton = document.querySelector("#page-precedente");
+  if (bouton) bouton.disabled = !state.historique.length && maintenant.suite === "finances" && maintenant.screen === "tableau";
+}
+
+function pagePrecedente() {
+  const precedent = state.historique.pop();
+  if (!precedent) {
+    if (state.suite === "finances" && state.screen === "tableau") return;
+    state.retour = true;
+    state.suite = "finances";
+    state.screen = "tableau";
+  } else {
+    state.retour = true;
+    state.suite = precedent.suite;
+    state.screen = precedent.screen;
+    state.carte = precedent.carte;
+    state.cartePath = precedent.cartePath;
+    state.studentId = precedent.studentId;
+  }
+  if (state.suite !== "finances" || state.screen !== "tableau") stopDashboard();
+  render();
+}
+
 function watchCarteFrame(frame) {
   frame.addEventListener("load", () => {
     try {
@@ -357,6 +434,7 @@ function render() {
   app.innerHTML = !state.user ? loginHtml() : state.user.mustChangePassword ? passwordGate() : shell();
   bind();
   rememberPlace();
+  memoriserApres();
 }
 
 const EYE_OPEN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
@@ -448,22 +526,60 @@ function financeOnly() {
 
 function expensesButton(current) {
   if (!allowed("expense.write")) return "";
-  return `<button type="button" data-screen="depenses" class="${current === "depenses" ? "actif" : ""}">Dépenses</button>`;
+  return `<button type="button" data-screen="depenses" class="${current === "depenses" ? "actif" : ""}" aria-label="Dépenses" title="Dépenses">${railFace("Dépenses")}</button>`;
 }
 
 function accountsButton(current) {
-  return `<button type="button" data-screen="comptes" class="${current === "comptes" ? "actif" : ""}">Comptes</button>`;
+  return `<button type="button" data-screen="comptes" class="${current === "comptes" ? "actif" : ""}" aria-label="Comptes" title="Comptes">${railFace("Comptes")}</button>`;
 }
 
 function financeBar(current) {
   const groups = financeGroups().map(([label, items]) => {
     if (items.length === 1) {
       const [id, name] = items[0];
-      return `<button type="button" data-screen="${id}" class="${current === id ? "actif" : ""}">${name}</button>`;
+      const [icon] = MENU_INFO[`screen:${id}`] || ["list"];
+      return `<button type="button" data-screen="${id}" class="${current === id ? "actif" : ""}" aria-label="${name}" title="${name}">${railFace(name, icon)}</button>`;
     }
     return dropHtml(label, items, "screen", current);
   }).join("");
   return `${groups}${expensesButton(current)}${accountsButton(current)}`;
+}
+
+function prenomAffiche() {
+  const brut = String(state.user?.name || "").trim();
+  const mot = brut.split(/\s+/)[0] || "";
+  if (!mot) return "";
+  return mot.charAt(0).toUpperCase() + mot.slice(1);
+}
+
+function formuleSalut() {
+  const heure = new Date().getHours();
+  if (heure < 12) return "Bonjour";
+  if (heure < 18) return "Bon après-midi";
+  return "Bonsoir";
+}
+
+function initialesCompte() {
+  const mots = String(state.user?.name || "").trim().split(/\s+/).filter(Boolean);
+  const lettres = mots.slice(0, 2).map((mot) => mot.charAt(0).toUpperCase()).join("");
+  return lettres || "AI";
+}
+
+function railEstCache() {
+  try { return localStorage.getItem("africaiim-rail") === "cache"; } catch { return false; }
+}
+
+function basculerRail(cache) {
+  const shell = document.querySelector(".shell");
+  if (!shell) return;
+  shell.classList.toggle("rail-cache", cache);
+  try { localStorage.setItem("africaiim-rail", cache ? "cache" : "ouvert"); } catch { /* le navigateur peut refuser le stockage */ }
+  const bouton = document.querySelector("#nav-toggle");
+  if (bouton) {
+    const label = cache ? "Afficher le menu" : "Masquer le menu";
+    bouton.setAttribute("aria-label", label);
+    bouton.title = label;
+  }
 }
 
 function shell() {
@@ -480,18 +596,39 @@ function shell() {
         ${accountsButton(financeCurrent)}
         ${dropHtml("Cartes", cartes, "carte", carteCurrent)}
         ${dropHtml("Cuisine", cuisine, "carte", carteCurrent)}
-        ${liens.map(([id, name]) => `<button type="button" data-carte="${id}" class="${carteCurrent === id ? "actif" : ""}">${name}</button>`).join("")}`;
-  return `<div class="shell">
-    <header class="app-top${onlyFinance ? " finance-bar" : ""}">
-      <span class="puce-logo"><img src="/logo.png?v=clair" alt="Université AFRICAIIM"></span>
-      <strong class="titre-barre" id="titre-barre">${esc(pageTitle())}</strong>
+        ${liens.map(([id, name]) => `<button type="button" data-carte="${id}" class="${carteCurrent === id ? "actif" : ""}" aria-label="${esc(name)}" title="${esc(name)}">${railFace(name, "shield")}</button>`).join("")}`;
+  const peutChercher = allowed("student.read") || allowed("student.write");
+  const prenom = prenomAffiche();
+  const railCache = railEstCache();
+  return `<div class="shell${railCache ? " rail-cache" : ""}">
+    <aside class="rail">
+      <button type="button" class="puce-logo" data-screen="tableau" aria-label="Tableau de bord" title="Tableau de bord"><img src="/logo.png?v=clair" alt=""></button>
       <nav aria-label="Menu" id="main-nav">
         <div class="drawer-head"><span><small>Connecté</small><strong>${esc(state.user?.name || "")}</strong></span><button type="button" class="drawer-close" data-close-menu aria-label="Fermer le menu">Fermer</button></div>
-        ${menu}<button type="button" class="lien${onlyFinance ? " drawer-only" : ""}" data-logout>Quitter</button></nav>
-      ${onlyFinance ? `<button type="button" class="lien" data-logout>Quitter</button>` : ""}
-      <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="main-nav"><span></span><span></span><span></span></button>
-    </header>
-    <main id="screen"><p>Chargement…</p></main>
+        ${menu}<button type="button" class="lien" data-logout aria-label="Quitter" title="Quitter">${railFace("Quitter", "logout")}</button>
+      </nav>
+      <button type="button" class="rail-plier" id="rail-plier" aria-label="Masquer le menu" title="Masquer le menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6 9 12l6 6"/></svg></button>
+    </aside>
+    <div class="coque">
+      <header class="app-top">
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-label="${railCache ? "Afficher le menu" : "Masquer le menu"}" title="${railCache ? "Afficher le menu" : "Masquer le menu"}" aria-expanded="false" aria-controls="main-nav"><span></span><span></span><span></span></button>
+        <button type="button" class="retour" id="page-precedente" ${(state.historique.length || !(state.suite === "finances" && state.screen === "tableau")) ? "" : "disabled"} aria-label="Page précédente" title="Page précédente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6 9 12l6 6"/></svg><span>Retour</span></button>
+        <div class="salut">
+          <h1 class="salut-titre">${formuleSalut()}${prenom ? ` ${esc(prenom)}` : ""}</h1>
+          <p class="salut-sous" id="titre-barre">${esc(pageTitle())}</p>
+        </div>
+        ${peutChercher ? `<form class="recherche" id="global-search" role="search">
+          <label class="sr" for="global-q">Rechercher</label>
+          <input id="global-q" name="q" type="search" placeholder="Nom, matricule ou téléphone" value="${esc(state.q || "")}" autocomplete="off">
+        </form>` : ""}
+        <div class="entete-outils">
+          ${allowed("student.read") ? `<button type="button" class="rond" data-screen="retards" title="Relances" aria-label="Relances">${menuIcon("bell")}</button>` : ""}
+          <button type="button" class="rond" data-screen="comptes" title="Comptes" aria-label="Comptes">${menuIcon("people")}</button>
+          <button type="button" class="avatar" data-screen="comptes" title="${esc(state.user?.name || "Compte")}" aria-label="Compte de ${esc(state.user?.name || "l'utilisateur")}">${esc(initialesCompte())}</button>
+        </div>
+      </header>
+      <main id="screen"><p>Chargement…</p></main>
+    </div>
     <div class="nav-scrim" data-close-menu></div>
     ${mobileTabs(financeCurrent, carteCurrent)}</div>`;
 }
@@ -535,26 +672,22 @@ function bindMenu(root) {
     if (state.suite === "finances" && state.screen === button.dataset.screen) return;
     navigate({ suite: "finances", screen: button.dataset.screen });
   }));
-  root.querySelectorAll(".nav-group").forEach((group) => group.addEventListener("mouseleave", () => {
-    group.classList.remove("is-dismissed");
+  const desktop = () => !window.matchMedia("(max-width: 760px)").matches;
+  root.querySelectorAll(".nav-group").forEach((group) => group.addEventListener("mouseenter", () => {
+    if (desktop()) openMenu(group);
   }));
   root.querySelectorAll(".nav-drop").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     const group = button.closest(".nav-group");
-    const open = group.classList.contains("is-open");
-    closeMenus();
-    if (!open) {
-      group.classList.remove("is-dismissed");
-      group.classList.add("is-open");
-      button.setAttribute("aria-expanded", "true");
-    }
+    if (group.classList.contains("is-open")) closeMenus();
+    else openMenu(group);
   }));
 }
 
 function syncChrome() {
   const titre = document.querySelector("#titre-barre");
   if (titre) titre.textContent = pageTitle();
-  const navEl = document.querySelector(".app-top nav");
+  const navEl = document.querySelector("#main-nav");
   if (!navEl) return;
   navEl.querySelectorAll(".nav-group").forEach((group) => {
     let here = false;
@@ -634,6 +767,7 @@ function navigate(patch) {
   }
   if (state.suite !== "finances" || state.screen !== "tableau") stopDashboard();
   rememberPlace();
+  memoriserApres();
   syncChrome(suiteChanged);
   if (state.suite === "cartes" && !suiteChanged) {
     const frame = document.querySelector(".carte-frame");
@@ -652,7 +786,10 @@ function bind() {
   bindMenu(document);
   if (!document.documentElement.dataset.menus) {
     document.documentElement.dataset.menus = "1";
-    document.addEventListener("click", () => closeMenus());
+    document.addEventListener("click", (event) => {
+      if (event.target.closest(".nav-group")) return;
+      closeMenus();
+    });
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
       closeMenus();
@@ -664,14 +801,39 @@ function bind() {
     setDrawer(false);
     await api("/api/deconnexion", { method: "POST", body: "{}" });
     state.user = null;
+    state.historique = [];
+    state.lieu = null;
     history.replaceState(null, "", location.pathname);
     render();
   }));
-  document.querySelectorAll("#nav-toggle, [data-open-menu]").forEach((button) => button.addEventListener("click", (event) => {
+  document.querySelectorAll("[data-open-menu]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     setDrawer(!document.body.classList.contains("menu-open"));
   }));
+  const plierRail = (event) => {
+    event.stopPropagation();
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      setDrawer(!document.body.classList.contains("menu-open"));
+      return;
+    }
+    basculerRail(!document.querySelector(".shell")?.classList.contains("rail-cache"));
+  };
+  document.querySelector("#nav-toggle")?.addEventListener("click", plierRail);
+  document.querySelector("#rail-plier")?.addEventListener("click", plierRail);
+  document.querySelector("#page-precedente")?.addEventListener("click", pagePrecedente);
   document.querySelectorAll("[data-close-menu]").forEach((element) => element.addEventListener("click", () => setDrawer(false)));
+  document.querySelector("#global-search")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.q = document.querySelector("#global-q")?.value.trim() || "";
+    state.studentPage = 1;
+    const champ = document.querySelector("#q");
+    if (state.suite === "finances" && state.screen === "etudiants" && champ) {
+      champ.value = state.q;
+      champ.dispatchEvent(new Event("input"));
+      return;
+    }
+    navigate({ suite: "finances", screen: "etudiants" });
+  });
   if (!state.user) setDrawer(false);
   document.querySelector("#login-form")?.addEventListener("submit", onLogin);
   document.querySelector("#first-password")?.addEventListener("submit", onFirstPassword);
@@ -836,10 +998,17 @@ function bindDashboard(screen) {
   screen.querySelectorAll("[data-student]").forEach((button) => button.addEventListener("click", () => openStudent(button.dataset.student)));
 }
 
-/** Toutes les écoles, même sans étudiant, avec leur nombre d'inscrits. */
-function schoolCounts(data) {
-  const counts = new Map(data.byProgram.map((item) => [item.program, item.students || 0]));
-  return sortSchools((state.catalog?.programs || []).map((item) => ({ program: item.name, students: counts.get(item.name) || 0 })));
+/** Toutes les écoles, même sans étudiant, avec encaissé, reste et inscrits. */
+function schoolCards(data) {
+  const byName = new Map((data.byProgram || []).map((item) => [item.program, item]));
+  const names = [...new Set([
+    ...(state.catalog?.programs || []).map((item) => item.name),
+    ...(data.byProgram || []).map((item) => item.program),
+  ])];
+  return sortSchools(names.map((program) => {
+    const item = byName.get(program) || {};
+    return { program, students: item.students || 0, paid: item.paid || 0, due: item.due || 0, reste: item.reste || 0 };
+  }));
 }
 
 function shortSchool(name) {
@@ -866,19 +1035,10 @@ function tickClock() {
     hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: "Africa/Conakry",
   }).formatToParts(new Date());
   const value = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   for (const [slot, type] of [["h", "hour"], ["m", "minute"], ["s", "second"]]) {
     const face = clock.querySelector(`[data-slot="${slot}"] span`);
     if (!face || face.textContent === value[type]) continue;
-    if (reduced) {
-      face.textContent = value[type];
-      continue;
-    }
-    const card = face.parentElement;
-    card.classList.remove("is-flip");
-    void card.offsetWidth;
-    card.classList.add("is-flip");
-    window.setTimeout(() => { face.textContent = value[type]; }, 220);
+    face.textContent = value[type];
   }
   state.dashClock = setTimeout(tickClock, 1000);
 }
@@ -894,6 +1054,11 @@ function patchDashboard(root, data, control) {
     if (!card) return;
     card.querySelector(".value").textContent = text;
     card.querySelector(".dash-track i").style.width = `${width}%`;
+    const badge = card.querySelector(".dash-badge");
+    if (badge) {
+      badge.textContent = `${Math.round(width)}%`;
+      badge.style.setProperty("--p", String(Math.round(width)));
+    }
   };
   write("tone-due", gnf(data.due), 100);
   write("tone-paid", gnf(data.paid), Math.min(100, Math.round(data.paid / dueBase * 100)));
@@ -918,21 +1083,28 @@ function patchDashboard(root, data, control) {
   if (count) count.textContent = String(data.students);
   const plural = root.querySelector(".dash-plural");
   if (plural) plural.textContent = data.students > 1 ? "s" : "";
-  for (const item of schoolCounts(data)) {
-    const chip = root.querySelector(`[data-school-count="${CSS.escape(item.program)}"] strong`);
-    if (chip) chip.textContent = String(item.students);
-  }
-  for (const item of sortSchools(data.byProgram)) {
+  const recu = root.querySelector(".dash-recu");
+  if (recu) recu.textContent = gnf(data.paid);
+  const restePhrase = root.querySelector(".dash-reste-phrase");
+  if (restePhrase) restePhrase.textContent = gnf(data.reste);
+  for (const item of schoolCards(data)) {
     const block = root.querySelector(`[data-program="${CSS.escape(item.program)}"]`);
     if (!block) continue;
     const share = Math.min(100, Math.round(item.paid / Math.max(item.due, 1) * 100));
-    block.querySelector(".dash-school-top strong").textContent = `${share} %`;
-    block.querySelector(".meter .paid").style.width = `${share}%`;
-    const figures = block.querySelectorAll(".figures strong");
-    figures[0].textContent = String(item.students || 0);
-    figures[1].textContent = gnf(item.paid);
-    figures[2].textContent = gnf(item.reste);
-    figures[3].textContent = gnf(item.due);
+    const anneau = block.querySelector("[data-share]");
+    if (anneau) {
+      anneau.textContent = `${share} %`;
+      anneau.style.setProperty("--p", String(share));
+    }
+    const barre = block.querySelector(".ecole-barre i");
+    if (barre) barre.style.width = `${share}%`;
+    const ecrire = (sel, texte) => {
+      const el = block.querySelector(sel);
+      if (el) el.textContent = texte;
+    };
+    ecrire("[data-students]", `${item.students || 0} étudiant${(item.students || 0) > 1 ? "s" : ""}`);
+    ecrire("[data-paid]", gnf(item.paid));
+    ecrire("[data-reste]", gnf(item.reste));
   }
   for (const [status, countValue] of Object.entries(data.counts)) {
     const row = root.querySelector(`.dash-status-row[data-status="${CSS.escape(status)}"]`);
@@ -984,8 +1156,77 @@ function peopleHtml(data) {
   </section>`;
 }
 
-function dashboardHtml(data, control) {
-  const programs = sortSchools(data.byProgram);
+function initiales(nom) {
+  return String(nom || "").split(/\s+/).filter(Boolean).slice(0, 2).map((mot) => mot.charAt(0).toUpperCase()).join("") || "—";
+}
+
+function personneLigne(person) {
+  const etat = person.status === "solde" ? "Payé" : person.status === "partiel" ? "En partie" : "Sans costume";
+  return `<button class="personne" type="button" data-student="${person.id}">
+    <span class="init" aria-hidden="true">${esc(initiales(person.name))}</span>
+    <span class="qui"><strong>${esc(person.name)}</strong><small>${esc(shortSchool(person.program || ""))}${person.phone ? ` · ${esc(person.phone)}` : ""}</small></span>
+    <em class="etat ${esc(person.status || "aucun")}">${etat}</em>
+  </button>`;
+}
+
+function listePersonnes(titre, people, tone, vide, vue) {
+  const lignes = people || [];
+  const choisi = state.costumeVue === vue;
+  const cache = state.costumeVue && state.costumeVue !== vue;
+  return `<article class="card liste-personnes ${tone}${choisi ? " is-chosen" : ""}" data-costume-vue="${vue}" ${cache ? "hidden" : ""}>
+    <div class="bloc-titre">
+      <button class="filtre-titre" type="button" data-costume-filtre="${vue}" aria-pressed="${choisi ? "true" : "false"}"><h2>${titre}</h2></button>
+      <span class="compte">${lignes.length}</span>
+    </div>
+    <div class="personnes">${lignes.length ? lignes.map(personneLigne).join("") : `<p class="vide">${vide}</p>`}</div>
+  </article>`;
+}
+
+function bindCostumeFiltre(root) {
+  const paint = () => {
+    root.querySelectorAll("[data-costume-vue]").forEach((card) => {
+      const on = !state.costumeVue || card.dataset.costumeVue === state.costumeVue;
+      card.hidden = !on;
+      card.classList.toggle("is-chosen", Boolean(state.costumeVue) && on);
+      card.querySelector("[data-costume-filtre]")?.setAttribute("aria-pressed", state.costumeVue === card.dataset.costumeVue ? "true" : "false");
+    });
+    root.querySelectorAll("[data-costume-tous]").forEach((button) => { button.hidden = !state.costumeVue; });
+    root.querySelectorAll(".hors-filtre").forEach((el) => { el.hidden = Boolean(state.costumeVue); });
+  };
+  root.querySelectorAll("[data-costume-filtre]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const vue = button.dataset.costumeFiltre;
+    state.costumeVue = state.costumeVue === vue ? "" : vue;
+    paint();
+  }));
+  root.querySelectorAll("[data-costume-tous]").forEach((button) => button.addEventListener("click", () => {
+    state.costumeVue = "";
+    paint();
+  }));
+  paint();
+}
+
+function ecoleCarte(item) {
+  const base = Math.max(item.due, 1);
+  const share = Math.min(100, Math.round(item.paid / base * 100));
+  return `<article class="ecole" data-program="${esc(item.program)}">
+    <div class="ecole-tete">
+      <span class="ecole-anneau" data-share style="--p:${share}">${share} %</span>
+      <div>
+        <h3>${esc(shortSchool(item.program))}</h3>
+        <p data-students>${item.students || 0} étudiant${(item.students || 0) > 1 ? "s" : ""}</p>
+      </div>
+    </div>
+    <div class="ecole-montants">
+      <div><span>Encaissé</span><strong data-paid>${gnf(item.paid)}</strong></div>
+      <div><span>Reste</span><strong data-reste>${gnf(item.reste)}</strong></div>
+    </div>
+    <div class="ecole-barre" aria-hidden="true"><i style="width:${share}%"></i></div>
+  </article>`;
+}
+
+function dashboardHtml(data, control, costumes = {}) {
+  const programs = schoolCards(data);
   const rate = Math.min(100, (data.rate.tenths || 0) / 10);
   const circ = (2 * Math.PI * 46).toFixed(2);
   const countMax = Math.max(...Object.values(data.counts), 1);
@@ -994,8 +1235,10 @@ function dashboardHtml(data, control) {
   const dueBase = Math.max(data.due, 1);
   const paidShare = Math.min(100, Math.round(data.paid / dueBase * 100));
   const resteShare = Math.min(100, Math.round(data.reste / dueBase * 100));
-  const kpiCard = (label, text, share, tone) => `<article class="dash-kpi ${tone}">
+  const kpiCard = (label, text, share, tone, icon) => `<article class="dash-kpi ${tone}">
+      <span class="dash-badge" style="--p:${Math.round(share)}" aria-hidden="true">${Math.round(share)}%</span>
       <button data-go="etudiants" type="button">
+        <span class="dash-ico">${menuIcon(icon)}</span>
         <span class="muted">${label}</span>
         <strong class="value">${text}</strong>
       </button>
@@ -1014,7 +1257,7 @@ function dashboardHtml(data, control) {
           </time>
           <span>Conakry · <span class="dash-count">${data.students}</span> étudiant<span class="dash-plural">${data.students > 1 ? "s" : ""}</span></span>
         </p>
-        <ul class="dash-schools" aria-label="Étudiants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><strong>${item.students}</strong><span>${esc(shortSchool(item.program))}</span></li>`).join("")}</ul>
+        <p class="dash-phrase">Déjà reçu <strong class="dash-recu">${gnf(data.paid)}</strong>. Encore à encaisser <strong class="dash-reste-phrase">${gnf(data.reste)}</strong>.</p>
       </div>
       <div class="dash-hero-side">
         <div class="donut-wrap">
@@ -1022,7 +1265,6 @@ function dashboardHtml(data, control) {
             <defs><linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1b7a45"/><stop offset="100%" stop-color="#d4a017"/></linearGradient></defs>
             <circle class="donut-track" cx="60" cy="60" r="46"></circle>
             <circle class="donut-value" cx="60" cy="60" r="46" style="--circ:${circ}; --pct:${rate}"></circle>
-            <g class="orbit"><circle class="orbit-bead" cx="60" cy="14" r="3.4"></circle></g>
           </svg>
           <div class="donut-label"><strong>${esc(data.rate.label)}</strong><span class="muted">encaissé</span></div>
         </div>
@@ -1030,53 +1272,49 @@ function dashboardHtml(data, control) {
       </div>
     </header>
     <section class="dash-kpis">
-      ${kpiCard("Frais attendus", gnf(data.due), 100, "tone-due")}
-      ${kpiCard("Encaissé", gnf(data.paid), paidShare, "tone-paid")}
-      ${kpiCard("Reste à payer", gnf(data.reste), resteShare, "tone-left")}
-      ${kpiCard("Taux de recouvrement", esc(data.rate.label), rate, "tone-rate")}
+      ${kpiCard("Frais attendus", gnf(data.due), 100, "tone-due", "tag")}
+      ${kpiCard("Encaissé", gnf(data.paid), paidShare, "tone-paid", "cash")}
+      ${kpiCard("Reste à payer", gnf(data.reste), resteShare, "tone-left", "bell")}
+      ${kpiCard("Taux de recouvrement", esc(data.rate.label), rate, "tone-rate", "chart")}
     </section>
-    ${peopleHtml(data)}
-    <section class="dash-split">
-      <article class="card">
-        <h2>Encaissements par école</h2>
-        ${programs.map((item) => {
-          const base = Math.max(item.due, 1);
-          const share = Math.min(100, Math.round(item.paid / base * 100));
-          return `<section class="dash-school" data-program="${esc(item.program)}">
-            <div class="dash-school-top"><h3>${esc(item.program)}</h3><strong>${share} %</strong></div>
-            <div class="meter" aria-hidden="true"><span class="paid" style="width:${share}%"></span></div>
-            <div class="figures"><p class="muted">Étudiants<strong>${item.students || 0}</strong></p><p class="muted">Encaissé<strong>${gnf(item.paid)}</strong></p><p class="muted">Reste<strong>${gnf(item.reste)}</strong></p><p class="muted">Frais annuels<strong>${gnf(item.due)}</strong></p></div>
-          </section>`;
-        }).join("")}
-      </article>
-      <div class="dash-stack">
-        <article class="card">
-          <h2>Situation des étudiants</h2>
-          <div class="dash-status">
-            ${Object.entries(data.counts).map(([status, count]) => {
-              const width = Math.max(count ? 8 : 0, Math.round(count / countMax * 100));
-              const label = state.catalog.statuses.find((item) => item.code === status)?.label || status;
-              return `<button class="dash-status-row" data-status="${esc(status)}" type="button">
-                <span>${esc(label)}</span>
-                <span class="dash-status-bar"><i class="${esc(status)}" style="width:${width}%"></i></span>
-                <strong>${count}</strong>
-              </button>`;
-            }).join("")}
-          </div>
-        </article>
-        <article class="card">
-          <h2>Moyens de paiement</h2>
-          ${data.byMethod.map((item) => `<div class="method-row" data-method="${esc(item.label)}"><p>${esc(item.label)}<strong>${gnf(item.amount)}</strong></p><div class="meter"><span class="paid" style="width:${Math.max(4, Math.round(item.amount / methodMax * 100))}%"></span></div></div>`).join("") || "<p>Aucun encaissement sur le filtre.</p>"}
-        </article>
+    <section class="chapitre">
+      <div class="bloc-titre"><h2>Encaissements par école</h2><p>La part déjà reçue sur les frais de l'année.</p></div>
+      <div class="ecoles">${programs.map(ecoleCarte).join("") || "<p class=\"vide\">Aucune école pour le moment.</p>"}</div>
+    </section>
+    <section class="chapitre">
+      <div class="bloc-titre"><h2>Costumes</h2><p>Cliquez un titre pour n'afficher que cette liste.</p><span class="pdf-costumes"><a class="lien-doux" href="/api/costumes/listes.pdf?liste=paye">PDF — ont payé</a><a class="lien-doux" href="/api/costumes/listes.pdf?liste=absent">PDF — n'ont pas payé</a><button type="button" class="lien-doux" data-costume-tous ${state.costumeVue ? "" : "hidden"}>Voir les deux listes</button></span></div>
+      <div class="deux-listes">
+        ${listePersonnes("Ont payé le costume", costumes.paidPeople, "liste-ok", "Personne n'a encore payé de costume.", "paye")}
+        ${listePersonnes("N'ont pas de costume", costumes.absent, "liste-non", "Aucun étudiant sans costume.", "absent")}
       </div>
     </section>
     <section class="dash-split">
       <article class="card">
-        <h2>Échéances encore ouvertes</h2>
+        <h2>Qui a payé sa scolarité</h2>
+        <div class="dash-status">
+          ${Object.entries(data.counts).map(([status, count]) => {
+            const width = Math.max(count ? 8 : 0, Math.round(count / countMax * 100));
+            const label = state.catalog.statuses.find((item) => item.code === status)?.label || status;
+            return `<button class="dash-status-row" data-status="${esc(status)}" type="button">
+              <span>${esc(label)}</span>
+              <span class="dash-status-bar"><i class="${esc(status)}" style="width:${width}%"></i></span>
+              <strong>${count}</strong>
+            </button>`;
+          }).join("")}
+        </div>
+      </article>
+      <article class="card">
+        <h2>Comment l'argent est arrivé</h2>
+          ${data.byMethod.map((item) => `<div class="method-row" data-method="${esc(item.label)}"><p>${esc(item.label)}<strong>${gnf(item.amount)}</strong></p><div class="meter"><span class="paid" style="width:${Math.max(4, Math.round(item.amount / methodMax * 100))}%"></span></div></div>`).join("") || "<p>Aucun encaissement sur le filtre.</p>"}
+      </article>
+    </section>
+    <section class="dash-split">
+      <article class="card">
+        <h2>Prochains versements</h2>
         ${data.forecast.map((item) => `<div class="method-row" data-month="${esc(item.month)}"><p>${esc(monthLabel(item.month))}<strong>${gnf(item.amount)}</strong></p><div class="meter"><span class="left" style="width:${Math.max(4, Math.round(item.amount / forecastMax * 100))}%"></span></div></div>`).join("") || "<p>Aucune échéance future ouverte.</p>"}
       </article>
       <article class="card">
-        <h2>Plus gros restes</h2>
+        <h2>Les restes les plus élevés</h2>
         <div class="dash-debtors">${data.debtors.map((item, index) => `<button class="dash-debtor" data-student="${item.id}" type="button">
           <span class="rank">${String(index + 1).padStart(2, "0")}</span>
           <span class="who"><strong>${esc(item.name)}</strong><span class="muted">${esc(item.program)}</span></span>
@@ -1092,17 +1330,22 @@ async function showDashboard(screen) {
   clearTimeout(state.dashClock);
   state.dashSignature = "";
   const paint = async () => {
-    const [data, control] = await Promise.all([api("/api/tableau"), api("/api/coherence")]);
+    const [data, control, costumes] = await Promise.all([
+      api("/api/tableau"),
+      api("/api/coherence"),
+      api("/api/costumes/impayes").catch(() => ({ paidPeople: [], absent: [] })),
+    ]);
     if (state.screen !== "tableau") return;
-    const signature = dashSignature(data);
+    const signature = `${dashSignature(data)}|${(costumes.paidPeople || []).map((item) => `${item.id}:${item.paid}`).join(",")}|${(costumes.absent || []).map((item) => item.id).join(",")}`;
     const root = screen.querySelector(".dash");
     if (root && signature === state.dashSignature) {
       patchDashboard(root, data, control);
       return;
     }
     const y = document.scrollingElement ? document.scrollingElement.scrollTop : 0;
-    screen.innerHTML = dashboardHtml(data, control);
+    screen.innerHTML = dashboardHtml(data, control, costumes);
     bindDashboard(screen);
+    bindCostumeFiltre(screen);
     state.dashSignature = signature;
     tickClock();
     if (y && document.scrollingElement) document.scrollingElement.scrollTop = y;
@@ -1127,6 +1370,7 @@ const STUDENT_SORTS = [
   ["recent", "Plus récents d'abord"],
   ["enregistrement", "Ordre d'enregistrement (1er inscrit en haut)"],
   ["ecole", "Trier par école"],
+  ["telephone", "Trier par téléphone"],
 ];
 
 function stampKey(value) {
@@ -1145,6 +1389,12 @@ function sortStudents(students, mode) {
     recent: (a, b) => byOrder(b, a),
     enregistrement: byOrder,
     ecole: (a, b) => String(a.program || "").localeCompare(String(b.program || ""), "fr") || byName(a, b),
+    telephone: (a, b) => {
+      if (!a.phone && !b.phone) return byName(a, b);
+      if (!a.phone) return 1;
+      if (!b.phone) return -1;
+      return String(a.phone).localeCompare(String(b.phone), "fr", { numeric: true }) || byName(a, b);
+    },
   }[mode];
   if (compare) students.sort(compare);
   return students;
@@ -1153,9 +1403,10 @@ function sortStudents(students, mode) {
 async function showStudents(screen) {
   const program = state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("");
   screen.innerHTML = `    <div class="top"><div><p class="mark">Registre</p><h1>Étudiants</h1>
-      <p class="top-total"><strong id="student-total">…</strong> <span id="student-total-label">étudiants inscrits</span></p></div>
+      <p class="top-total"><strong id="student-total">…</strong> <span id="student-total-label">étudiants inscrits</span></p>
+      <p class="filtre-actif" id="filtre-actif" hidden></p></div>
       <div class="row-actions">${allowed("student.write") ? `<button class="btn secondary" id="link-cards" type="button">Lier les cartes</button>` : ""}<button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
-    <div class="filters"><input id="q" placeholder="Nom ou matricule" value="${esc(state.q || "")}">
+    <div class="filters"><input id="q" placeholder="Nom, matricule ou téléphone" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
       <select id="niveau"><option value="">Tous les niveaux</option>${(state.catalog.levels || []).map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
       <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}<option value="premiere_tranche" ${state.status === "premiere_tranche" ? "selected" : ""}>1re tranche non payée</option></select>
@@ -1177,14 +1428,21 @@ async function showStudents(screen) {
       statut: document.querySelector("#statut").value,
     });
     const data = await api(`/api/etudiants?${params}`);
+    state.status = document.querySelector("#statut").value;
     state.studentSort = document.querySelector("#tri").value;
+    const filtre = document.querySelector("#filtre-actif");
+    const statutLabel = document.querySelector("#statut").selectedOptions[0]?.textContent || "";
+    if (filtre) {
+      filtre.hidden = !state.status;
+      filtre.textContent = state.status ? `Seuls les étudiants « ${statutLabel} » sont affichés.` : "";
+    }
     sortStudents(data.students, state.studentSort);
     const pageSize = 10;
     const pages = Math.max(1, Math.ceil(data.students.length / pageSize));
     if (state.studentPage > pages) state.studentPage = pages;
     const visible = data.students.slice((state.studentPage - 1) * pageSize, state.studentPage * pageSize);
-    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>Enregistré le</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th></tr></thead><tbody>
-      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td class="when">${esc(shortStamp(student.createdAt))}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td></tr>`).join("")}
+    document.querySelector("#student-table").innerHTML = `<article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>Téléphone</th><th>Enregistré le</th><th>École</th><th class="num">Frais</th><th class="num">Payé</th><th class="num">Reste</th><th>Statut</th></tr></thead><tbody>
+      ${visible.map((student) => `<tr class="clickable" data-student="${student.id}"><td>${esc(student.matricule)}</td><td class="name">${esc(student.name)}</td><td>${student.phone ? esc(student.phone) : `<span class="muted">Non renseigné</span>`}</td><td class="when">${esc(shortStamp(student.createdAt))}</td><td class="school">${esc(student.program)}<br><span class="muted">${esc(levelLabel(student.level))}</span></td><td class="num">${gnf(student.situation.due)}</td><td class="num">${gnf(student.situation.paid)}</td><td class="num">${gnf(student.situation.reste)}${student.situation.credit ? `<br><span class="muted">Crédit ${gnf(student.situation.credit)}</span>` : ""}</td><td><span class="tag ${student.situation.status}">${esc(student.situation.statusLabel)}</span></td></tr>`).join("")}
     </tbody></table></div>
       <div class="pager"><button type="button" id="page-prev" ${state.studentPage <= 1 ? "disabled" : ""}>Précédent</button><span>${data.students.length} étudiants · page ${state.studentPage} / ${pages}</span><button type="button" id="page-next" ${state.studentPage >= pages ? "disabled" : ""}>Suivant</button></div>
     </article>`;
@@ -1212,6 +1470,7 @@ async function showStudents(screen) {
     dialog.innerHTML = `<form id="create-student" novalidate>
         <div class="dialog-head"><h2>Nouvelle fiche</h2><button class="dialog-close" type="button" id="close-fiche">Fermer</button></div>
         <div class="duo"><p><label>Nom</label><input name="lastName" required autocomplete="off"></p><p><label>Prénom</label><input name="firstName" required autocomplete="off"></p></div>
+        <p><label>Téléphone</label><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="620 00 00 00"></p>
         <div class="duo"><p><label>Matricule <span class="muted">(proposé, modifiable)</span></label><input name="matricule" autocomplete="off" placeholder="UA26AT0001" maxlength="31"></p>
           <p><label>E-mail étudiant <span class="muted">(automatique)</span></label><input name="accountPreview" readonly tabindex="-1" placeholder="prenom.nom@univ-africaiim.com"></p></div>
         <div class="duo"><p><label>École</label><select name="programId" required>${state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("")}</select></p>
@@ -1350,6 +1609,7 @@ async function showStudents(screen) {
           costumeAmount: moneyOf(form.costumeAmount),
           costumeQuantity: Number(form.costumeQuantity?.value) || null,
           matricule: form.matricule.value.trim(),
+          phone: form.phone.value.trim(),
           method: form.method.value,
         }) });
         const twins = created.namesakes?.length
@@ -1381,7 +1641,7 @@ async function showStudent(screen, id) {
   const student = data.student;
   const situation = data.situation;
   screen.innerHTML = `<div class="top"><div><p class="mark">${esc(student.matricule)}</p><h1>${esc(student.name)}</h1>
-      <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)}</p>
+      <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)}${student.phone ? ` · ${esc(student.phone)}` : ""}</p>
       ${student.accountEmail ? `<p class="muted">Compte étudiant : ${esc(student.accountEmail)}</p>` : ""}</div>
       <div class="row-actions">
         <button class="btn" id="pay-this" type="button">Encaisser</button>
@@ -2039,14 +2299,15 @@ async function loadCashPayments() {
   const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
   const summary = `${plural(totals.students, "étudiant")} · ${plural(totals.payments, "versement")} · ${gnf(totals.tuition)} de scolarité${totals.costume ? ` · ${gnf(totals.costume)} de costumes à part` : ""}`;
   box.innerHTML = `<div class="cash-tools">
-      <input id="cash-search" type="search" placeholder="Nom, matricule ou numéro de reçu" aria-label="Rechercher un étudiant">
+      <input id="cash-search" type="search" placeholder="Nom, matricule, téléphone ou numéro de reçu" aria-label="Rechercher un étudiant">
       <p class="cash-count" id="cash-count">${summary}</p>
     </div>
     <p class="muted cash-legend">Total des versements validés, toutes dates confondues : scolarité ${gnf(totals.tuition)}${totals.costume ? ` ; costumes, comptés à part : ${gnf(totals.costume)}` : ""}. Les versements saisis à l'import comptent aussi.${totals.cancelled ? ` ${plural(totals.cancelled, "versement annulé")} non compté${totals.cancelled > 1 ? "s" : ""}.` : ""}</p>
-    <div class="table-scroll"><table class="cash-table"><thead><tr><th>Dernier versement</th><th>Étudiant</th><th class="num">Total versé</th><th class="num">Reste à payer</th><th>Dernier reçu</th><th class="actions">Action</th></tr></thead><tbody>
-    ${data.students.map((row) => `<tr hidden data-find="${esc(`${row.name} ${row.matricule} ${row.history.map((item) => item.receipt_number || "").join(" ")} ${(row.costumeOnly || []).map((item) => item.costume_receipt_number || "").join(" ")}`.toLowerCase())}">
+    <div class="table-scroll"><table class="cash-table"><thead><tr><th>Dernier versement</th><th>Étudiant</th><th>Téléphone</th><th class="num">Total versé</th><th class="num">Reste à payer</th><th>Dernier reçu</th><th class="actions">Action</th></tr></thead><tbody>
+    ${data.students.map((row) => `<tr hidden data-find="${esc(`${row.name} ${row.matricule} ${row.phone || ""} ${row.history.map((item) => item.receipt_number || "").join(" ")} ${(row.costumeOnly || []).map((item) => item.costume_receipt_number || "").join(" ")}`.toLowerCase())}">
       <td class="when-cell">${esc(frenchDay(row.lastPaidOn))}</td>
       <td><div class="who-cell"><strong>${esc(row.name)}</strong><span class="muted">${esc(row.matricule)}</span></div></td>
+      <td>${row.phone ? esc(row.phone) : `<span class="muted">Non renseigné</span>`}</td>
       <td class="num"><strong>${gnf(row.tuitionPaid)}</strong>${row.costumePaid ? `<br><span class="muted">Costume à part : ${gnf(row.costumePaid)}</span>` : ""}<br><span class="muted">${plural(row.count, "versement")}${row.cancelled ? ` · ${row.cancelled} annulé${row.cancelled > 1 ? "s" : ""}` : ""}</span></td>
       <td class="num">${row.reste ? gnf(row.reste) : `<span class="tag solde">Soldé</span>`}</td>
       <td class="receipt">${row.receiptNumber ? `<a href="${row.receiptUrl}" target="_blank">${esc(row.receiptNumber)}</a>${printButton(row.receiptUrl)}` : `<span class="muted">Avant l'application</span>`}</td>
@@ -2125,7 +2386,7 @@ async function showPayment(screen) {
   if (state.prefillStudent) showCurrent(state.prefillStudent);
   search.addEventListener("input", async () => {
     const data = await api(`/api/etudiants?q=${encodeURIComponent(search.value)}`);
-    document.querySelector("#results").innerHTML = data.students.slice(0, 6).map((student) => `<button type="button" data-pick="${student.id}">${esc(student.name)} · ${esc(student.matricule)} · reste ${gnf(student.situation.reste)}</button>`).join("");
+    document.querySelector("#results").innerHTML = data.students.slice(0, 6).map((student) => `<button type="button" data-pick="${student.id}">${esc(student.name)} · ${esc(student.matricule)} · ${student.phone ? esc(student.phone) : "sans téléphone"} · reste ${gnf(student.situation.reste)}</button>`).join("");
     document.querySelectorAll("[data-pick]").forEach((button) => button.addEventListener("click", async () => {
       const picked = data.students.find((student) => String(student.id) === button.dataset.pick);
       document.querySelector("#pay-form [name=studentId]").value = picked.id;
@@ -2156,10 +2417,10 @@ function showCurrent(student) {
   showDiscountFor(document.querySelector("#pay-form"), student.level, student.customFee ?? null);
   const situation = student.situation;
   if (!situation) {
-    document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)}</p></div>`;
+    document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)} · ${student.phone ? esc(student.phone) : "sans téléphone"}</p></div>`;
     return;
   }
-  document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)}</p>
+  document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)} · ${student.phone ? esc(student.phone) : "sans téléphone"}</p>
     <p>Frais ${gnf(situation.due)} · déjà payé ${gnf(situation.paid)} · reste ${gnf(situation.reste)}</p>
     <p><span class="tag ${situation.status}">${esc(situation.statusLabel)}</span></p></div>`;
 }
@@ -2828,19 +3089,24 @@ async function showCostumes(screen) {
   const statusTag = (row) => row.status === "partiel"
     ? `<span class="tag partiel">Partiellement payé</span>`
     : `<span class="tag en_retard">Non payé</span>`;
-  screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Costumes impayés</h1>
-      <p class="lead">Étudiants de l'année dont le costume n'est pas entièrement payé. Le montant d'un étudiant est son nombre de costumes × ${esc(gnf(totals.unitPrice))}.</p></div></div>
-    ${totals.unitPrice ? `<div class="stat-row">
+  screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p>  <h1>Costumes</h1>
+      <p class="lead">Deux listes : ceux qui ont payé, et ceux qui n'ont pas encore de costume. Le prix d'un étudiant est son nombre de costumes × ${esc(gnf(totals.unitPrice))}.</p></div></div>
+    ${totals.unitPrice ? `<div class="bloc-titre costumes-barre"><p>Cliquez un titre pour n'afficher que cette liste.</p><span class="pdf-costumes"><a class="lien-doux" href="/api/costumes/listes.pdf?liste=paye">PDF — ont payé</a><a class="lien-doux" href="/api/costumes/listes.pdf?liste=absent">PDF — n'ont pas payé</a><button type="button" class="lien-doux" data-costume-tous ${state.costumeVue ? "" : "hidden"}>Voir les deux listes</button></span></div>
+    <div class="deux-listes costumes-listes">
+      ${listePersonnes("Ont payé le costume", data.paidPeople, "liste-ok", "Personne n'a encore payé de costume.", "paye")}
+      ${listePersonnes("N'ont pas de costume", data.absent, "liste-non", "Aucun étudiant sans costume.", "absent")}
+    </div>
+    <div class="stat-row hors-filtre">
       <div class="stat-tile"><span>Montant total à payer</span><strong>${gnf(totals.expected)}</strong><span class="muted">${plural(totals.costumes, "costume")} × ${esc(gnf(totals.unitPrice))} · ${plural(totals.students, "étudiant")}</span></div>
       <div class="stat-tile ok"><span>Déjà versé</span><strong>${gnf(totals.amount)}</strong><span class="muted">${plural(totals.costumesPaid, "costume")} payé${totals.costumesPaid > 1 ? "s" : ""} · ${plural(totals.paid, "étudiant")} soldé${totals.paid > 1 ? "s" : ""}</span></div>
       <div class="stat-tile alert"><span>Reste à payer</span><strong>${gnf(totals.reste)}</strong><span class="muted">${plural(totals.unpaid, "étudiant")} · ${totals.none} sans versement, ${totals.partial} en partie</span></div>
     </div>
-    ${rows.length ? `<div class="late-tools">
+    ${rows.length ? `<div class="late-tools hors-filtre">
       <input class="late-search" id="costume-search" type="search" placeholder="Nom, matricule ou école" aria-label="Filtrer les costumes impayés">
       <select id="costume-filter" aria-label="Situation du costume"><option value="">Non payés et partiels</option><option value="non_paye">Non payés</option><option value="partiel">Partiellement payés</option></select>
       <p class="muted" id="costume-count"></p>
     </div>
-    <article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>École</th><th class="num">Costumes</th><th class="num">À payer</th><th class="num">Versé</th><th class="num">Reste</th><th>Situation</th></tr></thead><tbody>
+    <article class="card hors-filtre"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>École</th><th class="num">Costumes</th><th class="num">À payer</th><th class="num">Versé</th><th class="num">Reste</th><th>Situation</th></tr></thead><tbody>
       ${rows.map((row) => `<tr class="clickable" data-student="${row.student.id}" data-costume-status="${row.status}" data-find="${esc(`${row.student.name} ${row.student.matricule} ${row.student.program}`.toLowerCase())}">
         <td>${esc(row.student.matricule)}</td><td class="name">${esc(row.student.name)}</td>
         <td class="school">${esc(row.student.program)}<br><span class="muted">${esc(levelLabel(row.student.level))}</span></td>
@@ -2848,7 +3114,9 @@ async function showCostumes(screen) {
     </tbody></table></div>
     <p class="late-none" id="costume-none" hidden>Aucun étudiant ne correspond à cette recherche.</p>
     <p class="costume-sum" id="costume-sum"></p></article>`
-    : `<article class="late-card late-empty"><h2>Tous les costumes sont payés</h2><p>Aucun reste à payer sur les costumes cette année.</p></article>`}`
+    : totals.students
+      ? `<article class="late-card late-empty hors-filtre"><h2>Tous les costumes sont payés</h2><p>Aucun reste à payer sur les costumes cette année.</p></article>`
+      : `<article class="late-card late-empty hors-filtre"><h2>Pas encore d'étudiant</h2><p>Les deux listes se rempliront dès qu'une inscription sera enregistrée.</p></article>`}`
     : `<article class="card"><p class="muted">Le prix du costume n'est pas encore fixé. L'administrateur le règle dans Tarifs.</p></article>`}`;
   const search = document.querySelector("#costume-search");
   const filter = document.querySelector("#costume-filter");
@@ -2878,7 +3146,8 @@ async function showCostumes(screen) {
   search?.addEventListener("input", refresh);
   filter?.addEventListener("change", refresh);
   refresh();
-  screen.querySelectorAll("tr[data-student]").forEach((line) => line.addEventListener("click", () => openStudent(line.dataset.student)));
+  screen.querySelectorAll("tr[data-student], button[data-student]").forEach((line) => line.addEventListener("click", () => openStudent(line.dataset.student)));
+  bindCostumeFiltre(screen);
 }
 
 async function showAudit(screen) {

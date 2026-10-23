@@ -488,8 +488,10 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
         if (firstInstallmentLeft(row.situation).left <= 0) return false;
       } else if (filters.paymentStatus && row.situation.status !== filters.paymentStatus) return false;
       if (!query) return true;
-      const blob = `${row.student.matricule} ${row.student.last_name} ${row.student.first_name}`.toLowerCase();
-      return blob.includes(query);
+      const phone = String(row.student.phone || "");
+      const blob = `${row.student.matricule} ${row.student.last_name} ${row.student.first_name} ${phone}`.toLowerCase();
+      const digits = query.replace(/\D/g, "");
+      return blob.includes(query) || (digits.length >= 3 && phone.replace(/\D/g, "").includes(digits));
     })
     .sort((a, b) => a.student.last_name.localeCompare(b.student.last_name, "fr") || a.student.first_name.localeCompare(b.student.first_name, "fr"));
 }
@@ -552,6 +554,19 @@ async function costumeCounts(db, rows) {
 /** Étudiants de l'année dont le costume n'est pas soldé, avec les totaux attendu, versé et reste de toute l'année. */
 export async function unpaidCostumes(db, asOf = todayInConakry()) {
   const { unitPrice, lines } = await costumeLines(db, await listStudents(db, {}, asOf));
+  const personne = (line) => ({
+    id: line.student.id,
+    name: `${line.student.last_name} ${line.student.first_name}`.trim(),
+    program: line.student.program_name,
+    matricule: line.student.matricule,
+    phone: line.student.phone || "",
+    quantity: line.quantity,
+    paid: line.paid,
+    reste: line.reste,
+    status: line.reste === 0 ? "solde" : line.paid > 0 ? "partiel" : "aucun",
+  });
+  const parNom = (a, b) => a.name.localeCompare(b.name, "fr");
+  const gens = lines.map(personne);
   return {
     totals: costumeTotals(unitPrice, lines),
     students: lines
@@ -565,6 +580,8 @@ export async function unpaidCostumes(db, asOf = todayInConakry()) {
         reste: line.reste,
         status: line.paid > 0 ? "partiel" : "non_paye",
       })),
+    paidPeople: gens.filter((person) => person.paid > 0).sort(parNom),
+    absent: gens.filter((person) => person.paid <= 0).sort(parNom),
   };
 }
 
@@ -1338,6 +1355,7 @@ export async function listCashStudents(db, asOf = todayInConakry()) {
       studentId: student.id,
       name: `${student.last_name} ${student.first_name}`.trim(),
       matricule: student.matricule,
+      phone: student.phone || "",
       program: student.program_name,
       level: student.level,
       customFee: hasCustomFee(student) ? Number(student.custom_fee) : null,
