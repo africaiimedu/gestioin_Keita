@@ -195,15 +195,6 @@
       "couleur": "#FEAB00"
     },
     {
-      "id": "trame",
-      "type": "guilloche",
-      "x": 27.4,
-      "y": 11.0,
-      "w": 56.4,
-      "h": 27.4,
-      "couleur": "#FEAB00"
-    },
-    {
       "id": "qr",
       "type": "qr",
       "x": 3.39,

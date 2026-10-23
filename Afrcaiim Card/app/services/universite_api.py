@@ -1,7 +1,8 @@
 """Synchronisation des étudiants depuis l'API Université AFRICAIIM.
 
-La base atelier reflète exclusivement la liste Université : upsert + retrait
-des fiches locales absentes de l'API. La validité suit la durée du programme.
+La base atelier ne garde que les étudiants renvoyés par l'API Université
+qui existent aussi dans les comptes étudiants de la scolarité.
+La validité suit la durée du programme.
 """
 
 from __future__ import annotations
@@ -240,8 +241,13 @@ def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tu
     return fiche.matricule, raw["photo_url"], existant is None
 
 
-def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
-    """Remplace la base atelier par les fiches renvoyées par l'API Université."""
+def synchro_etudiants(
+    db: Session,
+    *,
+    acteur_id: int | None = None,
+    matricules_comptes: set[str] | None = None,
+) -> dict:
+    """Aligne l'atelier sur l'API, limité aux comptes étudiants quand la liste est fournie."""
     if not api_configuree():
         raise RuntimeError(
             "UNIVERSITE_API_KEY est absent du fichier .env des cartes. "
@@ -260,7 +266,19 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
     if not bruts:
         raise RuntimeError("L'API Université n'a renvoyé aucun étudiant. La base atelier n'a pas été modifiée.")
 
+    comptes = None
+    if matricules_comptes is not None:
+        comptes = {_matricule_cle(str(valeur)) for valeur in matricules_comptes if _matricule_cle(str(valeur))}
+        if not comptes:
+            raise RuntimeError("Aucun compte étudiant transmis par la scolarité. La base atelier n'a pas été modifiée.")
+
+    hors_compte = 0
     for brut in bruts:
+        numero = str((brut or {}).get("student_number") or "").strip()
+        cle = _matricule_cle(numero)
+        if comptes is not None and cle not in comptes:
+            hors_compte += 1
+            continue
         try:
             matricule, photo, cree = _enregistrer_fiche_api(db, brut, acteur_id)
             matricules_api.add(_matricule_cle(matricule))
@@ -271,13 +289,16 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
             if photo:
                 photos_a_prendre.append({"matricule": matricule, "url": photo})
         except Exception as exc:
-            numero = str((brut or {}).get("student_number") or "").strip()
             if numero:
-                matricules_api.add(_matricule_cle(numero))
+                matricules_api.add(cle)
             erreurs.append(f"{numero or '?'} : {exc}")
             journal.warning("Synchro Université échouée pour %s : %s", numero or "?", exc)
 
     if crees + maj == 0:
+        if comptes is not None and hors_compte and not erreurs:
+            raise RuntimeError(
+                "Aucun étudiant de l'API Université n'est dans les comptes étudiants. La base atelier n'a pas été modifiée."
+            )
         raise RuntimeError(
             "Aucune fiche API n'a pu être enregistrée. La base atelier n'a pas été modifiée."
             + (f" {erreurs[0]}" if erreurs else "")
@@ -303,8 +324,12 @@ def synchro_etudiants(db: Session, *, acteur_id: int | None = None) -> dict:
         "erreurs": erreurs[:40],
         "photos_a_prendre": photos_a_prendre,
         "message": (
-            f"{len(matricules_api)} étudiant(s) affiché(s), uniquement ceux de l'API Université"
-            + (f", {retires} retiré(s) hors API" if retires else "")
+            (
+                f"{len(matricules_api)} étudiant(s) affiché(s), présents dans l'API Université et dans les comptes étudiants"
+                if comptes is not None
+                else f"{len(matricules_api)} étudiant(s) affiché(s), uniquement ceux de l'API Université"
+            )
+            + (f", {retires} retiré(s) de l'atelier" if retires else "")
             + "."
             + (f" {len(erreurs)} fiche(s) refusée(s) : {erreurs[0]}" if erreurs else "")
             + " Validité = année d'entrée + durée du programme."

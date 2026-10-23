@@ -27,7 +27,7 @@ from app.services.metier import (
 )
 from app.services.pdf_carte import code_controle, url_affichee
 from app.services.statut import statut_effectif
-from app.services.universite_api import api_configuree, completer_photos, synchro_etudiants
+from app.services.universite_api import _matricule_cle, api_configuree, completer_photos, synchro_etudiants
 from app.ui import csrf_valide
 
 router = APIRouter(prefix="/admin/api")
@@ -190,13 +190,13 @@ def atelier(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(g
 
 
 @router.post("/atelier/synchro-universite")
-def atelier_synchro_universite(
+async def atelier_synchro_universite(
     request: Request,
     background: BackgroundTasks,
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
-    """Remplace la base atelier par la liste de l'API Université."""
+    """Remplace la base atelier par l'intersection API Université et comptes étudiants."""
     if not _verifier_csrf(request):
         return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
     if not api_configuree():
@@ -205,7 +205,15 @@ def atelier_synchro_universite(
             status_code=503,
         )
     try:
-        bilan = synchro_etudiants(db, acteur_id=admin.id)
+        corps = await request.json()
+    except Exception:
+        corps = {}
+    bruts_comptes = corps.get("matricules_comptes") if isinstance(corps, dict) else None
+    comptes = None
+    if isinstance(bruts_comptes, list):
+        comptes = {_matricule_cle(str(valeur)) for valeur in bruts_comptes if _matricule_cle(str(valeur))}
+    try:
+        bilan = synchro_etudiants(db, acteur_id=admin.id, matricules_comptes=comptes)
     except RuntimeError as exc:
         return JSONResponse({"message": str(exc)}, status_code=502)
     photos = bilan.pop("photos_a_prendre", [])
