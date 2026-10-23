@@ -62,7 +62,7 @@ import {
   unpaidCostumes,
 } from "./services/domain.js";
 import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseForPrint, listExpenses, markExpenseHanded } from "./services/expenses.js";
-import { renderCostumeListPdf, renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
+import { renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { syncStudentsToCard } from "./services/cardSync.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
@@ -444,17 +444,6 @@ app.get("/api/journal", requireAction("report.read"), async (req, res) => {
 });
 app.get("/api/retards", requireAction("student.read"), async (_req, res) => res.json({ students: await lateStudents(db) }));
 app.get("/api/costumes/impayes", requireAction("student.read"), async (_req, res) => res.json(await unpaidCostumes(db)));
-app.get("/api/costumes/listes.pdf", requireAction("student.read"), async (req, res) => {
-  const data = await unpaidCostumes(db);
-  const absent = req.query.liste === "absent";
-  const people = absent ? data.absent : data.paidPeople;
-  const title = absent ? "Étudiants qui n'ont pas payé le costume" : "Étudiants qui ont payé le costume";
-  const pdf = await renderCostumeListPdf({ title, people });
-  const filename = absent ? "costumes-non-payes.pdf" : "costumes-payes.pdf";
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.send(pdf);
-});
 app.post("/api/relances", requireAction("reminder.create"), async (req, res) => {
   res.status(201).json(await createReminder(db, req.user, Number(req.body?.studentId), req.body?.channel || "copie"));
 });
