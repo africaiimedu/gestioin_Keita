@@ -175,7 +175,7 @@ function financeGroups() {
       (allowed("student.read") || allowed("student.write")) && ["etudiants", "Étudiants"],
       allowed("payment.create") && ["paiement", "Encaisser"],
       allowed("student.read") && ["retards", "Relances"],
-      allowed("student.read") && ["costumes", "Costumes impayés"],
+      allowed("student.read") && ["costumes", "Costumes"],
     ]],
     ["Caisse", [
       allowed("report.read") && ["journal", "Journal de caisse"],
@@ -243,7 +243,7 @@ const MENU_INFO = {
   "screen:etudiants": ["people", "Fiches et situation de paiement"],
   "screen:paiement": ["cash", "Enregistrer un paiement"],
   "screen:retards": ["bell", "Étudiants à relancer"],
-  "screen:costumes": ["bag", "Montant à payer et reste des costumes"],
+  "screen:costumes": ["bag", "Costumes payés et non payés"],
   "screen:journal": ["book", "Encaissements du jour"],
   "screen:audit": ["shield", "Qui a fait quoi, et quand"],
   "screen:parametres": ["tag", "Frais par école et par niveau"],  "carte:etudiants": ["card", "Fiches et statut des cartes"],
@@ -2863,66 +2863,52 @@ async function showLate(screen) {
   }));
 }
 
+function costumeDisplayName(student) {
+  return `${String(student.lastName || "").toLocaleUpperCase("fr")} ${student.firstName || ""}`.trim();
+}
+
 async function showCostumes(screen) {
-  const data = await api("/api/costumes/impayes");
+  const data = await api("/api/costumes");
   const totals = data.totals;
-  const rows = data.students;
+  const paid = data.paid || [];
+  const unpaid = data.unpaid || [];
   const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
-  const statusTag = (row) => row.status === "partiel"
-    ? `<span class="tag partiel">Partiellement payé</span>`
-    : `<span class="tag en_retard">Non payé</span>`;
-  screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Costumes</h1>
-      <p class="lead">Étudiants de l'année dont le costume n'est pas entièrement payé. Le montant d'un étudiant est son nombre de costumes × ${esc(gnf(totals.unitPrice))}.</p></div>
-      <div class="row-actions"><a class="btn secondary" href="/api/listes/costumes-payes.pdf">PDF costumes payés</a><a class="btn secondary" href="/api/listes/costumes-impayes.pdf">PDF costumes non payés</a></div></div>
-    ${totals.unitPrice ? `<div class="stat-row">
-      <div class="stat-tile"><span>Montant total à payer</span><strong>${gnf(totals.expected)}</strong><span class="muted">${plural(totals.costumes, "costume")} × ${esc(gnf(totals.unitPrice))} · ${plural(totals.students, "étudiant")}</span></div>
-      <div class="stat-tile ok"><span>Déjà versé</span><strong>${gnf(totals.amount)}</strong><span class="muted">${plural(totals.costumesPaid, "costume")} payé${totals.costumesPaid > 1 ? "s" : ""} · ${plural(totals.paid, "étudiant")} soldé${totals.paid > 1 ? "s" : ""}</span></div>
-      <div class="stat-tile alert"><span>Reste à payer</span><strong>${gnf(totals.reste)}</strong><span class="muted">${plural(totals.unpaid, "étudiant")} · ${totals.none} sans versement, ${totals.partial} en partie</span></div>
-    </div>
-    ${rows.length ? `<div class="late-tools">
-      <input class="late-search" id="costume-search" type="search" placeholder="Nom, matricule ou école" aria-label="Filtrer les costumes impayés">
-      <select id="costume-filter" aria-label="Situation du costume"><option value="">Non payés et partiels</option><option value="non_paye">Non payés</option><option value="partiel">Partiellement payés</option></select>
-      <p class="muted" id="costume-count"></p>
-    </div>
-    <article class="card"><div class="table-scroll"><table><thead><tr><th>Matricule</th><th>Nom</th><th>École</th><th class="num">Costumes</th><th class="num">À payer</th><th class="num">Versé</th><th class="num">Reste</th><th>Situation</th></tr></thead><tbody>
-      ${rows.map((row) => `<tr class="clickable" data-student="${row.student.id}" data-costume-status="${row.status}" data-find="${esc(`${row.student.name} ${row.student.matricule} ${row.student.program}`.toLowerCase())}">
-        <td>${esc(row.student.matricule)}</td><td class="name">${esc(row.student.name)}</td>
-        <td class="school">${esc(row.student.program)}<br><span class="muted">${esc(levelLabel(row.student.level))}</span></td>
-        <td class="num">${row.quantity}</td><td class="num">${gnf(row.price)}</td><td class="num">${gnf(row.paid)}</td><td class="num"><strong>${gnf(row.reste)}</strong></td><td>${statusTag(row)}</td></tr>`).join("")}
-    </tbody></table></div>
-    <p class="late-none" id="costume-none" hidden>Aucun étudiant ne correspond à cette recherche.</p>
-    <p class="costume-sum" id="costume-sum"></p></article>`
-    : `<article class="late-card late-empty"><h2>Tous les costumes sont payés</h2><p>Aucun reste à payer sur les costumes cette année.</p></article>`}`
-    : `<article class="card"><p class="muted">Le prix du costume n'est pas encore fixé. L'administrateur le règle dans Tarifs.</p></article>`}`;
-  const search = document.querySelector("#costume-search");
-  const filter = document.querySelector("#costume-filter");
-  const refresh = () => {
-    const query = (search?.value || "").trim().toLowerCase();
-    const wanted = filter?.value || "";
-    const sums = { quantity: 0, price: 0, paid: 0, reste: 0 };
-    let visible = 0;
-    screen.querySelectorAll("tr[data-find]").forEach((line, index) => {
-      const show = (!query || line.dataset.find.includes(query)) && (!wanted || line.dataset.costumeStatus === wanted);
-      line.hidden = !show;
-      if (!show) return;
-      visible += 1;
-      const row = rows[index];
-      sums.quantity += row.quantity;
-      sums.price += row.price;
-      sums.paid += row.paid;
-      sums.reste += row.reste;
-    });
-    const sum = document.querySelector("#costume-sum");
-    if (sum) sum.innerHTML = `Total de la liste : <strong>${plural(sums.quantity, "costume")}</strong> · à payer <strong>${gnf(sums.price)}</strong> · versé <strong>${gnf(sums.paid)}</strong> · reste <strong>${gnf(sums.reste)}</strong>`;
-    const count = document.querySelector("#costume-count");
-    if (count) count.textContent = visible === rows.length ? plural(rows.length, "étudiant") : `${visible} sur ${plural(rows.length, "étudiant")}`;
-    const none = document.querySelector("#costume-none");
-    if (none) none.hidden = visible !== 0;
+  const bill = (row) => {
+    const count = row.costumesPaid || 0;
+    return `${count} ${count > 1 ? "costumes payés" : "costume payé"} · ${gnf(row.price)}`;
   };
-  search?.addEventListener("input", refresh);
-  filter?.addEventListener("change", refresh);
-  refresh();
-  screen.querySelectorAll("tr[data-student]").forEach((line) => line.addEventListener("click", () => openStudent(line.dataset.student)));
+  const person = (row, tone) => `<button class="costume-person" type="button" data-student="${row.student.id}">
+      <span class="costume-avatar ${tone}">${esc(initials(row.student.name))}</span>
+      <span class="costume-who"><strong>${esc(costumeDisplayName(row.student))}</strong><span>${esc(shortSchool(row.student.program))}</span><span class="costume-bill">${esc(bill(row))}</span></span>
+      <span class="costume-state ${tone}">${tone === "paid" ? "Payé" : row.status === "partiel" ? "En partie" : "Sans costume"}</span>
+    </button>`;
+  const columnSum = (lines) => {
+    const costumes = lines.reduce((total, row) => total + (row.costumesPaid || 0), 0);
+    const price = lines.reduce((total, row) => total + (row.price || 0), 0);
+    return `${plural(costumes, "costume")} payé${costumes > 1 ? "s" : ""} · ${gnf(price)}`;
+  };
+  screen.innerHTML = `<div class="costume-head"><div><h1>Costumes</h1>
+      <p class="costume-hint">Cliquez un titre pour n'afficher que cette liste.</p></div>
+      <div class="row-actions"><a class="btn secondary" href="/api/listes/costumes-payes.pdf">PDF – ont payé</a><a class="btn secondary" href="/api/listes/costumes-impayes.pdf">PDF – n'ont pas payé</a></div></div>
+    ${totals.unitPrice ? `<div class="costume-board" data-focus="">
+      <section class="costume-col paid">
+        <h2><button type="button" data-costume-focus="paid">Ont payé le costume <span class="costume-count">${paid.length}</span></button></h2>
+        <p class="costume-meta">${esc(columnSum(paid))}</p>
+        <div class="costume-list">${paid.length ? paid.map((row) => person(row, "paid")).join("") : `<p class="muted">Aucun costume soldé.</p>`}</div>
+      </section>
+      <section class="costume-col unpaid">
+        <h2><button type="button" data-costume-focus="unpaid">N'ont pas de costume <span class="costume-count">${unpaid.length}</span></button></h2>
+        <p class="costume-meta">${esc(columnSum(unpaid))}</p>
+        <div class="costume-list">${unpaid.length ? unpaid.map((row) => person(row, "unpaid")).join("") : `<p class="muted">Tout le monde a son costume.</p>`}</div>
+      </section>
+    </div>` : `<article class="card"><p class="muted">Le prix du costume n'est pas encore fixé. L'administrateur le règle dans Tarifs.</p></article>`}`;
+  screen.querySelectorAll("[data-costume-focus]").forEach((button) => button.addEventListener("click", () => {
+    const board = screen.querySelector(".costume-board");
+    if (!board) return;
+    const next = button.dataset.costumeFocus;
+    board.dataset.focus = board.dataset.focus === next ? "" : next;
+  }));
+  screen.querySelectorAll("[data-student]").forEach((line) => line.addEventListener("click", () => openStudent(line.dataset.student)));
 }
 
 async function showAudit(screen) {

@@ -447,6 +447,7 @@ app.get("/api/journal", requireAction("report.read"), async (req, res) => {
 });
 app.get("/api/retards", requireAction("student.read"), async (_req, res) => res.json({ students: await lateStudents(db) }));
 app.get("/api/costumes/impayes", requireAction("student.read"), async (_req, res) => res.json(await unpaidCostumes(db)));
+app.get("/api/costumes", requireAction("student.read"), async (_req, res) => res.json(await costumeRegister(db)));
 app.get("/api/listes/:kind.pdf", requireAction("student.read"), async (req, res) => {
   const kind = req.params.kind;
   const today = todayInConakry();
@@ -490,19 +491,21 @@ app.get("/api/listes/:kind.pdf", requireAction("student.read"), async (req, res)
     title = paid ? "Costumes payés" : "Costumes non payés";
     subtitle = `${lines.length} étudiant(s) · ${today}`;
     columns = [
-      { label: "Matricule", width: 100 },
-      { label: "Nom", width: 170 },
-      { label: "Téléphone", width: 110 },
-      { label: "École", width: 180 },
-      { label: "À payer", width: 90, align: "right" },
-      { label: "Versé", width: 90, align: "right" },
-      { label: "Reste", width: 80, align: "right" },
+      { label: "Matricule", width: 90 },
+      { label: "Nom", width: 140 },
+      { label: "Téléphone", width: 95 },
+      { label: "École", width: 140 },
+      { label: "Payés", width: 50, align: "right" },
+      { label: "Prix total", width: 90, align: "right" },
+      { label: "Versé", width: 80, align: "right" },
+      { label: "Reste", width: 70, align: "right" },
     ];
     rows = lines.map((line) => [
       line.student.matricule,
       line.student.name,
       line.student.phone || "",
       line.student.program,
+      String(line.costumesPaid || 0),
       formatGnf(line.price),
       formatGnf(line.paid),
       formatGnf(line.reste),

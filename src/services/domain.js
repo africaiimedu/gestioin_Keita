@@ -589,6 +589,7 @@ export async function costumeRegister(db, asOf = todayInConakry()) {
   const mapped = lines.map((line) => ({
     student: publicStudent(line.student),
     quantity: line.quantity,
+    costumesPaid: unitPrice > 0 ? Math.min(line.quantity, Math.floor(line.paid / unitPrice)) : 0,
     price: line.price,
     paid: line.paid,
     reste: line.reste,
