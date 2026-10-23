@@ -896,8 +896,6 @@ function tickClock() {
 function patchDashboard(root, data, control) {
   const dueBase = Math.max(data.due, 1);
   const rate = Math.min(100, (data.rate.tenths || 0) / 10);
-  const countMax = Math.max(...Object.values(data.counts), 1);
-  const methodMax = Math.max(...data.byMethod.map((item) => item.amount), 1);
   const forecastMax = Math.max(...data.forecast.map((item) => item.amount), 1);
   const write = (tone, text, width) => {
     const card = root.querySelector(`.dash-kpi.${tone}`);
@@ -945,35 +943,6 @@ function patchDashboard(root, data, control) {
     if (paid) paid.textContent = gnf(item.paid);
     if (due) due.textContent = gnf(item.due);
   }
-  for (const item of sortSchools(data.byProgram)) {
-    const block = root.querySelector(`[data-program="${CSS.escape(item.program)}"]`);
-    if (!block) continue;
-    const share = Math.min(100, Math.round(item.paid / Math.max(item.due, 1) * 100));
-    block.querySelector(".dash-school-top strong").textContent = `${share} %`;
-    block.querySelector(".meter .paid").style.width = `${share}%`;
-    const writeFigure = (name, text) => {
-      const node = block.querySelector(`.${name}`);
-      if (node) node.textContent = text;
-    };
-    writeFigure("school-students", String(item.students || 0));
-    writeFigure("school-bachelor", String(item.bachelor || 0));
-    writeFigure("school-master", String(item.master || 0));
-    writeFigure("school-paid", gnf(item.paid));
-    writeFigure("school-reste", gnf(item.reste));
-    writeFigure("school-due", gnf(item.due));
-  }
-  for (const [status, countValue] of Object.entries(data.counts)) {
-    const row = root.querySelector(`.dash-status-row[data-status="${CSS.escape(status)}"]`);
-    if (!row) continue;
-    row.querySelector("strong").textContent = String(countValue);
-    row.querySelector("i").style.width = `${Math.max(countValue ? 8 : 0, Math.round(countValue / countMax * 100))}%`;
-  }
-  data.byMethod.forEach((item) => {
-    const row = root.querySelector(`[data-method="${CSS.escape(item.label)}"]`);
-    if (!row) return;
-    row.querySelector("strong").textContent = gnf(item.amount);
-    row.querySelector(".meter span").style.width = `${Math.max(4, Math.round(item.amount / methodMax * 100))}%`;
-  });
   data.forecast.forEach((item) => {
     const row = root.querySelector(`[data-month="${CSS.escape(item.month)}"]`);
     if (!row) return;
@@ -1010,11 +979,8 @@ function peopleHtml(data) {
 
 function dashboardHtml(data, control) {
   const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
-  const programs = sortSchools(data.byProgram);
   const rate = Math.min(100, (data.rate.tenths || 0) / 10);
   const circ = (2 * Math.PI * 46).toFixed(2);
-  const countMax = Math.max(...Object.values(data.counts), 1);
-  const methodMax = Math.max(...data.byMethod.map((item) => item.amount), 1);
   const forecastMax = Math.max(...data.forecast.map((item) => item.amount), 1);
   const dueBase = Math.max(data.due, 1);
   const paidShare = Math.min(100, Math.round(data.paid / dueBase * 100));
@@ -1065,40 +1031,6 @@ function dashboardHtml(data, control) {
       ${kpiCard("Taux de recouvrement", esc(data.rate.label), rate, "tone-rate")}
     </section>
     ${peopleHtml(data)}
-    <section class="dash-split">
-      <article class="card">
-        <h2>Encaissements par école</h2>
-        ${programs.map((item) => {
-          const base = Math.max(item.due, 1);
-          const share = Math.min(100, Math.round(item.paid / base * 100));
-          return `<section class="dash-school" data-program="${esc(item.program)}">
-            <div class="dash-school-top"><h3>${esc(item.program)}</h3><strong>${share} %</strong></div>
-            <div class="meter" aria-hidden="true"><span class="paid" style="width:${share}%"></span></div>
-            <div class="figures"><p class="muted">Bachelor<strong class="school-bachelor">${item.bachelor || 0}</strong></p><p class="muted">Master<strong class="school-master">${item.master || 0}</strong></p><p class="muted">Étudiants<strong class="school-students">${item.students || 0}</strong></p><p class="muted">Encaissé<strong class="school-paid">${gnf(item.paid)}</strong></p><p class="muted">Reste<strong class="school-reste">${gnf(item.reste)}</strong></p><p class="muted">Frais annuels<strong class="school-due">${gnf(item.due)}</strong></p></div>
-          </section>`;
-        }).join("")}
-      </article>
-      <div class="dash-stack">
-        <article class="card">
-          <h2>Situation des étudiants</h2>
-          <div class="dash-status">
-            ${Object.entries(data.counts).map(([status, count]) => {
-              const width = Math.max(count ? 8 : 0, Math.round(count / countMax * 100));
-              const label = state.catalog.statuses.find((item) => item.code === status)?.label || status;
-              return `<button class="dash-status-row" data-status="${esc(status)}" type="button">
-                <span>${esc(label)}</span>
-                <span class="dash-status-bar"><i class="${esc(status)}" style="width:${width}%"></i></span>
-                <strong>${count}</strong>
-              </button>`;
-            }).join("")}
-          </div>
-        </article>
-        <article class="card">
-          <h2>Moyens de paiement</h2>
-          ${data.byMethod.map((item) => `<div class="method-row" data-method="${esc(item.label)}"><p>${esc(item.label)}<strong>${gnf(item.amount)}</strong></p><div class="meter"><span class="paid" style="width:${Math.max(4, Math.round(item.amount / methodMax * 100))}%"></span></div></div>`).join("") || "<p>Aucun encaissement sur le filtre.</p>"}
-        </article>
-      </div>
-    </section>
     <section class="dash-split">
       <article class="card">
         <h2>Échéances encore ouvertes</h2>
