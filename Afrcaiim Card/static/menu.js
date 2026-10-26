@@ -34,6 +34,9 @@
   }
   var solde = Number(feuille.dataset.solde || 0);
   var maximum = Number(feuille.dataset.max || 10);
+  var connecte = feuille.dataset.connecte === "1";
+  var estEtudiant = feuille.dataset.role === "etudiant";
+  var loginUrl = feuille.dataset.login || "/login";
   var boutons = {};
   document.querySelectorAll(".plus").forEach(function (bouton) { boutons[bouton.dataset.id] = bouton; });
   function plafond(id) {
@@ -43,7 +46,7 @@
   function totalSolde() {
     return Object.keys(panier).reduce(function (somme, id) { return somme + panier[id].prix * panier[id].qte; }, 0);
   }
-  function parSolde() { return solde >= totalSolde(); }
+  function parSolde() { return connecte && estEtudiant && solde >= totalSolde(); }
   function prixLigne(id) { return parSolde() ? panier[id].prix : (panier[id].caisse || panier[id].prix); }
   function total() {
     return Object.keys(panier).reduce(function (somme, id) { return somme + prixLigne(id) * panier[id].qte; }, 0);
@@ -75,15 +78,27 @@
       liste.appendChild(ligne);
     });
     document.getElementById("confirmation-total").textContent = francs(total());
-    document.getElementById("confirmation-texte").textContent = parSolde()
-      ? "Le montant sera retiré de votre solde cantine (" + francs(solde) + "). La cuisine commence la préparation dès la validation."
-      : "Vous payez ce montant à la caisse, en espèces ou par Orange Money. La cuisine prépare la commande une fois le paiement validé.";
+    var texte;
+    if (!connecte) {
+      texte = "Connectez-vous pour valider. Étudiant : le compte sera débité quand le repas sera prêt. Personnel : paiement à la caisse.";
+    } else if (parSolde()) {
+      texte = "La cuisine prépare tout de suite. Vous validerez le paiement (" + francs(total()) + ") sur votre compte quand le repas sera marqué prêt.";
+    } else if (estEtudiant) {
+      texte = "Votre solde ne couvre pas cette commande. Passez à la caisse pour payer " + francs(total()) + ".";
+    } else {
+      texte = "Vous n'êtes pas étudiant : passez à la caisse pour payer " + francs(total()) + ". La cuisine reçoit déjà la commande.";
+    }
+    document.getElementById("confirmation-texte").textContent = texte;
     valider.hidden = true;
     confirmation.hidden = false;
     document.getElementById("confirmation-oui").focus();
   }
   valider.addEventListener("click", function () {
     if (!Object.keys(panier).length) return;
+    if (!connecte) {
+      window.location.href = loginUrl;
+      return;
+    }
     montrerConfirmation();
   });
   document.getElementById("confirmation-retour").addEventListener("click", function () {
@@ -163,10 +178,21 @@
     var avis = document.getElementById("avis-caisse");
     var caisse = compte > 0 && !parSolde();
     avis.hidden = !caisse;
-    avis.textContent = caisse
-      ? "Votre solde (" + francs(solde) + ") ne couvre pas cette commande. Elle passe au prix sans solde : vous payez " + francs(total()) + " à la caisse (espèces ou Orange Money), puis la cuisine la prépare."
-      : "";
-    document.getElementById("payer-libelle").textContent = caisse ? "Commander et payer à la caisse" : "Payer avec mon solde";
+    if (!connecte) {
+      avis.hidden = false;
+      avis.textContent = "Vous pouvez composer le plateau sans compte. Pour valider, vous serez invité à vous connecter.";
+    } else if (!estEtudiant) {
+      avis.hidden = false;
+      avis.textContent = "Personnel / professeur : après validation, passez à la caisse pour payer " + francs(total()) + ".";
+    } else {
+      avis.hidden = !caisse;
+      avis.textContent = caisse
+        ? "Votre solde (" + francs(solde) + ") ne couvre pas cette commande. Passez à la caisse pour " + francs(total()) + "."
+        : "";
+    }
+    document.getElementById("payer-libelle").textContent = !connecte
+      ? "Se connecter pour valider"
+      : (caisse || !estEtudiant ? "Valider et payer à la caisse" : "Valider la commande");
     document.getElementById("payer-montant").textContent = francs(total());
     masquerConfirmation();
     document.getElementById("panier-json").value = JSON.stringify(articles());

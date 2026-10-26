@@ -64,6 +64,11 @@ def _colonnes_cantine() -> None:
         )
         connexion.execute(text("ALTER TABLE travaux_impression ADD COLUMN IF NOT EXISTS personnel_id INTEGER"))
         connexion.execute(text("ALTER TABLE travaux_impression ADD COLUMN IF NOT EXISTS badge_id INTEGER"))
+        connexion.execute(text("ALTER TABLE commandes_cantine ALTER COLUMN etudiant_id DROP NOT NULL"))
+        connexion.execute(text("ALTER TABLE commandes_cantine ADD COLUMN IF NOT EXISTS utilisateur_id INTEGER"))
+        connexion.execute(
+            text("ALTER TABLE commandes_cantine ADD COLUMN IF NOT EXISTS nom_client VARCHAR(170) NOT NULL DEFAULT ''")
+        )
 
 
 def _assurer_cantine_exemple(db) -> None:

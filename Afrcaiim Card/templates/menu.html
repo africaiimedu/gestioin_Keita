@@ -42,9 +42,9 @@
                   <strong>{{ plat.prix|gnf }}</strong>
                   {% if prix_caisse(plat) != plat.prix %}<small>Sans solde : {{ prix_caisse(plat)|gnf }}</small>{% endif %}
                 </span>
-                {% if plat.disponible and etudiant %}
+                {% if plat.disponible %}
                   <button type="button" class="plus" data-id="{{ plat.id }}" data-nom="{{ plat.nom }}" data-prix="{{ plat.prix }}" data-prix-caisse="{{ prix_caisse(plat) }}" data-stock="{{ plat.stock if plat.stock is not none else '' }}" aria-label="Ajouter {{ plat.nom }}">+</button>
-                {% elif not plat.disponible %}
+                {% else %}
                   <span class="ferme">Épuisé</span>
                 {% endif %}
               </div>
@@ -55,7 +55,7 @@
     </section>
   {% endfor %}
 
-  {% if etudiant and commandes %}
+  {% if commandes %}
     <section class="rayon historique">
       <h2>Vos commandes</h2>
       <ul class="passees">
@@ -67,7 +67,6 @@
   {% endif %}
 </div>
 
-{% if etudiant %}
   <button type="button" class="barre-panier" id="ouvrir-panier" hidden>
     <span id="compte-panier">0</span>
     <span>Voir le panier</span>
@@ -89,7 +88,7 @@
       <button type="button" class="payer" id="choix-valider">Ajouter au panier</button>
     </div>
   </section>
-  <section class="feuille" id="feuille" hidden aria-label="Panier" data-solde="{{ etudiant.solde_cantine or 0 }}" data-max="{{ qte_max }}">
+  <section class="feuille" id="feuille" hidden aria-label="Panier" data-solde="{{ etudiant.solde_cantine if etudiant else 0 }}" data-max="{{ qte_max }}" data-connecte="{{ 1 if user else 0 }}" data-role="{{ role }}" data-login="/login?suivant=/m/{{ point.jeton }}">
     <header>
       <h2>Votre panier</h2>
       <button type="button" id="fermer-panier" aria-label="Fermer">×</button>
@@ -117,6 +116,5 @@
       </div>
     </form>
   </section>
-{% endif %}
-<script src="/static/menu.js?v=5"></script>
+<script src="/static/menu.js?v=6"></script>
 {% endblock %}

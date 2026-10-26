@@ -162,7 +162,9 @@ class CommandeCantine(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     numero: Mapped[str] = mapped_column(String(12), unique=True)
-    etudiant_id: Mapped[int] = mapped_column(ForeignKey("etudiants.id"), index=True)
+    etudiant_id: Mapped[int | None] = mapped_column(ForeignKey("etudiants.id"), nullable=True, index=True)
+    utilisateur_id: Mapped[int | None] = mapped_column(ForeignKey("utilisateurs.id"), nullable=True, index=True)
+    nom_client: Mapped[str] = mapped_column(String(170), default="")
     point_id: Mapped[int] = mapped_column(ForeignKey("points_cantine.id"))
     montant: Mapped[int] = mapped_column(Integer)
     statut: Mapped[str] = mapped_column(String(20), index=True, default="recue")

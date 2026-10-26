@@ -119,21 +119,22 @@ def test_debit_unique_solde_et_carte():
                 db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0001", "2468"
             )
             assert neuve is True
-            assert commande.montant == 25000
+            assert commande.statut == "recue"
+            assert commande.mode_paiement == "solde"
             db.refresh(etudiant)
-            assert etudiant.solde_cantine == 5000
+            assert etudiant.solde_cantine == 30000
             encore, deuxieme = passer_commande(
                 db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0001"
             )
             assert deuxieme is False
             assert encore.id == commande.id
             db.refresh(etudiant)
-            assert etudiant.solde_cantine == 5000
+            assert etudiant.solde_cantine == 30000
             a_payer, _ = passer_commande(db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0002")
             assert a_payer.statut == "a_payer"
             assert a_payer.mode_paiement == "caisse"
             db.refresh(etudiant)
-            assert etudiant.solde_cantine == 5000
+            assert etudiant.solde_cantine == 30000
             carte = db.scalar(select(Carte).where(Carte.etudiant_id == etudiant.id))
             carte.statut = "perdue"
             db.commit()
@@ -155,6 +156,16 @@ def test_page_menu_et_commande():
                 _, _, point, plat = _compte(db, 40000)
                 jeton = point.jeton
                 plat_id = plat.id
+            ouvert = client.get(f"/m/{jeton}")
+            assert ouvert.status_code == 200
+            assert "Sandwich au thon" in ouvert.text
+            assert 'id="valider-commande"' in ouvert.text
+            refuse = client.post(
+                f"/m/{jeton}/commander",
+                data={"csrf": "x", "panier": "[]", "cle": "clehttpmmenutest00", "confirme": "1"},
+                follow_redirects=False,
+            )
+            assert "/login" in refuse.headers.get("location", "")
             page = client.get("/login")
             jeton_csrf = page.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
             entre = client.post(
@@ -201,9 +212,10 @@ def test_page_menu_et_commande():
             recu = client.get(commande.headers["location"])
             assert recu.status_code == 200
             assert "A-" in recu.text
+            assert "paiement à la confirmation" in recu.text
             with SessionLocal() as db:
                 etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
-                assert etudiant.solde_cantine == 15000
+                assert etudiant.solde_cantine == 40000
     finally:
         _nettoyer()
 

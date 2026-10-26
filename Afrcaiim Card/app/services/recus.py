@@ -38,7 +38,7 @@ def details_lignes(lignes) -> str:
 
 def emettre_recu(
     db,
-    etudiant: Etudiant,
+    etudiant: Etudiant | None,
     *,
     nature: str,
     mode: str,
@@ -47,16 +47,25 @@ def emettre_recu(
     commande: CommandeCantine | None = None,
     details: str = "",
     agent_id: int | None = None,
+    nom_affiche: str = "",
 ) -> RecuCantine:
     """Ajoute le reçu dans la transaction en cours. Le numéro suit l'ordre d'émission."""
     if nature not in NATURES or mode not in MODES:
         raise ValueError("Reçu cantine : nature ou mode inconnu.")
+    if etudiant is not None:
+        nom = f"{etudiant.prenom} {etudiant.nom}".strip()[:170]
+        matricule = etudiant.matricule
+        etudiant_id = etudiant.id
+    else:
+        nom = (nom_affiche or (commande.nom_client if commande is not None else "") or "Client")[:170]
+        matricule = ""
+        etudiant_id = None
     recu = RecuCantine(
         numero=f"T{secrets.token_hex(6)}",
-        etudiant_id=etudiant.id,
+        etudiant_id=etudiant_id,
         commande_id=commande.id if commande is not None else None,
-        nom_etudiant=f"{etudiant.prenom} {etudiant.nom}".strip()[:170],
-        matricule=etudiant.matricule,
+        nom_etudiant=nom,
+        matricule=matricule,
         nature=nature,
         mode=mode,
         montant=int(montant),

@@ -18,7 +18,6 @@ from app.deps import (
     exiger_cuisiniere,
     exiger_etudiant,
     get_db,
-    maison,
     utilisateur_courant,
 )
 from app.models import (
@@ -39,6 +38,7 @@ from app.services.menu_cantine import (
     avancer_statut,
     ajouter_plat,
     catalogue,
+    confirmer_paiement_solde,
     encaisser_commande,
     lire_panier,
     modifier_plat,
@@ -72,16 +72,17 @@ def _etudiant_de(db: Session, utilisateur: Utilisateur) -> Etudiant:
     return etudiant
 
 
+def _possede(commande: CommandeCantine, utilisateur: Utilisateur) -> bool:
+    if commande.utilisateur_id and commande.utilisateur_id == utilisateur.id:
+        return True
+    return bool(utilisateur.etudiant_id and commande.etudiant_id == utilisateur.etudiant_id)
+
+
 @router.get("/menu")
 def menu_principal(request: Request, db: Session = Depends(get_db)):
-    utilisateur = utilisateur_courant(request, db)
-    if utilisateur is not None and utilisateur.role != "etudiant":
-        raise Redirection(maison(utilisateur.role))
     point = point_actif(db)
     if point is None:
         raise Redirection("/login")
-    if utilisateur is None:
-        raise Redirection(f"/login?suivant=/m/{point.jeton}")
     raise Redirection(f"/m/{point.jeton}")
 
 
@@ -96,19 +97,25 @@ def menu(
         flash(request, "erreur", "Ce QR code de cantine n'est plus valable.")
         raise Redirection("/login")
     utilisateur = utilisateur_courant(request, db)
-    if utilisateur is None:
-        raise Redirection(f"/login?suivant=/m/{jeton}")
-    if utilisateur.role != "etudiant" or not utilisateur.etudiant_id:
-        raise Redirection(maison(utilisateur.role))
-    if doit_choisir_mot_de_passe(utilisateur):
+    if utilisateur is not None and doit_choisir_mot_de_passe(utilisateur):
         raise Redirection("/compte")
-    etudiant = _etudiant_de(db, utilisateur)
-    commandes = db.scalars(
-        select(CommandeCantine)
-        .where(CommandeCantine.etudiant_id == etudiant.id)
-        .order_by(CommandeCantine.id.desc())
-        .limit(8)
-    ).all()
+    etudiant = None
+    commandes = []
+    if utilisateur is not None and utilisateur.role == "etudiant" and utilisateur.etudiant_id:
+        etudiant = db.get(Etudiant, utilisateur.etudiant_id)
+        commandes = db.scalars(
+            select(CommandeCantine)
+            .where(CommandeCantine.etudiant_id == etudiant.id)
+            .order_by(CommandeCantine.id.desc())
+            .limit(8)
+        ).all()
+    elif utilisateur is not None:
+        commandes = db.scalars(
+            select(CommandeCantine)
+            .where(CommandeCantine.utilisateur_id == utilisateur.id)
+            .order_by(CommandeCantine.id.desc())
+            .limit(8)
+        ).all()
     return render(
         request,
         "menu.html",
@@ -119,6 +126,7 @@ def menu(
         commandes=commandes,
         apercu=False,
         libelles=_LIBELLES,
+        role=utilisateur.role if utilisateur else "",
     )
 
 
@@ -130,10 +138,15 @@ def commander(
     cle: str = Form(""),
     confirme: str = Form(""),
     csrf: str = Form(""),
-    utilisateur: Utilisateur = Depends(exiger_etudiant),
     db: Session = Depends(get_db),
 ):
     retour = f"/m/{jeton}"
+    utilisateur = utilisateur_courant(request, db)
+    if utilisateur is None:
+        flash(request, "erreur", "Connectez-vous pour valider le paiement de la commande.")
+        raise Redirection(f"/login?suivant={retour}")
+    if doit_choisir_mot_de_passe(utilisateur):
+        raise Redirection("/compte")
     if not csrf_valide(request, csrf):
         flash(request, "erreur", "Formulaire expiré. Rechargez le menu.")
         raise Redirection(retour)
@@ -141,7 +154,7 @@ def commander(
     if point is None:
         flash(request, "erreur", "Ce QR code de cantine n'est plus valable.")
         raise Redirection("/menu")
-    etudiant = _etudiant_de(db, utilisateur)
+    etudiant = db.get(Etudiant, utilisateur.etudiant_id) if utilisateur.etudiant_id else None
     try:
         lignes = lire_panier(json.loads(panier))
     except (json.JSONDecodeError, RefusCommande) as exc:
@@ -155,6 +168,8 @@ def commander(
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
         raise Redirection(retour) from exc
+    if etudiant is None:
+        flash(request, "ok", "Commande envoyée à la cuisine. Passez à la caisse pour payer.")
     raise Redirection(f"/menu/commande/{commande.id}")
 
 
@@ -162,16 +177,18 @@ def commander(
 def recu(
     commande_id: int,
     request: Request,
-    utilisateur: Utilisateur = Depends(exiger_etudiant),
     db: Session = Depends(get_db),
 ):
-    etudiant = _etudiant_de(db, utilisateur)
+    utilisateur = utilisateur_courant(request, db)
+    if utilisateur is None:
+        raise Redirection(f"/login?suivant=/menu/commande/{commande_id}")
     commande = db.get(CommandeCantine, commande_id)
-    if commande is None or commande.etudiant_id != etudiant.id:
+    if commande is None or not _possede(commande, utilisateur):
         raise Redirection("/menu")
+    etudiant = db.get(Etudiant, commande.etudiant_id) if commande.etudiant_id else None
     lignes = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
     recu_commande = db.scalar(
-        select(RecuCantine).where(RecuCantine.commande_id == commande.id).order_by(RecuCantine.id.desc())
+        select(RecuCantine).where(RecuCantine.commande_id == commande.id, RecuCantine.annule_le.is_(None)).order_by(RecuCantine.id.desc())
     )
     return render(
         request,
@@ -182,7 +199,51 @@ def recu(
         lignes=lignes,
         recu=recu_commande,
         libelle=_LIBELLES.get(commande.statut, commande.statut),
+        personnel=etudiant is None,
     )
+
+
+@router.get("/menu/commande/{commande_id}/etat.json")
+def etat_commande(commande_id: int, request: Request, db: Session = Depends(get_db)):
+    utilisateur = utilisateur_courant(request, db)
+    commande = db.get(CommandeCantine, commande_id)
+    if utilisateur is None or commande is None or not _possede(commande, utilisateur):
+        return {"ok": False}
+    recu_commande = db.scalar(
+        select(RecuCantine.id).where(RecuCantine.commande_id == commande.id, RecuCantine.annule_le.is_(None))
+    )
+    return {
+        "ok": True,
+        "statut": commande.statut,
+        "libelle": _LIBELLES.get(commande.statut, commande.statut),
+        "payee": recu_commande is not None,
+        "mode": commande.mode_paiement,
+    }
+
+
+@router.post("/menu/commande/{commande_id}/payer")
+def payer_quand_pret(
+    commande_id: int,
+    request: Request,
+    csrf: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    utilisateur = utilisateur_courant(request, db)
+    if utilisateur is None:
+        raise Redirection(f"/login?suivant=/menu/commande/{commande_id}")
+    if not csrf_valide(request, csrf):
+        flash(request, "erreur", "Formulaire expiré. Rechargez la page.")
+        raise Redirection(f"/menu/commande/{commande_id}")
+    commande = db.get(CommandeCantine, commande_id)
+    if commande is None or not _possede(commande, utilisateur):
+        raise Redirection("/menu")
+    try:
+        recu_emis = confirmer_paiement_solde(db, commande, utilisateur)
+    except RefusCommande as exc:
+        flash(request, "erreur", str(exc))
+        raise Redirection(f"/menu/commande/{commande_id}") from exc
+    flash(request, "ok", f"Paiement validé. Compte débité. Reçu {recu_emis.numero}.")
+    raise Redirection(f"/menu/commande/{commande_id}")
 
 
 @router.get("/menu/recus")
@@ -243,27 +304,24 @@ def annuler(
     commande_id: int,
     request: Request,
     csrf: str = Form(""),
-    utilisateur: Utilisateur = Depends(exiger_etudiant),
     db: Session = Depends(get_db),
 ):
+    utilisateur = utilisateur_courant(request, db)
+    if utilisateur is None:
+        raise Redirection("/login")
     if not csrf_valide(request, csrf):
         flash(request, "erreur", "Formulaire expiré. Rechargez la page.")
         raise Redirection(f"/menu/commande/{commande_id}")
-    etudiant = _etudiant_de(db, utilisateur)
     commande = db.get(CommandeCantine, commande_id)
-    if commande is None or commande.etudiant_id != etudiant.id:
+    if commande is None or not _possede(commande, utilisateur):
         raise Redirection("/menu")
-    payee_par_solde = commande.statut == "recue" and commande.mode_paiement == "solde"
+    etudiant = db.get(Etudiant, commande.etudiant_id) if commande.etudiant_id else None
     try:
         annuler_commande(db, commande, etudiant)
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
     else:
-        flash(
-            request,
-            "ok",
-            "Commande annulée. L'argent est revenu sur votre compte." if payee_par_solde else "Commande annulée.",
-        )
+        flash(request, "ok", "Commande annulée.")
     raise Redirection(f"/menu/commande/{commande_id}")
 
 
@@ -291,7 +349,7 @@ def cuisine_json(
 def _tableau(db: Session) -> dict:
     lignes = db.execute(
         select(CommandeCantine, Etudiant)
-        .join(Etudiant, Etudiant.id == CommandeCantine.etudiant_id)
+        .outerjoin(Etudiant, Etudiant.id == CommandeCantine.etudiant_id)
         .where(CommandeCantine.statut.notin_(["remise", "annulee"]))
         .order_by(CommandeCantine.id)
     ).all()
@@ -299,14 +357,21 @@ def _tableau(db: Session) -> dict:
     for commande, etudiant in lignes:
         articles = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
         recu_commande = db.scalar(
-            select(RecuCantine.id).where(RecuCantine.commande_id == commande.id).order_by(RecuCantine.id.desc())
+            select(RecuCantine.id).where(
+                RecuCantine.commande_id == commande.id,
+                RecuCantine.annule_le.is_(None),
+            ).order_by(RecuCantine.id.desc())
         )
+        if etudiant is not None:
+            nom, matricule = f"{etudiant.prenom} {etudiant.nom}", etudiant.matricule
+        else:
+            nom, matricule = commande.nom_client or "Personnel", "Caisse"
         details.append(
             {
                 "id": commande.id,
                 "numero": commande.numero,
-                "nom": f"{etudiant.prenom} {etudiant.nom}",
-                "matricule": etudiant.matricule,
+                "nom": nom,
+                "matricule": matricule,
                 "statut": commande.statut,
                 "libelle": _LIBELLES.get(commande.statut, commande.statut),
                 "montant": commande.montant,
