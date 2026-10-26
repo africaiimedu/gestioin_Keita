@@ -14,7 +14,9 @@ from app.models import Utilisateur
 from app.security import hash_mot_de_passe, verifier_mot_de_passe
 from app.services.comptes import (
     doit_choisir_mot_de_passe,
+    etudiant_par_matricule,
     inscrire_professionnel,
+    mot_de_passe_accepte,
     mots_de_passe_depart,
     trouver_utilisateur,
 )
@@ -86,9 +88,12 @@ def login(
 
     utilisateur = trouver_utilisateur(db, identifiant)
     stocke = utilisateur.mot_de_passe_hash if utilisateur else _HASH_FICTIF
-    correct = verifier_mot_de_passe(mot_de_passe, stocke)
+    correct = mot_de_passe_accepte(utilisateur, mot_de_passe) if utilisateur else verifier_mot_de_passe(mot_de_passe, stocke)
     if utilisateur is None or not utilisateur.actif or not correct:
-        flash(request, "erreur", "Identifiant ou mot de passe incorrect.")
+        if etudiant_par_matricule(db, identifiant) is None and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{2,30}", identifiant.strip()):
+            flash(request, "erreur", "Ce matricule n'est pas dans l'atelier cartes. Demandez à la scolarité d'enregistrer la fiche.")
+        else:
+            flash(request, "erreur", "Identifiant ou mot de passe incorrect.")
         return RedirectResponse("/login", status_code=303)
 
     request.session.clear()

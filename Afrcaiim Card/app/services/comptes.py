@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from app.config import env
 from app.models import Etudiant, Utilisateur, maintenant
-from app.security import hash_mot_de_passe
+from app.security import hash_mot_de_passe, verifier_mot_de_passe
 
 DOMAINE = "univ-africaiim.com"
 ADRESSE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,60}@univ-africaiim\.com$")
@@ -17,12 +17,12 @@ ROLES_PUBLICS = ("professeur", "personnel")
 
 
 def mot_de_passe_depart() -> str:
-    return env("ETUDIANT_MOT_DE_PASSE", "Africaiim2026@")
+    return "Africaiim2026@"
 
 
 def mots_de_passe_depart() -> tuple[str, ...]:
-    actuel = mot_de_passe_depart()
-    return tuple(dict.fromkeys((actuel, "Africaiim2026@", "Africaiim2026")))
+    extra = env("ETUDIANT_MOT_DE_PASSE", "")
+    return tuple(cle for cle in dict.fromkeys(("Africaiim2026@", extra, "Africaiim2026")) if cle)
 
 
 def _mots(valeur: str) -> list[str]:
@@ -112,19 +112,37 @@ def doit_choisir_mot_de_passe(utilisateur: Utilisateur | None) -> bool:
     return bool(utilisateur and utilisateur.role == "etudiant" and utilisateur.doit_changer_mot_de_passe)
 
 
+def _matricule_clef(valeur: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (valeur or "").upper())
+
+
+def etudiant_par_matricule(db, saisie: str) -> Etudiant | None:
+    matricule = re.sub(r"\s+", "", saisie or "").upper()
+    if not matricule:
+        return None
+    etudiant = db.scalar(select(Etudiant).where(func.upper(Etudiant.matricule) == matricule))
+    if etudiant is not None:
+        return etudiant
+    cle = _matricule_clef(matricule)
+    if not cle:
+        return None
+    return db.scalar(
+        select(Etudiant).where(
+            func.replace(func.replace(func.upper(Etudiant.matricule), "-", ""), " ", "") == cle
+        )
+    )
+
+
 def trouver_utilisateur(db, saisie: str) -> Utilisateur | None:
     """Matricule (atelier), identifiant du compte, ou e-mail professionnel."""
     cle = (saisie or "").strip()
     if not cle:
         return None
     minuscule = cle.lower()
-    matricule = cle.replace(" ", "").upper()
-    etudiant = db.scalar(select(Etudiant).where(func.upper(Etudiant.matricule) == matricule))
+    etudiant = etudiant_par_matricule(db, cle)
     if etudiant is not None:
         compte = db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
-        if compte is not None:
-            return compte
-        return assurer_compte_etudiant(db, etudiant)
+        return compte or assurer_compte_etudiant(db, etudiant)
     utilisateur = db.scalar(
         select(Utilisateur).where(func.lower(Utilisateur.identifiant) == minuscule)
     )
@@ -135,6 +153,16 @@ def trouver_utilisateur(db, saisie: str) -> Utilisateur | None:
         return None
     compte = db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
     return compte or assurer_compte_etudiant(db, etudiant)
+
+
+def mot_de_passe_accepte(utilisateur: Utilisateur, saisi: str) -> bool:
+    """Le hash enregistré, ou le mot de passe de départ pour étudiant / prof / personnel."""
+    if verifier_mot_de_passe(saisi, utilisateur.mot_de_passe_hash):
+        return True
+    if utilisateur.role in {"etudiant", "professeur", "personnel"} and saisi in mots_de_passe_depart():
+        utilisateur.mot_de_passe_hash = hash_mot_de_passe(mot_de_passe_depart())
+        return True
+    return False
 
 
 def inscrire_professionnel(db, email: str, role: str) -> Utilisateur:

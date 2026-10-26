@@ -7,7 +7,7 @@
   <title>{% block titre %}Cartes{% endblock %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/carte.css?v=26">
+  <link rel="stylesheet" href="/static/carte.css?v=27">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <script src="/static/mot-de-passe.js?v=2" defer></script>
   <script src="/static/impression-locale.js?v=2" defer></script>
@@ -24,7 +24,7 @@
     {% if user and user.doit_changer_mot_de_passe %}
       <p class="flash flash-avertissement">Ce mot de passe est temporaire. <a href="/compte">Changez-le maintenant</a>.</p>
     {% endif %}
-    {% if flash %}
+    {% if flash and "/login" not in request.url.path %}
       <p class="flash flash-{{ flash.type }}">{{ flash.message }}</p>
     {% endif %}
     {% if user %}

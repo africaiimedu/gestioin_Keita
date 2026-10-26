@@ -218,7 +218,7 @@ async function interceptMatricule(req, res, user, pathOnly, renameMatricule) {
   return body;
 }
 
-export function attachCardPortal(app, resolveUser = () => null, { renameMatricule = null } = {}) {
+export function attachCardPortal(app, resolveUser = () => null, { renameMatricule = null, ensureStudentCard = null } = {}) {
   app.use("/static", (req, res) => forward(req, res, req.originalUrl, true));
   app.use("/fonts", (req, res) => forward(req, res, req.originalUrl, false));
   app.use("/photo", (req, res) => forward(req, res, req.originalUrl, false));
@@ -244,6 +244,13 @@ export function attachCardPortal(app, resolveUser = () => null, { renameMatricul
       const intercepted = await interceptMatricule(req, res, user, pathOnly, renameMatricule);
       if (intercepted === true) return;
       if (Buffer.isBuffer(intercepted)) body = intercepted;
+      if (req.method === "POST" && pathOnly === "/login" && ensureStudentCard) {
+        if (!body) body = await readBody(req, 16384);
+        const identifiant = String(new URLSearchParams(body.toString("utf8")).get("identifiant") || "").trim();
+        if (/^[A-Za-z0-9][A-Za-z0-9-]{2,30}$/.test(identifiant)) {
+          await ensureStudentCard(identifiant).catch(() => false);
+        }
+      }
     } catch {
       if (!res.headersSent) res.status(400).type("text").send("Formulaire illisible");
       return;

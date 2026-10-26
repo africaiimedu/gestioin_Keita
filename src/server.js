@@ -66,7 +66,7 @@ import { cancelExpense, createExpense, expenseByToken, expenseDefaults, expenseF
 import { renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from "./services/receiptPdf.js";
 import { renderListPdf } from "./services/listPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
-import { syncStudentsToCard } from "./services/cardSync.js";
+import { pushStudentToCard, syncStudentsToCard } from "./services/cardSync.js";
 import { creditCantine, readCantine } from "./services/cardCantine.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
 import { startEmbeddedCards } from "./services/cardRuntime.js";
@@ -143,6 +143,18 @@ attachCardPortal(app, loadUser, {
     if (!student) return null;
     const result = await changeMatricule(db, user, student.id, next);
     return result.card && result.card.ok === false ? "carte" : "synchro";
+  },
+  ensureStudentCard: async (matricule) => {
+    const cle = String(matricule || "").replace(/\s+/g, "").toUpperCase();
+    const row = await db.prepare(`
+      SELECT s.matricule, s.last_name, s.first_name, s.email, s.account_email, p.name AS program_name
+      FROM students s
+      JOIN programs p ON p.id = s.program_id
+      WHERE replace(upper(s.matricule), ' ', '') = ? AND s.status != 'archive'
+    `).get(cle);
+    if (!row) return false;
+    const sent = await pushStudentToCard(row);
+    return Boolean(sent.ok);
   },
 });
 app.use(express.json({ limit: "8mb" }));
