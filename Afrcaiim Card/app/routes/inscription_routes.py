@@ -16,6 +16,7 @@ from app.models import Etudiant, Utilisateur
 from app.services.import_etudiants import _MATRICULE, controler_fiche
 from app.services.comptes import ADRESSE, aligner_compte
 from app.services.metier import creer_etudiant, journaliser, modifier_etudiant, supprimer_etudiant
+from app.services.universite_api import validite_connue
 
 router = APIRouter()
 
@@ -88,6 +89,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
             renomme.matricule = fiche.matricule
             journaliser(db, "matricule_modifie", etudiant_id=renomme.id, details=f"{ancien} → {fiche.matricule}")
             existant = renomme
+    fin_programme = validite_connue(fiche.matricule)
     if existant is None:
         try:
             etudiant, _secret, _compte = creer_etudiant(
@@ -97,7 +99,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
                 matricule=fiche.matricule,
                 filiere=fiche.filiere,
                 annee_academique=fiche.annee_academique,
-                date_validite=fiche.date_validite,
+                date_validite=fin_programme or fiche.date_validite,
                 email=fiche.email,
                 sexe=fiche.sexe or "M",
                 identifiant=compte or None,
@@ -121,7 +123,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
             nom=fiche.nom,
             filiere=fiche.filiere,
             annee_academique=fiche.annee_academique,
-            date_validite=fiche.date_validite,
+            date_validite=fin_programme or existant.date_validite,
             email=fiche.email or existant.email or _adresse_du_compte(db, existant),
             sexe=fiche.sexe,
             acteur_id=None,

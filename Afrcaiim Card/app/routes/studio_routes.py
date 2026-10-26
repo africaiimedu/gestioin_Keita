@@ -27,7 +27,14 @@ from app.services.metier import (
 )
 from app.services.pdf_carte import code_controle, url_affichee
 from app.services.statut import statut_effectif
-from app.services.universite_api import _matricule_cle, api_configuree, completer_photos, synchro_etudiants
+from app.services.universite_api import (
+    _matricule_cle,
+    api_configuree,
+    appliquer_validites,
+    completer_photos,
+    synchro_etudiants,
+    validite_connue,
+)
 from app.ui import csrf_valide
 
 router = APIRouter(prefix="/admin/api")
@@ -179,6 +186,7 @@ def _ligne_personnel(personne: Personnel, db: Session) -> dict:
 
 @router.get("/atelier")
 def atelier(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
+    appliquer_validites(db)
     etudiants = db.scalars(
         select(Etudiant).options(selectinload(Etudiant.cartes)).order_by(Etudiant.nom, Etudiant.prenom)
     ).all()
@@ -357,7 +365,7 @@ async def ajouter(request: Request, admin: Utilisateur = Depends(exiger_bureau),
             matricule=fiche.matricule,
             filiere=fiche.filiere,
             annee_academique=fiche.annee_academique,
-            date_validite=fiche.date_validite,
+            date_validite=validite_connue(fiche.matricule) or fiche.date_validite,
             programme=str(corps.get("programme") or "").strip()[:200],
             sexe=fiche.sexe,
             acteur_id=admin.id,
@@ -403,7 +411,7 @@ async def modifier(
             nom=fiche.nom,
             filiere=fiche.filiere,
             annee_academique=fiche.annee_academique,
-            date_validite=fiche.date_validite,
+            date_validite=validite_connue(etudiant.matricule) or fiche.date_validite,
             email=fiche.email,
             programme=str(corps.get("programme", getattr(etudiant, "programme", "") or "")).strip()[:200],
             acteur_id=admin.id,

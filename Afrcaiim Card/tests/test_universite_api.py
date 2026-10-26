@@ -9,8 +9,14 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Etudiant
 from app.services import universite_api
-from app.services.metier import creer_etudiant, supprimer_etudiant
-from app.services.universite_api import date_validite_api, fiche_depuis_api, synchro_etudiants
+from app.services.metier import carte_courante, creer_etudiant, supprimer_etudiant
+from app.services.universite_api import (
+    appliquer_validites,
+    date_validite_api,
+    fiche_depuis_api,
+    synchro_etudiants,
+    vider_cache_validites,
+)
 
 _MATRICULE = "UA26TESTSYNC1"
 _HORS_API = "UA26TESTLOCAL9"
@@ -172,3 +178,57 @@ def test_synchro_upsert_et_retrait_hors_api(monkeypatch):
                 existant = db.scalar(select(Etudiant).where(Etudiant.matricule == mat))
                 if existant:
                     supprimer_etudiant(db, existant)
+
+
+def test_appliquer_validites_aligne_la_carte_sans_retirer(monkeypatch):
+    monkeypatch.setenv("UNIVERSITE_API_KEY", "cle-de-test-assez-longue")
+    monkeypatch.setenv("UNIVERSITE_API_URL", "https://api.exemple.test")
+    vider_cache_validites()
+    monkeypatch.setattr(
+        universite_api,
+        "lister_etudiants",
+        lambda client=None: [
+            {
+                "student_number": _MATRICULE,
+                "first_name": "Sync",
+                "last_name": "Testeur",
+                "status": "active",
+                "user_id": 1,
+                "intake_year": 2026,
+                "duration_years": 3,
+            }
+        ],
+    )
+    with SessionLocal() as db:
+        existant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
+        if existant:
+            supprimer_etudiant(db, existant)
+        creer_etudiant(
+            db,
+            prenom="Sync",
+            nom="Testeur",
+            matricule=_MATRICULE,
+            filiere="AFRICAIIM Tech",
+            annee_academique="2026-2027",
+            date_validite=date(2027, 8, 31),
+            email="sync.testeur@etu.univ-africaiim.com",
+            sexe="M",
+            action="creee",
+            details="Validité encore annuelle",
+        )
+    try:
+        with SessionLocal() as db:
+            assert appliquer_validites(db) == 1
+            etu = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
+            assert etu is not None
+            assert etu.date_validite == date(2029, 8, 31)
+            carte = carte_courante(db, etu.id)
+            assert carte is not None
+            assert carte.date_validite == date(2029, 8, 31)
+            assert appliquer_validites(db) == 0
+    finally:
+        vider_cache_validites()
+        with SessionLocal() as db:
+            existant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
+            if existant:
+                supprimer_etudiant(db, existant)

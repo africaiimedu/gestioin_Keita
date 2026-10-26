@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import date
 from typing import Any
 from urllib.parse import urljoin
@@ -20,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import env
 from app.models import Etudiant
 from app.services.import_etudiants import controler_fiche
-from app.services.metier import creer_etudiant, modifier_etudiant, remplacer_photo, supprimer_etudiant
+from app.services.metier import carte_courante, creer_etudiant, modifier_etudiant, remplacer_photo, supprimer_etudiant
 from app.services.photos import normaliser_photo
 
 journal = logging.getLogger(__name__)
@@ -183,6 +184,78 @@ def telecharger_photo(url: str, client: httpx.Client | None = None) -> bytes | N
 
 def _matricule_cle(valeur: str) -> str:
     return re.sub(r"\s+", "", str(valeur or "")).upper()
+
+
+_cache_validites: dict[str, Any] = {"jusqua": 0.0, "table": {}}
+
+
+def vider_cache_validites() -> None:
+    _cache_validites["jusqua"] = 0.0
+    _cache_validites["table"] = {}
+
+
+def validites_programmes() -> dict[str, date]:
+    """Matricule → fin de programme (31/08), lu dans l'API et gardé dix minutes."""
+    maintenant = time.monotonic()
+    if maintenant < float(_cache_validites["jusqua"]):
+        return _cache_validites["table"]
+    if not api_configuree():
+        return {}
+    try:
+        bruts = lister_etudiants()
+    except Exception as exc:
+        journal.warning("Durées de programme indisponibles : %s", exc)
+        _cache_validites["jusqua"] = maintenant + 60
+        _cache_validites["table"] = {}
+        return {}
+    table: dict[str, date] = {}
+    for brut in bruts:
+        if not isinstance(brut, dict) or not _compte_inscrit(brut):
+            continue
+        fin = date_validite_api(brut.get("intake_year"), brut.get("duration_years"))
+        numero = _matricule_cle(str(brut.get("student_number") or ""))
+        if numero and fin:
+            table[numero] = fin
+    if not table:
+        return {}
+    _cache_validites["jusqua"] = maintenant + 600
+    _cache_validites["table"] = table
+    return table
+
+
+def validite_connue(matricule: str) -> date | None:
+    """Date de fin du programme pour ce matricule, ou rien si l'API ne le connaît pas."""
+    try:
+        return validites_programmes().get(_matricule_cle(matricule))
+    except Exception as exc:
+        journal.warning("Validité Université indisponible pour %s : %s", matricule, exc)
+        return None
+
+
+def appliquer_validites(db: Session) -> int:
+    """Aligne la validité des cartes déjà dans l'atelier sur la durée du programme.
+
+    N'ajoute ni ne retire personne.
+    """
+    table = validites_programmes()
+    if not table:
+        return 0
+    changes = 0
+    for etudiant in db.scalars(select(Etudiant)).all():
+        fin = table.get(_matricule_cle(etudiant.matricule))
+        if fin is None:
+            continue
+        carte = carte_courante(db, etudiant.id)
+        carte_a_jour = carte is None or carte.statut == "remplacee" or carte.date_validite == fin
+        if etudiant.date_validite == fin and carte_a_jour:
+            continue
+        etudiant.date_validite = fin
+        if carte is not None and carte.statut != "remplacee":
+            carte.date_validite = fin
+        changes += 1
+    if changes:
+        db.commit()
+    return changes
 
 
 _STATUTS_INSCRITS = {"", "active", "actif", "enrolled", "inscrit"}

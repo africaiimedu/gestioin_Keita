@@ -202,7 +202,7 @@
           {% endfor %}
         </select>
       </label>
-      <p class="aide-photo">Année académique : {{ annee_courante() }}. Validité : un an, jusqu'au {{ validite_courante() | datefr }}.</p>
+      <p class="aide-photo">La validité de la carte est la fin du programme, calculée automatiquement avec l'année d'entrée et la durée envoyées par l'université.</p>
       {% endif %}
       <label>Photo d'identité
         <input id="photo-fiche" name="photo" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
