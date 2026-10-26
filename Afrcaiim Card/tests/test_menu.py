@@ -284,6 +284,8 @@ def test_page_menu_et_commande():
             assert 'data-jour="Mardi"' in menu.text
             assert "Toute la semaine" in menu.text
             assert "/static/marque-blanc.png" in menu.text
+            assert 'src="/static/diima.png"' not in menu.text
+            assert "data-src=" in menu.text
             assert "CHAWARMA" in menu.text
             assert 'data-permanent="1"' in menu.text
             assert "ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM" in menu.text
@@ -291,8 +293,8 @@ def test_page_menu_et_commande():
             assert "Allergènes à signaler" in menu.text
             assert "Eau minérale" in menu.text
             assert "10.000 GNF" in menu.text
-            assert "/static/plats/sandwich-thon.jpg" in menu.text
-            assert "/static/plats/chawarma.jpg" in menu.text
+            assert 'data-src="/static/plats/sandwich-thon.jpg"' in menu.text
+            assert 'data-src="/static/plats/chawarma.jpg"' in menu.text
             assert "apercu-recto" not in client.get("/espace").text
             assert "Programme" in client.get("/espace").text
             csrf = menu.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]

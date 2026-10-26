@@ -1,15 +1,12 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=13">
+<link rel="stylesheet" href="/static/menu.css?v=14">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
   <section class="hero">
-    <div class="hero-marques">
-      <img class="logo-universite" src="/static/marque-blanc.png" alt="Université AFRICAIIM">
-      <img class="logo-diima" src="/static/diima.png" alt="DiiMa Signature">
-    </div>
+    <img class="logo-universite" src="/static/marque-blanc.png" alt="Université AFRICAIIM" width="200" height="52">
     <p class="enseigne">Cantine scolaire · Université AFRICAIIM</p>
     <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Carte des menus{% endif %}</h1>
     <p class="ouvert" id="menu-jour">{% if jour_actuel == "semaine" %}Fermé le dimanche · carte de la semaine{% else %}Menu du {{ jour_actuel|lower }} · déjeuner et dîner{% endif %}</p>
@@ -49,7 +46,7 @@
       <div class="grille">
         {% for plat in groupe.plats %}
           <article class="plat {% if not plat.disponible %}epuise{% endif %}" data-jour="{{ plat.badge or '' }}" data-permanent="{{ 0 if plat.badge in jours else 1 }}">
-            <img src="{{ image_plat(plat) }}" alt="{{ plat.nom }}">
+            <img alt="{{ plat.nom }}" width="640" height="480" decoding="async" loading="lazy" data-src="{{ image_plat(plat) }}">
             <div class="fiche">
               {% if plat.badge %}<span class="badge">{{ plat.badge }}</span>{% endif %}
               <h3>{{ plat.nom }}</h3>
@@ -134,5 +131,5 @@
       </div>
     </form>
   </section>
-<script src="/static/menu.js?v=9"></script>
+<script src="/static/menu.js?v=10"></script>
 {% endblock %}

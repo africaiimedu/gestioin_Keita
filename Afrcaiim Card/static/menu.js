@@ -27,6 +27,9 @@
       });
       rayon.hidden = !catOk || visibles === 0;
     });
+    document.querySelectorAll("article.plat:not([hidden]) img[data-src]").forEach(function (img) {
+      if (!img.getAttribute("src")) img.src = img.getAttribute("data-src");
+    });
     var libelle = document.getElementById("menu-jour");
     if (libelle) {
       libelle.textContent = jourChoisi === "semaine"
