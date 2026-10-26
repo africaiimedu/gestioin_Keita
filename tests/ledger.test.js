@@ -918,4 +918,44 @@ test("tableau de bord : étudiants n'ayant pas payé la première tranche", asyn
   assert.ok(listed.some((row) => row.student.id === created.student.id));
   assert.equal(listed.length, after.firstInstallment.unpaid);
 });
+
+test("Africaiim Tech : solder la scolarité réduit l'inscription de 25 %, une avance de costume figure au reçu", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'TECH'").get();
+  await domain.updateSettings(db, agent, { costume_price: "800.000" });
+  const partial = await domain.createStudent(db, agent, {
+    lastName: "TECH", firstName: "Partiel", phone: "620000001", programId: program.id, level: "cpi_1",
+    paymentAmount: 1_000_000, method: "especes",
+  });
+  assert.equal(partial.situation.due, 37_000_000);
+  assert.equal(partial.discounts.some((item) => item.label === "Inscription Tech"), false);
+
+  await assert.rejects(
+    () => domain.createPayment(db, agent, {
+      studentId: partial.student.id, amount: 36_000_000, paidOn: "2026-10-26", method: "especes", idempotencyKey: "tech-trop-plein",
+    }),
+    /inscription réduite de 25 %/,
+  );
+
+  const settled = await domain.createPayment(db, agent, {
+    studentId: partial.student.id, amount: 35_500_000, costumeAmount: 200_000, paidOn: "2026-10-26", method: "especes",
+    idempotencyKey: "tech-solde-inscription",
+  });
+  assert.equal(settled.after.due, 36_500_000);
+  assert.equal(settled.after.paid, 36_500_000);
+  assert.equal(settled.after.status, "solde");
+  assert.equal(settled.costume.today, 200_000);
+  assert.equal(settled.costume.reste, 600_000);
+  const receipt = await db.prepare("SELECT snapshot_json FROM receipts WHERE id = ?").get(settled.receiptId);
+  const snapshot = JSON.parse(receipt.snapshot_json);
+  assert.equal(snapshot.inscriptionDiscount, 500_000);
+  assert.equal(snapshot.costume.today, 200_000);
+  assert.equal(snapshot.costume.reste, 600_000);
+
+  const alone = await domain.recordCostume(db, agent, partial.student.id, {
+    amount: 150_000, paidOn: "2026-10-26", method: "especes", note: "Avance costume",
+  });
+  const costumeReceipt = JSON.parse((await db.prepare("SELECT snapshot_json FROM costume_payments WHERE id = ?").get(alone.receipt.id)).snapshot_json);
+  assert.equal(costumeReceipt.costume.today, 150_000);
+  assert.equal(costumeReceipt.costume.reste, 450_000);
+});
 });

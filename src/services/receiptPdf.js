@@ -301,10 +301,11 @@ function drawCostume(doc, y, costume) {
   const unit = Number(costume.unitPrice || costume.price);
   doc.roundedRect(LEFT, y, WIDTH, 50, 8).lineWidth(0.9).strokeColor("#cfdcd4").stroke();
   write(doc, `${quantity > 1 ? `COSTUMES (${quantity})` : "COSTUME"} — HORS SCOLARITÉ`, LEFT + 12, y + 8, 7.5, "Helvetica-Bold", LEAF, 260);
-  write(doc, settled ? "Payé" : (costume.paidAfter > 0 ? "Partiellement payé" : "Non payé"), RIGHT - 132, y + 8, 7.5, "Helvetica-Bold", settled ? LEAF : GOLD_TEXT, 120, "right");
+  const advance = Number(costume.today) > 0 && !settled;
+  write(doc, settled ? "Payé" : (advance ? "Avance" : "Non payé"), RIGHT - 132, y + 8, 7.5, "Helvetica-Bold", settled ? LEAF : GOLD_TEXT, 120, "right");
   const cells = [
     [quantity > 1 ? `${quantity} × ${money(unit)}` : "Prix du costume", money(costume.price), INK],
-    ["Versé ce jour", money(costume.today), INK],
+    [advance ? "Avance versée" : "Versé ce jour", money(costume.today), INK],
     ["Total versé", money(costume.paidAfter), INK],
     ["Reste costume", money(costume.reste), settled ? LEAF : GOLD_TEXT],
   ];
@@ -383,7 +384,8 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
     subtitle: costume ? "Frais de scolarité et costume" : "Frais de scolarité",
   });
   let y = drawIdentity(doc, snapshot, 181);
-  const split = costumeToday > 0 ? [["Scolarité", money(tuitionToday)], ["Costume", money(costumeToday)]] : [];
+  const costumeAdvance = costumeToday > 0 && Number(costume?.reste) > 0;
+  const split = costumeToday > 0 ? [["Scolarité", money(tuitionToday)], [costumeAdvance ? "Avance costume" : "Costume", money(costumeToday)]] : [];
   y = drawHero(doc, y, "VERSÉ CE JOUR", totalToday, split) + (compact ? 18 : 22);
 
   const step = compact ? 23 : 26.5;
@@ -392,10 +394,11 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
     ["Déjà versé avant ce jour", money(paidBefore)],
     ["Cumul versé à ce jour", money(snapshot.paidAfter)],
   ];
+  if (Number(snapshot.inscriptionDiscount) > 0) rows.splice(1, 0, [`Réduction de 25 % sur l'inscription`, `-${money(snapshot.inscriptionDiscount)}`]);
   if (snapshot.creditAfter > 0) rows.push(["Crédit", money(snapshot.creditAfter)]);
   if (!costume) rows[0][0] = "Montant total dû";
   rows.forEach(([label, value], index) => {
-    if (index === 1 && history.length) y = drawHistory(doc, y - 4, history);
+    if (label.startsWith("Déjà versé") && history.length) y = drawHistory(doc, y - 4, history);
     write(doc, label, LEFT + 12, y, 11, "Helvetica", MUTED, 300);
     write(doc, value, RIGHT - 230, y, 11, "Helvetica-Bold", INK, 218, "right");
     y += step;
@@ -449,14 +452,16 @@ export async function renderCostumeReceiptPdf({ snapshot, number, school, format
   const { doc, done } = openDoc(format);
   const costume = snapshot.costume;
   const settled = Number(costume.reste || 0) <= 0 && !cancelled;
-  const sealTitle = cancelled ? "ANNULÉ" : (settled ? "PAYÉ" : "ACOMPTE REÇU");
+  const advance = !settled && Number(costume.today || snapshot.amount || 0) > 0;
+  const sealTitle = cancelled ? "ANNULÉ" : (settled ? "PAYÉ" : "AVANCE REÇUE");
   const sealColor = cancelled ? GREEN : (settled ? LEAF : GOLD_TEXT);
   drawHead(doc, { school, number, dateIso: snapshot.paidOn, title: "REÇU DE PAIEMENT", subtitle: "Costume — hors frais de scolarité", kind: "REÇU COSTUME" });
   let y = drawIdentity(doc, snapshot, 181);
-  y = drawHero(doc, y, "COSTUME VERSÉ CE JOUR", Number(snapshot.amount || 0)) + 22;
+  y = drawHero(doc, y, advance ? "AVANCE SUR LE COSTUME" : "COSTUME VERSÉ CE JOUR", Number(costume.today || snapshot.costumeAmount || snapshot.amount || 0)) + 22;
   const quantity = Math.max(1, Number(costume.quantity || 1));
   const rows = [
     [quantity > 1 ? `Prix des costumes (${quantity} × ${money(costume.unitPrice)})` : "Prix du costume", money(costume.price)],
+    [advance ? "Avance versée ce jour" : "Versé ce jour", money(costume.today || snapshot.amount || 0)],
     ["Déjà versé avant ce jour", money(costume.paidBefore)],
     ["Total versé pour le costume", money(costume.paidAfter)],
   ];
@@ -477,7 +482,9 @@ export async function renderCostumeReceiptPdf({ snapshot, number, school, format
   write(doc, "Mode de paiement", LEFT, y, 10, "Helvetica", MUTED, 250);
   write(doc, filled(snapshot.methodLabel, "Espèces"), LEFT, y + 17, 11, "Helvetica-Bold", INK, 250);
   y += 40;
-  write(doc, "Ce reçu ne concerne que le costume. Les frais de scolarité figurent sur les reçus REC.", LEFT, Math.min(y, 660), 8.5, "Helvetica", MUTED, WIDTH);
+  write(doc, advance
+    ? "Avance sur le prix du costume. Le reste à payer figure ci-dessus. Les frais de scolarité figurent sur les reçus REC."
+    : "Ce reçu ne concerne que le costume. Les frais de scolarité figurent sur les reçus REC.", LEFT, Math.min(y, 660), 8.5, "Helvetica", MUTED, WIDTH);
   if (cancelled) write(doc, `Annulé : ${cancelled.reason}`, LEFT, Math.min(y + 16, 676), 9, "Helvetica-Bold", GOLD_TEXT, WIDTH);
   drawFoot(doc, qr, number);
   drawWatermark(doc, W, 505);

@@ -1190,7 +1190,7 @@ async function showStudents(screen) {
         ${discountField()}
         <div class="duo" id="payment-fields"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
           <p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p></div>
-        ${costumeField("Costume versé à l'inscription (GNF)")}
+        ${costumeField("Avance ou versement costume à l'inscription (GNF)")}
         <p id="create-error" class="error" hidden></p>
         <button class="btn" type="submit">Enregistrer la fiche</button>
       </form>`;
@@ -1239,9 +1239,12 @@ async function showStudents(screen) {
       discountRow.hidden = scholar || isMaster();
       if (discountRow.hidden) form.cashDiscount.value = "non";
       const withDiscount = discountChosen(form);
+      const inscriptionCut = techSchool() ? Math.round(registrationOf() * 0.25) : 0;
+      const afterTech = Math.max(0, tuition - inscriptionCut);
+      const payable = withDiscount ? cashOf(afterTech) : afterTech;
       document.querySelector("#fee-hint").textContent = scholar
         ? "Boursier : les frais de scolarité sont à 0 GNF."
-        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + inscription ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : (withDiscount ? ` Avec la remise : ${gnf(cashOf(tuition))} à payer.` : " Sans remise.")}`;
+        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + inscription ${gnf(registrationOf())}).${inscriptionCut ? ` Scolarité soldée : inscription réduite de 25 % (${gnf(inscriptionCut)}), soit ${gnf(afterTech)}.` : ""}${isMaster() ? " Pas de remise en Master." : (withDiscount ? ` Avec la remise : ${gnf(payable)} à payer.` : (inscriptionCut ? "" : " Sans remise."))}`;
       document.querySelector("#payment-fields").hidden = scholar;
       const amount = form.paymentAmount;
       amount.required = !scholar;
@@ -1297,9 +1300,14 @@ async function showStudents(screen) {
       if (!form.scholarship.checked) {
         const typed = Number(form.paymentAmount.value.replace(/\D/g, "") || 0);
         const tuition = tuitionOf();
-        const limit = discountChosen(form) ? cashOf(tuition) : tuition;
+        const inscriptionCut = techSchool() ? Math.round(registrationOf() * 0.25) : 0;
+        const settledCap = Math.max(0, tuition - inscriptionCut);
+        const limit = discountChosen(form) ? cashOf(settledCap) : settledCap;
         if (typed > limit) {
-          const discount = limit < tuition ? `, remise de ${gnf(state.catalog.cashDiscount || 0)} déduite` : "";
+          const notes = [];
+          if (inscriptionCut) notes.push(`inscription réduite de 25 % (${gnf(inscriptionCut)})`);
+          if (limit + (inscriptionCut || 0) < tuition || (discountChosen(form) && limit < settledCap)) notes.push(`remise de ${gnf(state.catalog.cashDiscount || 0)} déduite`);
+          const discount = notes.length ? `, ${notes.join(", ")}` : "";
           notifyOverpay(`La scolarité versée ce jour (${gnf(typed)}) est supérieure aux frais de scolarité à payer (${gnf(limit)}${discount}). Le costume est compté à part, il n'entre pas dans ce montant. La fiche n'a pas été enregistrée.`);
           return;
         }
@@ -1812,14 +1820,14 @@ function costumeCard(costume) {
         <td>${!entry.counted ? `<span class="tag trop_percu">Annulé</span>${entry.cancel_reason ? ` <span class="muted">${esc(entry.cancel_reason)}</span>` : ""}` : (!entry.payment_id && allowed("payment.cancel") ? `<button class="btn secondary" type="button" data-costume-cancel="${entry.id}">Annuler</button>` : "")}</td></tr>`).join("")}
     </tbody></table></div>` : ""}
     ${canPay ? `<form id="costume-form" class="costume-form" novalidate>
-        <p><label>Montant versé pour le costume (GNF)</label><input name="amount" inputmode="numeric" required placeholder="Reste ${esc(grouped(costume.reste))}"></p>
+        <p><label>Avance ou versement costume (GNF)</label><input name="amount" inputmode="numeric" required placeholder="Avance, ou le reste ${esc(grouped(costume.reste))}"></p>
         <p><label>Date</label><input name="paidOn" type="date" required></p>
         <p><label>Moyen de paiement</label><select name="method">${state.catalog.methods.map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select></p>
         <p><label>Observation <span class="muted">(facultatif)</span></label><input name="note" placeholder="Ex. payé avant l'application"></p>
         <button class="btn" type="submit">Enregistrer le versement</button>
         <p class="error" data-costume-error hidden></p>
       </form>
-      <p class="muted">Un reçu de paiement est émis : il reprend la scolarité et le costume.</p>` : ""}
+      <p class="muted">Une avance est acceptée. Le reçu indique le montant versé, le prix du costume et le reste à payer.</p>` : ""}
   </article>`;
 }
 
@@ -2132,6 +2140,7 @@ function showCurrent(student) {
   }
   document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)}</p>
     <p>Frais ${gnf(situation.due)} · déjà payé ${gnf(situation.paid)} · reste ${gnf(situation.reste)}</p>
+    ${String(student.programCode || "").toUpperCase() === "TECH" ? `<p class="muted">Africaiim Tech : si ce versement solde la scolarité, l'inscription est réduite de 25 %.</p>` : ""}
     <p><span class="tag ${situation.status}">${esc(situation.statusLabel)}</span></p></div>`;
 }
 
@@ -2294,7 +2303,7 @@ function discountChosen(form) {
   return Boolean(select && !select.closest("[hidden]") && select.value === "oui");
 }
 
-function costumeField(label = "Costume versé ce jour (GNF)") {
+function costumeField(label = "Avance ou versement costume (GNF)") {
   const price = costumePriceSetting();
   if (!price) return `<p class="muted costume-hint">Costume : prix non fixé. L'administrateur le règle dans Tarifs.</p>`;
   const counts = Array.from({ length: 10 }, (_, index) => index + 1)
@@ -2304,7 +2313,7 @@ function costumeField(label = "Costume versé ce jour (GNF)") {
         <p><label>${esc(label)} <span class="muted">(facultatif)</span></label><input name="costumeAmount" inputmode="numeric" placeholder="0 si le costume n'est pas payé aujourd'hui"></p>
         <p><label>Nombre de costumes</label><select name="costumeQuantity"><option value="">Selon le montant versé</option>${counts}</select></p>
       </div>
-      <p class="costume-live muted" data-costume-live>Prix unitaire : ${gnf(price)}. Pour 2 costumes, versez ${gnf(2 * price)} ou choisissez « 2 costumes ».</p>
+      <p class="costume-live muted" data-costume-live>Prix unitaire : ${gnf(price)}. Une avance inférieure à ce prix est acceptée : le reçu l'indique, avec le reste.</p>
     </div>`;
 }
 
@@ -2325,7 +2334,7 @@ function wireCostume(form, onChange = () => {}, { fillOnCount = false } = {}) {
     const amount = moneyOf(form.costumeAmount);
     const count = costumeCountOf(form) || 1;
     if (!amount && !form.costumeQuantity.value) {
-      live.textContent = `Prix unitaire : ${gnf(price)}. Pour 2 costumes, versez ${gnf(2 * price)} ou choisissez « 2 costumes ».`;
+      live.textContent = `Prix unitaire : ${gnf(price)}. Une avance inférieure à ce prix est acceptée : le reçu l'indique, avec le reste. Pour 2 costumes, versez ${gnf(2 * price)} ou choisissez « 2 costumes ».`;
       return;
     }
     const total = count * price;
