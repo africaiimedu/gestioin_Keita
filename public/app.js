@@ -845,6 +845,7 @@ function schoolCounts(data) {
       program: item.name,
       students: found.students || 0,
       bachelor: found.bachelor || 0,
+      bachelor2: found.bachelor2 || 0,
       master: found.master || 0,
       paid: found.paid || 0,
       due: found.due || 0,
@@ -922,9 +923,11 @@ function patchDashboard(root, data, control) {
     tile.querySelector("strong").textContent = value;
     tile.querySelector(".muted").textContent = note;
   }
-  const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
+  const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
   const bachelor = root.querySelector(".dash-bachelor");
   if (bachelor) bachelor.textContent = String(cycles.bachelor);
+  const bachelor2 = root.querySelector(".dash-bachelor2");
+  if (bachelor2) bachelor2.textContent = String(cycles.bachelor2 || 0);
   const master = root.querySelector(".dash-master");
   if (master) master.textContent = String(cycles.master);
   const count = root.querySelector(".dash-count");
@@ -935,10 +938,12 @@ function patchDashboard(root, data, control) {
     const chip = root.querySelector(`[data-school-count="${CSS.escape(item.program)}"]`);
     if (!chip) continue;
     const bachelor = chip.querySelector(".school-bachelor");
+    const bachelor2 = chip.querySelector(".school-bachelor2");
     const master = chip.querySelector(".school-master");
     const paid = chip.querySelector(".school-paid");
     const due = chip.querySelector(".school-due");
     if (bachelor) bachelor.textContent = String(item.bachelor);
+    if (bachelor2) bachelor2.textContent = String(item.bachelor2);
     if (master) master.textContent = String(item.master);
     if (paid) paid.textContent = gnf(item.paid);
     if (due) due.textContent = gnf(item.due);
@@ -978,7 +983,7 @@ function peopleHtml(data) {
 }
 
 function dashboardHtml(data, control) {
-  const cycles = data.cycles || { bachelor: 0, master: 0, tech: 0 };
+  const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
   const rate = Math.min(100, (data.rate.tenths || 0) / 10);
   const circ = (2 * Math.PI * 46).toFixed(2);
   const forecastMax = Math.max(...data.forecast.map((item) => item.amount), 1);
@@ -1007,9 +1012,10 @@ function dashboardHtml(data, control) {
         </p>
         <ul class="dash-cycles" aria-label="Totaux par cycle">
           <li>Total Bachelor <strong class="dash-bachelor">${cycles.bachelor}</strong></li>
+          <li>Bachelor 2 <strong class="dash-bachelor2">${cycles.bachelor2 || 0}</strong></li>
           <li>Total Master <strong class="dash-master">${cycles.master}</strong></li>
         </ul>
-        <ul class="dash-schools" aria-label="Bachelor, Master et montants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span><span>Montant payé <strong class="school-paid">${gnf(item.paid)}</strong></span><span>Montant attendu <strong class="school-due">${gnf(item.due)}</strong></span></li>`).join("")}</ul>
+        <ul class="dash-schools" aria-label="Bachelor, Master et montants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Bachelor 2 <strong class="school-bachelor2">${item.bachelor2}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span><span>Montant payé <strong class="school-paid">${gnf(item.paid)}</strong></span><span>Montant attendu <strong class="school-due">${gnf(item.due)}</strong></span></li>`).join("")}</ul>
       </div>
       <div class="dash-hero-side">
         <div class="donut-wrap">

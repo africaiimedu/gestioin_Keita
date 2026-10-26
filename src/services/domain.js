@@ -569,8 +569,11 @@ function studentCycle(level) {
 
 /** Effectifs par cycle : Bachelor (Licence, années de bachelor, CPI), Master, MIAGE. */
 function cycleCounts(rows) {
-  const counts = { bachelor: 0, master: 0, tech: 0 };
-  for (const { student } of rows) counts[studentCycle(student.level)] += 1;
+  const counts = { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
+  for (const { student } of rows) {
+    counts[studentCycle(student.level)] += 1;
+    if (String(student.level || "") === "bachelor_2") counts.bachelor2 += 1;
+  }
   return counts;
 }
 
@@ -710,7 +713,7 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
   const byProgram = new Map();
   for (const row of rows) {
     const key = row.student.program_name;
-    if (!byProgram.has(key)) byProgram.set(key, { program: key, paid: 0, reste: 0, due: 0, students: 0, bachelor: 0, master: 0 });
+    if (!byProgram.has(key)) byProgram.set(key, { program: key, paid: 0, reste: 0, due: 0, students: 0, bachelor: 0, bachelor2: 0, master: 0 });
     const bucket = byProgram.get(key);
     bucket.paid += row.situation.paid;
     bucket.reste += row.situation.reste;
@@ -718,6 +721,7 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
     bucket.students += 1;
     const cycle = studentCycle(row.student.level);
     if (cycle === "bachelor" || cycle === "master") bucket[cycle] += 1;
+    if (String(row.student.level || "") === "bachelor_2") bucket.bachelor2 += 1;
   }
 
   const byMethod = new Map();
