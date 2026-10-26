@@ -135,7 +135,7 @@ def test_debit_unique_solde_et_carte():
                 db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0001", "2468"
             )
             assert neuve is True
-            assert commande.statut == "a_payer"
+            assert commande.statut == "recue"
             assert commande.mode_paiement == "caisse"
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 30000
@@ -147,7 +147,7 @@ def test_debit_unique_solde_et_carte():
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 30000
             a_payer, _ = passer_commande(db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0002")
-            assert a_payer.statut == "a_payer"
+            assert a_payer.statut == "recue"
             assert a_payer.mode_paiement == "caisse"
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 30000
@@ -321,7 +321,7 @@ def test_page_menu_et_commande():
             recu = client.get(commande.headers["location"])
             assert recu.status_code == 200
             assert "A-" in recu.text
-            assert "À payer à la caisse" in recu.text
+            assert "à payer à la caisse une fois le repas prêt" in recu.text
             with SessionLocal() as db:
                 etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
                 assert etudiant.solde_cantine == 40000

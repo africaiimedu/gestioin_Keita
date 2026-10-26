@@ -211,7 +211,7 @@ def passer_commande(
         nom_client=nom_client,
         point_id=point.id,
         montant=total,
-        statut="recue" if abonne else "a_payer",
+        statut="recue",
         mode_paiement="abonnement" if abonne else "caisse",
         cle=cle,
         cree_le=maintenant(),
@@ -232,7 +232,7 @@ def passer_commande(
     suite = (
         f"{formater_francs(total)} · abonnement mensuel, aucun débit"
         if abonne
-        else f"{formater_francs(total)} à payer à la caisse"
+        else f"{formater_francs(total)} · cuisine d'abord, caisse quand le repas est prêt"
     )
     journaliser(
         db,
@@ -361,7 +361,7 @@ def _rendre_stock(db, commande: CommandeCantine) -> None:
 
 def annuler_commande(db, commande: CommandeCantine, etudiant: Etudiant | None) -> None:
     payee = _commande_payee(db, commande.id)
-    if commande.statut == "a_payer" or (commande.statut == "recue" and commande.mode_paiement == "solde" and not payee):
+    if commande.statut in ("a_payer", "recue") and not payee:
         _rendre_stock(db, commande)
         commande.statut = "annulee"
         journaliser(
@@ -403,22 +403,23 @@ def annuler_commande(db, commande: CommandeCantine, etudiant: Etudiant | None) -
 
 
 def encaisser_commande(db, commande_id: int, mode: str, agent_id: int) -> RecuCantine:
-    """La cuisine reçoit l'argent d'une commande sans solde. Une seule fois, puis la préparation commence."""
+    """La caisse encaisse seulement quand la cuisine a marqué le repas prêt."""
     if mode not in MODES_CAISSE:
         raise RefusCommande("Choisissez Espèces ou Orange Money.")
     commande = db.scalar(select(CommandeCantine).where(CommandeCantine.id == commande_id).with_for_update())
     if commande is None:
         raise RefusCommande("Cette commande n'existe plus.")
-    if commande.statut != "a_payer":
-        deja = db.scalar(
-            select(RecuCantine).where(RecuCantine.commande_id == commande.id).order_by(RecuCantine.id.desc())
-        )
-        if deja is not None and commande.statut != "annulee":
-            return deja
-        raise RefusCommande("Cette commande n'attend plus de paiement.")
+    deja = db.scalar(
+        select(RecuCantine).where(RecuCantine.commande_id == commande.id, RecuCantine.annule_le.is_(None)).order_by(RecuCantine.id.desc())
+    )
+    if deja is not None and commande.statut != "annulee":
+        return deja
+    if commande.mode_paiement != "caisse":
+        raise RefusCommande("Cette commande ne se paie pas à la caisse.")
+    if commande.statut != "prete":
+        raise RefusCommande("Attendez que la cuisine marque la commande prête avant d'encaisser.")
     etudiant = db.get(Etudiant, commande.etudiant_id) if commande.etudiant_id else None
     lignes = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
-    commande.statut = "recue"
     recu = emettre_recu(
         db,
         etudiant,
@@ -444,8 +445,8 @@ def encaisser_commande(db, commande_id: int, mode: str, agent_id: int) -> RecuCa
 def refuser_commande(db, commande_id: int, agent_id: int) -> None:
     """La cuisine retire une commande jamais payée."""
     commande = db.scalar(select(CommandeCantine).where(CommandeCantine.id == commande_id).with_for_update())
-    if commande is None or commande.statut != "a_payer":
-        raise RefusCommande("Seule une commande non payée peut être retirée.")
+    if commande is None or commande.statut not in ("a_payer", "recue", "preparation") or _commande_payee(db, commande.id):
+        raise RefusCommande("Seule une commande non payée encore en cuisine peut être retirée.")
     _rendre_stock(db, commande)
     commande.statut = "annulee"
     journaliser(
@@ -460,6 +461,12 @@ def refuser_commande(db, commande_id: int, agent_id: int) -> None:
 
 def avancer_statut(db, commande: CommandeCantine, utilisateur_id: int) -> str:
     if commande.statut == "a_payer":
+        commande.statut = "recue"
+    if (
+        commande.statut == "prete"
+        and commande.mode_paiement == "caisse"
+        and not _commande_payee(db, commande.id)
+    ):
         raise RefusCommande("Encaissez d'abord cette commande à la caisse.")
     if (
         commande.statut == "prete"
@@ -511,8 +518,8 @@ def _alerter_pret(db, commande: CommandeCantine) -> None:
         )
     else:
         corps = (
-            f"Votre commande {commande.numero} est prête. "
-            "Présentez ce numéro au comptoir."
+            f"Votre commande {commande.numero} est prête ({formater_francs(commande.montant)}). "
+            "Passez maintenant à la caisse avec ce numéro."
         )
     db.add(
         MessageApp(

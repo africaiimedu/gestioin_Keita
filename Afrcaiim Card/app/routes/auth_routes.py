@@ -13,11 +13,11 @@ from app.deps import Redirection, exiger_connecte, get_db, maison, utilisateur_c
 from app.models import Utilisateur
 from app.security import hash_mot_de_passe, verifier_mot_de_passe
 from app.services.comptes import (
+    controler_nouveau_secret,
     doit_choisir_mot_de_passe,
     etudiant_par_matricule,
     inscrire_professionnel,
     mot_de_passe_accepte,
-    mots_de_passe_depart,
     trouver_utilisateur,
 )
 from app.services.limite import autoriser
@@ -154,18 +154,14 @@ def changer_mot_de_passe(
     if not verifier_mot_de_passe(actuel, utilisateur.mot_de_passe_hash):
         flash(request, "erreur", "Le mot de passe actuel est incorrect.")
         raise Redirection("/compte")
-    if len(nouveau) < 10 or len(nouveau) > 200:
-        flash(request, "erreur", "Le nouveau mot de passe doit contenir au moins 10 caractères.")
-        raise Redirection("/compte")
     if nouveau != confirmation:
         flash(request, "erreur", "Les deux nouveaux mots de passe ne sont pas identiques.")
         raise Redirection("/compte")
-    if nouveau.lower() == utilisateur.identifiant.lower():
-        flash(request, "erreur", "Le mot de passe ne doit pas être identique à l'identifiant.")
-        raise Redirection("/compte")
-    if nouveau in mots_de_passe_depart():
-        flash(request, "erreur", "Choisissez un mot de passe différent du mot de passe de départ.")
-        raise Redirection("/compte")
+    try:
+        nouveau = controler_nouveau_secret(nouveau, utilisateur.identifiant)
+    except ValueError as exc:
+        flash(request, "erreur", str(exc))
+        raise Redirection("/compte") from exc
     premiere_fois = doit_choisir_mot_de_passe(utilisateur)
     utilisateur.mot_de_passe_hash = hash_mot_de_passe(nouveau)
     utilisateur.doit_changer_mot_de_passe = False

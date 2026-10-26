@@ -27,6 +27,7 @@ from app.services.cantine import crediter
 from app.services.menu_cantine import (
     RefusCommande,
     annuler_commande,
+    avancer_statut,
     encaisser_commande,
     passer_commande,
     refuser_commande,
@@ -146,17 +147,21 @@ def test_sans_solde_encaissement_recus_et_rapport():
             avant = rapport(db, date.today(), date.today())
 
             commande, _ = passer_commande(db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-recu-test-00001", "1234")
-            assert (commande.statut, commande.mode_paiement, commande.montant) == ("a_payer", "caisse", 12000)
+            assert (commande.statut, commande.mode_paiement, commande.montant) == ("recue", "caisse", 12000)
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 0
             assert db.scalar(select(RecuCantine).where(RecuCantine.commande_id == commande.id)) is None
+            cuisine_id = utilisateur.id
+            assert avancer_statut(db, commande, cuisine_id) == "preparation"
+            db.refresh(commande)
+            assert avancer_statut(db, commande, cuisine_id) == "prete"
 
             recu = encaisser_commande(db, commande.id, "especes", None)
             assert recu.numero.startswith("RC-")
             assert (recu.nature, recu.mode, recu.montant, recu.matricule) == ("commande", "especes", 12000, _MATRICULES[0])
             assert "1 × Plat reçu test" in recu.details
             db.refresh(commande)
-            assert commande.statut == "recue"
+            assert commande.statut == "prete"
             assert encaisser_commande(db, commande.id, "orange_money", None).id == recu.id
 
             retiree, _ = passer_commande(db, etudiant, utilisateur, point, [(plat.id, 2)], "cle-recu-test-00002")
@@ -176,7 +181,7 @@ def test_sans_solde_encaissement_recus_et_rapport():
             assert (recharge.mode, recharge.montant, recharge.solde_apres) == ("versement", 30000, 30000)
 
             payee, _ = passer_commande(db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-recu-test-00003")
-            assert (payee.statut, payee.mode_paiement) == ("a_payer", "caisse")
+            assert (payee.statut, payee.mode_paiement) == ("recue", "caisse")
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 30000
             refuser_commande(db, payee.id, None)

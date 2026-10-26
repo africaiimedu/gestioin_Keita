@@ -112,6 +112,7 @@
     </header>
     <ul id="lignes"></ul>
     <p class="avis-caisse" id="avis-caisse" hidden></p>
+    <p class="oubli"><button type="button" id="vider-panier">Vider le panier</button></p>
     <form method="post" action="/m/{{ point.jeton }}/commander" id="form-commande">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="panier" id="panier-json">
@@ -133,5 +134,5 @@
       </div>
     </form>
   </section>
-<script src="/static/menu.js?v=11"></script>
+<script src="/static/menu.js?v=12"></script>
 {% endblock %}

@@ -177,7 +177,7 @@ def commander(
     if etudiant is not None and getattr(etudiant, "abonne_cantine", False):
         flash(request, "ok", "Commande envoyée à la cuisine. Abonnement mensuel : aucun débit.")
     else:
-        flash(request, "ok", "Commande envoyée à la cuisine. Passez à la caisse pour payer.")
+        flash(request, "ok", "Commande envoyée à la cuisine. Attendez le message « prêt » avant de passer à la caisse.")
     raise Redirection(f"/menu/commande/{commande.id}")
 
 

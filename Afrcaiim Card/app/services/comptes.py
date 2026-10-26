@@ -16,6 +16,9 @@ ADRESSE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,60}@univ-africaiim\.com$")
 ROLES_PUBLICS = ("professeur", "personnel")
 
 
+_MAJUSCULE = re.compile(r"[A-ZÀ-ÖØ-Þ]")
+
+
 def mot_de_passe_depart() -> str:
     return "Africaiim2026@"
 
@@ -23,6 +26,19 @@ def mot_de_passe_depart() -> str:
 def mots_de_passe_depart() -> tuple[str, ...]:
     extra = env("ETUDIANT_MOT_DE_PASSE", "")
     return tuple(cle for cle in dict.fromkeys(("Africaiim2026@", extra, "Africaiim2026")) if cle)
+
+
+def controler_nouveau_secret(saisi: str, identifiant: str = "") -> str:
+    texte = saisi or ""
+    if len(texte) < 6 or len(texte) > 200:
+        raise ValueError("Le mot de passe doit contenir au moins 6 caractères.")
+    if not _MAJUSCULE.search(texte):
+        raise ValueError("Le mot de passe doit contenir au moins une majuscule.")
+    if identifiant and texte.lower() == identifiant.lower():
+        raise ValueError("Le mot de passe ne doit pas être identique à l'identifiant.")
+    if texte in mots_de_passe_depart():
+        raise ValueError("Choisissez un mot de passe différent du mot de passe de départ.")
+    return texte
 
 
 def _mots(valeur: str) -> list[str]:

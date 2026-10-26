@@ -9,15 +9,16 @@
     <a class="bouton bouton-secondaire" href="/cantine/rapport">Rapport</a>
     <a class="bouton bouton-secondaire" href="/cantine/affiche">Affiche QR à imprimer</a>
   </p>
-  <p class="intro">La liste se met à jour toute seule. Un son bref signale une nouvelle commande. « À payer à la caisse » : non abonné, personnel ou professeur — encaissez puis préparez. Pour un élève abonné (600 000 FG / mois), préparez tout de suite : au bouton Prête, il confirme et rien n'est débité.</p>
+  <p class="intro">La liste se met à jour toute seule. Un son bref signale une nouvelle commande. Préparez d'abord. Quand le repas est prêt, le client non abonné passe à la caisse. Abonné : au bouton Prête, il confirme et rien n'est débité.</p>
   <div id="file">
     {% for commande in commandes %}
-      <article class="ticket{% if commande.statut == 'a_payer' %} ticket-a-payer{% endif %}" data-id="{{ commande.id }}">
+      {% set attente_caisse = commande.mode_paiement == "caisse" and commande.statut == "prete" and not commande.recu_id %}
+      <article class="ticket{% if attente_caisse %} ticket-a-payer{% endif %}" data-id="{{ commande.id }}">
         <header><strong>{{ commande.numero }}</strong><span>{{ commande.libelle }}</span></header>
         <p>{{ commande.nom }} · {{ commande.matricule }}</p>
         <ul>{% for article in commande.articles %}<li>{{ article }}</li>{% endfor %}</ul>
-        {% if commande.statut == "a_payer" %}
-          <p class="somme">À encaisser : {{ commande.montant|gnf }} <small>(prix sans solde)</small></p>
+        {% if attente_caisse %}
+          <p class="somme">Prête · à encaisser : {{ commande.montant|gnf }}</p>
           <div class="encaisser">
             <form method="post" action="/cantine/commandes/{{ commande.id }}/encaisser">
               <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -29,19 +30,21 @@
               <input type="hidden" name="mode" value="orange_money">
               <button class="bouton" type="submit">Payé par Orange Money</button>
             </form>
-            <form method="post" action="/cantine/commandes/{{ commande.id }}/refuser" onsubmit="return confirm('Retirer cette commande non payée ?');">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="bouton bouton-secondaire" type="submit">Retirer</button>
-            </form>
           </div>
         {% else %}
-          <p class="mode-paye">{% if commande.recu_id %}{% if commande.mode_paiement == "caisse" %}Payée à la caisse{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% else %}Payée sur le compte cantine{% endif %}{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% elif commande.mode_paiement == "solde" %}Paiement à la confirmation du client{% else %}En attente de caisse{% endif %} · {{ commande.montant|gnf }}{% if commande.recu_id %} · <a href="/cantine/recus/{{ commande.recu_id }}">reçu</a>{% endif %}</p>
+          <p class="mode-paye">{% if commande.recu_id %}{% if commande.mode_paiement == "caisse" %}Payée à la caisse{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% else %}Payée sur le compte cantine{% endif %}{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% elif commande.mode_paiement == "solde" %}Paiement à la confirmation du client{% else %}Cuisine d'abord, caisse ensuite{% endif %} · {{ commande.montant|gnf }}{% if commande.recu_id %} · <a href="/cantine/recus/{{ commande.recu_id }}">reçu</a>{% endif %}</p>
           <form method="post" action="/cantine/commandes/{{ commande.id }}">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button class="bouton" type="submit">
-              {% if commande.statut == "recue" %}Préparer{% elif commande.statut == "preparation" %}Prête{% else %}Remise{% endif %}
+              {% if commande.statut in ("recue", "a_payer") %}Préparer{% elif commande.statut == "preparation" %}Prête{% else %}Remise{% endif %}
             </button>
           </form>
+          {% if commande.statut in ("recue", "a_payer", "preparation") and not commande.recu_id %}
+          <form method="post" action="/cantine/commandes/{{ commande.id }}/refuser" onsubmit="return confirm('Retirer cette commande ?');">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="bouton bouton-secondaire" type="submit">Retirer</button>
+          </form>
+          {% endif %}
         {% endif %}
       </article>
     {% else %}

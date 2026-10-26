@@ -103,10 +103,15 @@
   var feuille = document.getElementById("feuille");
 
   function lire() {
-    try { return JSON.parse(sessionStorage.getItem(stockage)) || {}; }
-    catch (e) { return {}; }
+    try {
+      return JSON.parse(localStorage.getItem(stockage) || sessionStorage.getItem(stockage)) || {};
+    } catch (e) { return {}; }
   }
-  function sauver() { sessionStorage.setItem(stockage, JSON.stringify(panier)); }
+  function sauver() {
+    var texte = JSON.stringify(panier);
+    localStorage.setItem(stockage, texte);
+    sessionStorage.setItem(stockage, texte);
+  }
   function francs(montant) { return String(Math.trunc(montant)).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " GNF"; }
   function articles() {
     return Object.keys(panier).map(function (id) { return { id: Number(id), qte: panier[id].qte }; });
@@ -164,9 +169,9 @@
     } else if (parAbonnement()) {
       texte = "Abonnement mensuel 600 000 FG : la cuisine prépare tout de suite. Rien ne sera débité à la validation.";
     } else if (estEtudiant) {
-      texte = "Vous n'êtes pas abonné à la cantine. Passez à la caisse pour payer " + francs(total()) + ".";
+      texte = "Commande envoyée à la cuisine. Payez à la caisse seulement quand le repas est marqué prêt.";
     } else {
-      texte = "Vous n'êtes pas étudiant : passez à la caisse pour payer " + francs(total()) + ". La cuisine reçoit déjà la commande.";
+      texte = "Commande envoyée à la cuisine. Payez à la caisse seulement quand le repas est marqué prêt.";
     }
     document.getElementById("confirmation-texte").textContent = texte;
     valider.hidden = true;
@@ -176,6 +181,7 @@
   valider.addEventListener("click", function () {
     if (!Object.keys(panier).length) return;
     if (!connecte) {
+      sauver();
       window.location.href = loginUrl;
       return;
     }
@@ -224,7 +230,7 @@
       var plus = document.createElement("button");
       plus.type = "button";
       plus.textContent = "+";
-      plus.disabled = panier[id].qte >= plafond(id);
+      plus.disabled = boutons[id] ? panier[id].qte >= plafond(id) : false;
       plus.setAttribute("aria-label", "Une portion de plus : " + panier[id].nom);
       plus.addEventListener("click", function () {
         if (panier[id].qte >= plafond(id)) return;
@@ -266,18 +272,20 @@
       avis.textContent = "Abonnement mensuel 600 000 FG : aucun débit à chaque validation.";
     } else if (!estEtudiant) {
       avis.hidden = false;
-      avis.textContent = "Personnel / professeur : après validation, passez à la caisse pour payer " + francs(total()) + ".";
+      avis.textContent = "Personnel / professeur : la cuisine prépare d'abord. Passez à la caisse quand le repas est prêt.";
     } else {
       avis.hidden = false;
-      avis.textContent = "Non abonné : passez à la caisse pour payer " + francs(total()) + ".";
+      avis.textContent = "Non abonné : la cuisine prépare d'abord. Passez à la caisse quand le repas est prêt.";
     }
     document.getElementById("payer-libelle").textContent = !connecte
       ? "Se connecter pour valider"
-      : (parAbonnement() ? "Valider la commande" : "Valider et payer à la caisse");
+      : "Valider la commande";
     document.getElementById("payer-montant").textContent = francs(total());
     masquerConfirmation();
     document.getElementById("panier-json").value = JSON.stringify(articles());
     document.getElementById("cle-commande").value = cle();
+    var viderBtn = document.getElementById("vider-panier");
+    if (viderBtn) viderBtn.hidden = compte === 0;
   }
   var choix = document.getElementById("choix-qte");
   var choixValeur = document.getElementById("choix-valeur");
@@ -360,10 +368,16 @@
     if (event.key === "Escape" && !choix.hidden) fermerChoix();
   });
   Object.keys(panier).forEach(function (id) {
-    if (!boutons[id]) delete panier[id];
-    else panier[id].qte = Math.min(panier[id].qte, plafond(id));
-    if (panier[id] && panier[id].qte <= 0) delete panier[id];
+    if (boutons[id]) panier[id].qte = Math.max(1, Math.min(panier[id].qte, plafond(id) || panier[id].qte));
   });
   sauver();
+  var vider = document.getElementById("vider-panier");
+  if (vider) {
+    vider.addEventListener("click", function () {
+      panier = {};
+      sauver();
+      dessiner();
+    });
+  }
   dessiner();
 })();
