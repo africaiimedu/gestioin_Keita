@@ -932,14 +932,14 @@ test("Africaiim Tech : solder la scolarité réduit l'inscription de 25 %, une a
   await assert.rejects(
     () => domain.createPayment(db, agent, {
       studentId: partial.student.id, amount: 36_000_000, paidOn: "2026-10-26", method: "especes", idempotencyKey: "tech-trop-plein",
-    }),
+    }, "2026-10-26"),
     /inscription réduite de 25 %/,
   );
 
   const settled = await domain.createPayment(db, agent, {
     studentId: partial.student.id, amount: 35_500_000, costumeAmount: 200_000, paidOn: "2026-10-26", method: "especes",
     idempotencyKey: "tech-solde-inscription",
-  });
+  }, "2026-10-26");
   assert.equal(settled.after.due, 36_500_000);
   assert.equal(settled.after.paid, 36_500_000);
   assert.equal(settled.after.status, "solde");
@@ -953,7 +953,7 @@ test("Africaiim Tech : solder la scolarité réduit l'inscription de 25 %, une a
 
   const alone = await domain.recordCostume(db, agent, partial.student.id, {
     amount: 150_000, paidOn: "2026-10-26", method: "especes", note: "Avance costume",
-  });
+  }, "2026-10-26");
   const costumeReceipt = JSON.parse((await db.prepare("SELECT snapshot_json FROM costume_payments WHERE id = ?").get(alone.receipt.id)).snapshot_json);
   assert.equal(costumeReceipt.costume.today, 150_000);
   assert.equal(costumeReceipt.costume.reste, 450_000);

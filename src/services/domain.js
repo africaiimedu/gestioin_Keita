@@ -12,10 +12,11 @@ import {
   assertGnf,
   computeSituation,
   officialInstallments,
+  feesDue,
   formatGnf,
+  percentOf,
   previewSituation,
   recoveryRate,
-  percentOf,
   REGISTRATION_FEES,
   registrationFee,
 } from "../finance/index.js";
@@ -31,9 +32,8 @@ const OFFER_LEVELS = new Set(["bachelor_1", "bachelor_2", "bachelor_3", "master_
 const CASH_LABEL = "Paiement comptant";
 const TECH_INSCRIPTION_LABEL = "Inscription Tech";
 const SCHOLAR_LABEL = "Bourse";
-/** Réduction automatique sur le prix de l'inscription quand un étudiant d'Africaiim Tech solde sa scolarité. */
-export const TECH_INSCRIPTION_RATE = 25;
 const UNIQUE_VIOLATION = "23505";
+export const TECH_INSCRIPTION_RATE = 25;
 
 function isScholar(discounts) {
   return discounts.some((item) => item.label === SCHOLAR_LABEL || (item.mode === "pourcentage" && Number(item.value) === 100));
@@ -45,6 +45,15 @@ export const CASH_DISCOUNT = 1_200_000;
 export function cashDiscountFor(level) {
   const code = String(level || "");
   return code.startsWith("licence") || code.startsWith("bachelor") || TECH_LEVELS.has(code) ? CASH_DISCOUNT : 0;
+}
+
+function isTechStudent(student) {
+  return TECH_LEVELS.has(String(student.level || "")) || String(student.program_code || "").toUpperCase() === "TECH";
+}
+
+export function techInscriptionDiscountFor(student) {
+  if (!isTechStudent(student)) return 0;
+  return percentOf(registrationFee(student.level, student.program_code), TECH_INSCRIPTION_RATE);
 }
 
 /** La remise n'est jamais déduite d'office : l'agent choisit « Remise : oui » ou « non » à l'encaissement. */
@@ -59,57 +68,32 @@ function cashOffer(current, amount, wanted = false) {
   return { ...none, apply: true, reduced: Math.max(0, current.situation.due - discount) };
 }
 
-function payableRoom(current, offer) {
-  if (offer.apply) return Math.max(0, offer.reduced - current.situation.paid);
-  return Math.max(0, current.situation.reste);
+function techInscriptionOffer(current, amount) {
+  const value = techInscriptionDiscountFor(current.student);
+  const none = { apply: false, value };
+  if (!value || hasCustomFee(current.student) || isScholar(current.discounts)) return none;
+  if (current.discounts.some((item) => item.label === TECH_INSCRIPTION_LABEL)) return none;
+  const registration = registrationFee(current.student.level, current.student.program_code);
+  const schooling = Math.max(0, current.tuition - registration);
+  if (schooling <= 0 || current.situation.paid + amount < schooling) return none;
+  return { apply: true, value };
 }
 
-function techInscriptionCut(current) {
-  if (String(current.student?.program_code || "").toUpperCase() !== "TECH") return 0;
-  if (hasCustomFee(current.student) || isScholar(current.discounts)) return 0;
-  if (current.discounts.some((item) => item.label === TECH_INSCRIPTION_LABEL)) return 0;
-  const registration = Number(current.registration || 0);
-  if (registration <= 0) return 0;
-  return percentOf(registration, TECH_INSCRIPTION_RATE);
+function extrasOf(current, amount, wantedCash) {
+  const cash = cashOffer(current, amount, wantedCash);
+  const tech = techInscriptionOffer(current, amount);
+  const extras = [];
+  if (cash.apply) extras.push({ label: CASH_LABEL, value: CASH_DISCOUNT, mode: "fixe" });
+  if (tech.apply) extras.push({ label: TECH_INSCRIPTION_LABEL, value: tech.value, mode: "fixe" });
+  return { cash, tech, extras };
 }
 
-/** La réduction ne s'enregistre que si les versements couvrent la scolarité une fois l'inscription réduite. */
-function techOffer(current, amount, extraCut = 0) {
-  const cut = techInscriptionCut(current);
-  const reducedDue = Math.max(0, current.situation.due - extraCut - cut);
-  if (!cut) return { apply: false, cut: 0, reducedDue: current.situation.due - extraCut };
-  const covered = current.situation.paid + Math.max(0, amount) >= reducedDue;
-  return { apply: covered, cut, reducedDue };
+function dueWithExtras(current, extras) {
+  return feesDue(current.tuition, [...current.discounts, ...extras], current.adjustments).due;
 }
 
-function paymentTerms(current, amount, wanted) {
-  const cash = cashOffer(current, amount, wanted);
-  const extra = cash.apply ? CASH_DISCOUNT : 0;
-  const tech = techOffer(current, cash.amount, extra);
-  const room = tech.apply
-    ? Math.max(0, tech.reducedDue - current.situation.paid)
-    : payableRoom(current, cash);
-  return { cash, tech, room };
-}
-
-async function addTechInscriptionDiscount(db, user, studentId, cut) {
-  await db.prepare(`
-    INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
-    VALUES(?, ?, 'fixe', ?, ?, ?)
-  `).run(
-    studentId,
-    TECH_INSCRIPTION_LABEL,
-    cut,
-    `Réduction de ${TECH_INSCRIPTION_RATE} % sur le prix de l'inscription : la scolarité est soldée`,
-    user.id,
-  );
-}
-
-async function dropTechInscriptionIfOpen(db, studentId) {
-  const current = await studentSituation(db, studentId);
-  const row = current.discounts.find((item) => item.label === TECH_INSCRIPTION_LABEL);
-  if (!row || current.situation.paid >= current.situation.due) return;
-  await db.prepare("DELETE FROM discounts WHERE student_id = ? AND label = ?").run(studentId, TECH_INSCRIPTION_LABEL);
+function payableRoom(current, extras) {
+  return Math.max(0, dueWithExtras(current, extras) - current.situation.paid);
 }
 
 async function addCashDiscount(db, user, studentId) {
@@ -119,16 +103,25 @@ async function addCashDiscount(db, user, studentId) {
   `).run(studentId, CASH_LABEL, CASH_DISCOUNT, "Remise de 1.200.000 GNF choisie à l'encaissement", user.id);
 }
 
+async function addTechInscriptionDiscount(db, user, student, value) {
+  await db.prepare(`
+    INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
+    VALUES(?, ?, 'fixe', ?, ?, ?)
+  `).run(
+    student.id,
+    TECH_INSCRIPTION_LABEL,
+    value,
+    `Africaiim Tech : toute la scolarité est versée, inscription réduite de ${TECH_INSCRIPTION_RATE} %`,
+    user.id,
+  );
+}
+
 /** Le montant saisi est enregistré tel quel : jamais réduit en silence, refusé s'il dépasse le reste à payer. */
-function overpayMessage(typed, room, offer = {}, tech = {}) {
-  if (room <= 0) {
-    return tech.apply
-      ? `La scolarité est déjà couverte. L'inscription est réduite de ${TECH_INSCRIPTION_RATE} % (${formatGnf(tech.cut)}). Le versement n'a pas été enregistré.`
-      : "Cet étudiant n'a plus de scolarité à payer. Le versement n'a pas été enregistré.";
-  }
+function overpayMessage(typed, room, offers = {}) {
+  if (room <= 0) return "Cet étudiant n'a plus de scolarité à payer. Le versement n'a pas été enregistré.";
   const notes = [];
-  if (offer.apply) notes.push(`remise de ${formatGnf(CASH_DISCOUNT)} déduite`);
-  if (tech.apply) notes.push(`inscription réduite de ${TECH_INSCRIPTION_RATE} % (${formatGnf(tech.cut)})`);
+  if (offers.cash?.apply) notes.push(`remise de ${formatGnf(CASH_DISCOUNT)} déduite`);
+  if (offers.tech?.apply) notes.push("inscription réduite de 25 %");
   const discount = notes.length ? `, ${notes.join(", ")}` : "";
   return `La scolarité saisie (${formatGnf(typed)}) est supérieure à la scolarité restant à payer (${formatGnf(room)}${discount}). Le costume est compté à part, il n'entre pas dans ce montant. Le versement n'a pas été enregistré.`;
 }
@@ -297,6 +290,7 @@ export async function recordCostume(db, user, studentId, input, asOf = todayInCo
           today: amount,
           paidAfter: before.paid + amount,
           reste: Math.max(0, before.reste - amount),
+          advance: amount > 0 && amount < before.reste,
         },
         method: input.method,
         methodLabel: METHOD_LABELS[input.method],
@@ -487,13 +481,13 @@ function hasCustomFee(student) {
 }
 
 function bundleFrom(student, ledger, asOf) {
-  const { tuition, registration, installments } = planFrom(student, ledger);
+  const { tuition, installments } = planFrom(student, ledger);
   const discounts = ledger.strip(ledger.discounts.get(student.id) || [])
     .filter((item) => !hasCustomFee(student) || item.label !== CASH_LABEL);
   const adjustments = ledger.strip(ledger.adjustments.get(student.id) || []);
   const payments = ledger.strip(ledger.payments.get(student.id) || []);
   const situation = computeSituation({ tuition, discounts, adjustments, installments, payments, asOf });
-  return { tuition, registration, discounts, adjustments, payments, installments, situation };
+  return { tuition, discounts, adjustments, payments, installments, situation };
 }
 
 const STUDENT_SELECT = `
@@ -850,13 +844,11 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
     `).get(input.reference.trim());
     if (duplicate) warnings.push("Cette référence a déjà été utilisée");
   }
-  const terms = paymentTerms(current, input.amount, truthy(input.cashDiscount));
-  const offer = terms.cash;
-  if (offer.refusal || offer.notice) warnings.push(offer.refusal || offer.notice);
-  if (terms.tech.apply) warnings.push(`Réduction de ${TECH_INSCRIPTION_RATE} % sur l'inscription : ${formatGnf(terms.tech.cut)} déduits, la scolarité est soldée.`);
-  const room = terms.room;
-  if (offer.amount > room) {
-    warnings.push(overpayMessage(input.amount, room, offer, terms.tech));
+  const offers = extrasOf(current, input.amount, truthy(input.cashDiscount));
+  if (offers.cash.refusal || offers.cash.notice) warnings.push(offers.cash.refusal || offers.cash.notice);
+  const room = payableRoom(current, offers.extras);
+  if (input.amount > room) {
+    warnings.push(overpayMessage(input.amount, room, offers));
     return {
       warnings,
       before: current.situation,
@@ -866,12 +858,12 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
       refused: true,
       student: publicStudent(current.student),
       costume,
+      inscriptionDiscount: offers.tech.apply ? offers.tech.value : 0,
     };
   }
-  const discounts = [...current.discounts];
-  if (offer.apply) discounts.push({ mode: "fixe", value: CASH_DISCOUNT, label: CASH_LABEL });
-  if (terms.tech.apply) discounts.push({ mode: "fixe", value: terms.tech.cut, label: TECH_INSCRIPTION_LABEL });
-  if (offer.apply) warnings.push(`Remise de ${formatGnf(CASH_DISCOUNT)} déduite du montant dû`);
+  const discounts = [...current.discounts, ...offers.extras];
+  if (offers.cash.apply) warnings.push(`Remise de ${formatGnf(CASH_DISCOUNT)} déduite du montant dû`);
+  if (offers.tech.apply) warnings.push(`Africaiim Tech : inscription réduite de 25 % (${formatGnf(offers.tech.value)})`);
   const preview = previewSituation({
     tuition: current.tuition,
     discounts,
@@ -880,11 +872,15 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
     payments: current.payments,
     asOf,
   }, {
-    amount: offer.amount,
+    amount: input.amount,
     paidOn: input.paidOn || asOf,
     installmentCode: input.installmentCode || null,
   });
-  return { warnings, ...preview, recordedAmount: offer.amount, limited: false, refused: false, student: publicStudent(current.student), costume };
+  return {
+    warnings, ...preview, recordedAmount: input.amount, limited: false, refused: false,
+    student: publicStudent(current.student), costume,
+    inscriptionDiscount: offers.tech.apply ? offers.tech.value : 0,
+  };
 }
 
 /** Aperçu d'une mise à jour : mêmes montants que le nouveau reçu, sans rien enregistrer. */
@@ -923,11 +919,8 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
       seal: current.situation.reste <= 0 ? "PAYÉ" : "ACOMPTE REÇU",
     };
   }
-  const terms = paymentTerms(current, asked, truthy(input.cashDiscount));
-  const offer = terms.cash;
-  const discountsAfter = [...current.discounts];
-  if (offer.apply) discountsAfter.push({ mode: "fixe", value: CASH_DISCOUNT, label: CASH_LABEL });
-  if (terms.tech.apply) discountsAfter.push({ mode: "fixe", value: terms.tech.cut, label: TECH_INSCRIPTION_LABEL });
+  const offers = extrasOf(current, asked, truthy(input.cashDiscount));
+  const discountsAfter = [...current.discounts, ...offers.extras];
   const priced = {
     tuition: current.tuition,
     discounts: discountsAfter,
@@ -936,9 +929,9 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
     payments: valid,
     asOf,
   };
-  const probe = previewSituation(priced, { amount: offer.amount, paidOn });
-  const room = terms.room;
-  if (offer.amount > room) {
+  const probe = previewSituation(priced, { amount: asked, paidOn });
+  const room = payableRoom(current, offers.extras);
+  if (asked > room) {
     return {
       ...base,
       due: probe.before.due,
@@ -948,25 +941,27 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
       reste: probe.before.reste,
       credit: probe.before.credit,
       seal: probe.before.reste <= 0 ? "PAYÉ" : "ACOMPTE REÇU",
-      cashDiscount: Boolean(offer.apply),
+      cashDiscount: Boolean(offers.cash.apply),
+      inscriptionDiscount: offers.tech.apply ? offers.tech.value : 0,
       limited: true,
       refused: true,
-      limitedMessage: overpayMessage(asked, room, offer, terms.tech),
+      limitedMessage: overpayMessage(asked, room, offers),
     };
   }
   return {
     ...base,
     due: probe.after.due,
-    todayAmount: offer.amount,
+    todayAmount: asked,
     paidBefore: probe.before.paid,
     paidAfter: probe.after.paid,
     reste: probe.after.reste,
     credit: probe.after.credit,
     seal: probe.after.reste <= 0 ? "PAYÉ" : "ACOMPTE REÇU",
-    cashDiscount: Boolean(offer.apply),
+    cashDiscount: Boolean(offers.cash.apply),
+    inscriptionDiscount: offers.tech.apply ? offers.tech.value : 0,
     limited: false,
     refused: false,
-    limitedMessage: offer.refusal || offer.notice || "",
+    limitedMessage: offers.cash.refusal || offers.cash.notice || "",
   };
 }
 
@@ -1025,16 +1020,6 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
   const key = String(input.idempotencyKey || "").trim();
   if (key.length < 8) throw new HttpError(400, "Validation incomplète. Rechargez la page et recommencez.");
 
-  const probe = await studentSituation(db, Number(input.studentId), asOf);
-  assertCanPay(probe.student);
-  if (!isScholar(probe.discounts)) {
-    const probeTerms = paymentTerms(probe, input.amount, truthy(input.cashDiscount));
-    if (probeTerms.tech.apply && probeTerms.room === 0 && probe.situation.paid >= probeTerms.tech.reducedDue) {
-      await transaction(db, () => addTechInscriptionDiscount(db, user, probe.student.id, probeTerms.tech.cut));
-      throw new HttpError(400, overpayMessage(input.amount, 0, probeTerms.cash, probeTerms.tech), { code: "AMOUNT_TOO_HIGH", reste: 0 });
-    }
-  }
-
   return transaction(db, async () => {
     const existing = await db.prepare("SELECT * FROM payments WHERE idempotency_key = ?").get(key);
     if (existing) {
@@ -1051,20 +1036,19 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
     if (isScholar(current.discounts)) {
       throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
     }
-    const terms = paymentTerms(current, input.amount, truthy(input.cashDiscount));
-    const offer = terms.cash;
-    if (offer.refusal) throw new HttpError(400, offer.refusal);
-    const room = terms.room;
-    if (offer.amount > room && !input.acceptCredit) {
-      throw new HttpError(400, overpayMessage(input.amount, room, offer, terms.tech), { code: "AMOUNT_TOO_HIGH", reste: room });
+    const offers = extrasOf(current, input.amount, truthy(input.cashDiscount));
+    if (offers.cash.refusal) throw new HttpError(400, offers.cash.refusal);
+    const room = payableRoom(current, offers.extras);
+    if (input.amount > room && !input.acceptCredit) {
+      throw new HttpError(400, overpayMessage(input.amount, room, offers), { code: "AMOUNT_TOO_HIGH", reste: room });
     }
     const costumeAmount = costumeAmountOf(input.costumeAmount);
     const costumeBefore = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity, { write: true });
     assertCostumeRoom(costumeBefore, costumeAmount);
-    if (offer.apply) await addCashDiscount(db, user, current.student.id);
-    if (terms.tech.apply) await addTechInscriptionDiscount(db, user, current.student.id, terms.tech.cut);
-    if (offer.apply || terms.tech.apply) current = await studentSituation(db, current.student.id, asOf);
-    const amount = offer.amount;
+    if (offers.cash.apply) await addCashDiscount(db, user, current.student.id);
+    if (offers.tech.apply) await addTechInscriptionDiscount(db, user, current.student, offers.tech.value);
+    if (offers.extras.length) current = await studentSituation(db, current.student.id, asOf);
+    const amount = input.amount;
     const reference = (input.reference || "").trim();
     if (reference) {
       const duplicate = await db.prepare(`
@@ -1129,6 +1113,7 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
       year: current.student.year_label,
       amount,
       amountInWords: amountInWords(amount),
+      inscriptionDiscount: offers.tech.apply ? offers.tech.value : 0,
       costume: costumeBefore.price > 0 ? {
         unitPrice: costumeBefore.unitPrice,
         quantity: costumeBefore.quantity,
@@ -1137,6 +1122,7 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
         today: costumeAmount,
         paidAfter: costumeBefore.paid + costumeAmount,
         reste: Math.max(0, costumeBefore.reste - costumeAmount),
+        advance: costumeAmount > 0 && costumeAmount < costumeBefore.reste,
       } : null,
       method: input.method,
       methodLabel: METHOD_LABELS[input.method],
@@ -1146,7 +1132,6 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
       paidOn: input.paidOn,
       recordedAt: new Date().toISOString(),
       agentName: user.full_name,
-      inscriptionDiscount: terms.tech.apply ? terms.tech.cut : 0,
       due: atThisPayment.due,
       paidAfter: atThisPayment.paid,
       resteAfter: atThisPayment.reste,
@@ -1246,7 +1231,6 @@ export async function cancelPayment(db, user, paymentId, reason, asOf = todayInC
     await db.prepare(`
       INSERT INTO cancellations(payment_id, reason, cancelled_by, credit_note_number) VALUES(?, ?, ?, ?)
     `).run(paymentId, clean, user.id, creditNote);
-    await dropTechInscriptionIfOpen(db, payment.student_id);
     const after = await studentSituation(db, payment.student_id, asOf);
     await refreshCard(db, after.student, after.situation);
     await audit(db, user.id, "paiement.annuler", "payments", paymentId, { status: "valide", amount: payment.amount }, { status: "annule", reason: clean, creditNote });
@@ -2071,12 +2055,13 @@ export async function catalog(db) {
     agents,
     registrationFees: REGISTRATION_FEES,
     cashDiscount: CASH_DISCOUNT,
+    techInscriptionRate: TECH_INSCRIPTION_RATE,
     hypotheses: [
       `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.techBachelor)} à Africaiim Tech (CPI et MIAGE), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
+      `À Africaiim Tech, dès que toute la scolarité est versée, l'inscription est réduite de ${TECH_INSCRIPTION_RATE} % automatiquement.`,
       "Répartition de la scolarité : 20 % le 5 octobre, 40 % le 5 décembre, 40 % le 5 mars.",
       "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. À Africaiim Tech : Cycle Préparatoire Intégré (CPI 1, CPI 2) puis MIAGE 1, 2 et 3. Chaque école se règle dans Tarifs.",
       `En Licence, Bachelor, CPI et MIAGE, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,
-      `Africaiim Tech : quand la scolarité est soldée, le prix de l'inscription est réduit de ${TECH_INSCRIPTION_RATE} %.`,
       "Un étudiant boursier ne paie ni la scolarité ni les frais d'inscription.",
       "Les fiches déjà enregistrées gardent leur barème (Licence 25 000 000, Master 30 000 000, Tech 37 000 000).",
       "L'admin de la scolarité peut modifier ces montants. Les paiements déjà enregistrés ne changent pas.",
