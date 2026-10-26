@@ -20,7 +20,12 @@ ADRESSE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,60}@univ-africaiim\.com$")
 
 
 def mot_de_passe_depart() -> str:
-    return env("ETUDIANT_MOT_DE_PASSE", "Africaiim2026")
+    return env("ETUDIANT_MOT_DE_PASSE", "Africaiim2026@")
+
+
+def mots_de_passe_depart() -> tuple[str, ...]:
+    actuel = mot_de_passe_depart()
+    return tuple(dict.fromkeys((actuel, "Africaiim2026@", "Africaiim2026")))
 
 
 def _mots(valeur: str) -> list[str]:

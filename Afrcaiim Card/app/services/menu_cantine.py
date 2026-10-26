@@ -73,8 +73,11 @@ _SECOURS = {
 
 def image_plat(plat) -> str:
     chemin = getattr(plat, "photo_chemin", None) or ""
-    if chemin.startswith("perso/") and chemin.endswith(".jpg") and ".." not in chemin:
-        return f"/static/plats/{chemin}"
+    if ".." not in chemin and chemin.endswith(".jpg"):
+        if chemin.startswith("perso/") and chemin.count("/") == 1:
+            return f"/static/plats/{chemin}"
+        if "/" not in chemin:
+            return f"/static/plats/{chemin}"
     brut = unicodedata.normalize("NFKD", plat.nom or "")
     nom = "".join(c for c in brut if not unicodedata.combining(c)).lower().strip()
     fichier = _PHOTOS.get(nom) or _SECOURS.get(getattr(plat, "visuel", ""), "plat.jpg")
@@ -372,6 +375,9 @@ _VISUELS = {
     "vert": "feuille",
     "doux": "creme",
     "boire": "verre",
+    "petit-dej": "frit",
+    "plat-jour": "bol",
+    "formules": "bol",
 }
 
 

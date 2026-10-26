@@ -36,7 +36,7 @@ LIBELLES_ACTION = {
     "compte_actif": "Compte réactivé",
     "compte_inactif": "Compte désactivé",
     "compte_qr": "Autorisation QR modifiée",
-    "qr_valide": "QR code validé",
+    "qr_valide": "Présence validée",
 }
 
 

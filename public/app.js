@@ -1342,7 +1342,7 @@ async function showStudents(screen) {
           ? ` · homonyme de ${created.namesakes.map((row) => row.matricule).join(", ")}`
           : "";
         saved(created.student.accountEmail
-          ? `Fiche enregistrée · compte ${created.student.accountEmail}${twins} · mot de passe de départ Africaiim2026`
+          ? `Fiche enregistrée · compte ${created.student.accountEmail}${twins} · mot de passe de départ Africaiim2026@`
           : `Fiche enregistrée${twins}`);
         openStudent(created.student.id);
       } catch (caught) {

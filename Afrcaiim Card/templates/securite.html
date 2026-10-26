@@ -3,9 +3,9 @@
 {% block contenu %}
 <section class="bloc">
   <h1>Contrôle des cartes</h1>
-  <p class="intro">Flashez le QR code de la carte avec l'appareil photo, connecté à ce compte. Avec une douchette, scannez le code-barres dans le champ ci-dessous : la fiche de la carte s'ouvre directement. Vous pouvez aussi taper le code « Contrôle » imprimé au dos, un nom ou un matricule.</p>
+  <p class="intro">Flashez le QR code au dos de la carte : la présence et l'appartenance à l'Université AFRICAIIM sont validées tout de suite. Aucun code n'est à saisir. Une recherche par nom ou matricule reste possible.</p>
   <form method="get" class="filtres">
-    <input name="q" value="{{ q }}" placeholder="Code-barres, code de contrôle, nom ou matricule" maxlength="80" autocomplete="off" autofocus>
+    <input name="q" value="{{ q }}" placeholder="Flashez le QR, ou cherchez un nom / matricule" maxlength="400" autocomplete="off" autofocus>
     <button type="submit">Chercher</button>
   </form>
 

@@ -6,9 +6,9 @@
   <h1>Vérification de carte</h1>
 
   {% if mode == "scan" %}
-    <p class="resultat">Scannez le QR code ou le code-barres imprimé sur la carte. L'adresse seule ne suffit pas.</p>
+    <p class="resultat">Flashez le QR code au dos de la carte. Aucun code n'est à saisir : le scan suffit.</p>
   {% elif mode == "invalide" %}
-    <p class="resultat resultat-mauvais">Cette carte n'est pas reconnue par l'Université AFRICAIIM. Le QR ou le code ne correspond à aucun étudiant inscrit.</p>
+    <p class="resultat resultat-mauvais">Cette carte n'est pas reconnue par l'Université AFRICAIIM. La personne n'est pas un membre inscrit.</p>
   {% elif mode == "limite" %}
     <p class="resultat">Trop de vérifications. Réessayez dans une minute.</p>
   {% elif mode == "ok" %}
@@ -16,45 +16,40 @@
     <p class="nom-verif">{{ nom }}</p>
     <p class="pastille pastille-{{ statut }} grand">{{ statut|statutfr }}</p>
     {% if ecole %}<p>{{ ecole }}{% if programme %} · {{ programme }}{% endif %}</p>{% endif %}
-    <p class="controle">Code de contrôle du verso : <strong>{{ controle }}</strong></p>
-    <p class="muted">Il doit être identique au code imprimé sous « Contrôle », et au microtexte.</p>
+    <p class="matricule-verif">{{ matricule }}</p>
     {% if statut == "active" %}
+      <p class="resultat resultat-bon">{% if personnel %}Membre du personnel confirmé de l'Université AFRICAIIM.{% else %}Étudiant confirmé de l'Université AFRICAIIM.{% endif %}</p>
+      {% if pointe %}
+        <p class="resultat resultat-bon resultat-presence">Présence validée. Aucune autre action n'est demandée.</p>
+      {% endif %}
+    {% elif statut == "expiree" %}
+      <p class="resultat resultat-mauvais">Cette carte est expirée. L'accès n'est pas validé.</p>
+    {% elif statut == "suspendue" %}
+      <p class="resultat resultat-mauvais">Cette carte est suspendue. L'accès n'est pas validé.</p>
+    {% elif statut == "perdue" %}
+      <p class="resultat resultat-mauvais">Cette carte a été déclarée perdue. L'accès n'est pas validé.</p>
+    {% elif statut == "remplacee" %}
+      <p class="resultat resultat-mauvais">Cette carte a été remplacée. L'ancienne n'est plus valable.</p>
+    {% endif %}
+    {% if statut == "active" and role in ["cuisiniere", "admin"] %}
       <div class="cantine">
         <h2>Cantine</h2>
         <p>Compte de {{ nom }}</p>
         <p class="solde">{{ solde }}</p>
         <p>Prix du repas : {{ prix }}</p>
         {% if email %}<p>E-mail étudiant : {{ email }}</p>{% endif %}
-        {% if autorise and role in ["cuisiniere", "admin"] and peut %}
+        {% if autorise and peut %}
           <form method="post" action="/verif/{{ matricule }}/repas">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <input type="hidden" name="t" value="{{ jeton }}">
             <button type="submit">Valider le repas et débiter</button>
           </form>
-        {% elif autorise and role in ["cuisiniere", "admin"] %}
+        {% elif autorise %}
           <p class="resultat resultat-mauvais">{{ raison }}</p>
         {% elif not autorise %}
-          <p class="resultat resultat-mauvais">Ce compte n'est pas autorisé à valider les QR codes.</p>
+          <p class="resultat resultat-mauvais">Ce compte n'est pas autorisé à débiter un repas.</p>
         {% endif %}
       </div>
-    {% endif %}
-    {% if statut == "active" and autorise and role not in ["cuisiniere", "admin"] %}
-      <form method="post" action="/verif/{{ matricule }}/repas">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <input type="hidden" name="t" value="{{ jeton }}">
-        <button type="submit">Valider cette carte</button>
-      </form>
-    {% endif %}
-    {% if statut == "active" %}
-      <p class="resultat resultat-bon">{% if personnel %}Badge confirmé de l'Université AFRICAIIM.{% else %}Étudiant confirmé de l'Université AFRICAIIM.{% endif %}</p>
-    {% elif statut == "expiree" %}
-      <p class="resultat resultat-mauvais">Cette carte est expirée.</p>
-    {% elif statut == "suspendue" %}
-      <p class="resultat resultat-mauvais">Cette carte est suspendue.</p>
-    {% elif statut == "perdue" %}
-      <p class="resultat resultat-mauvais">Cette carte a été déclarée perdue.</p>
-    {% elif statut == "remplacee" %}
-      <p class="resultat resultat-mauvais">Cette carte a été remplacée. L'ancienne n'est plus valable.</p>
     {% endif %}
   {% endif %}
 </section>

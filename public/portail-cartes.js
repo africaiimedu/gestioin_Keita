@@ -175,7 +175,7 @@
     else if (path === "/cantine") kitchenPage(hero);
     else if (path.startsWith("/cantine/commandes")) ordersPage(hero);
     else if (path.startsWith("/cantine/menu")) menuPage(hero);
-    else if (path.startsWith("/securite")) emptyState("Flashez le QR code d'une carte ou cherchez un étudiant par son nom ou son matricule.");
+    else if (path.startsWith("/securite")) emptyState("Flashez le QR au dos de la carte : présence et appartenance à AFRICAIIM sont validées tout de suite, sans code.");
     else if (path === "/admin/lot") emptyState("Choisissez une école et une année, puis cliquez sur « Préparer » pour voir les cartes prêtes.");
     yesNo();
     labelTables();

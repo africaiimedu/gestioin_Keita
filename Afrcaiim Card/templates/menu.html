@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=8">
+<link rel="stylesheet" href="/static/menu.css?v=9">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
   <section class="hero">
-    <p class="enseigne">AfricaIIM Cantine</p>
-    <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Menu du jour{% endif %}</h1>
+    <img class="logo-diima" src="/static/diima.png" alt="DiiMa Signature">
+    <p class="enseigne">Cantine scolaire · Université AFRICAIIM</p>
+    <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Carte des menus{% endif %}</h1>
     <p class="ouvert">Ouvert · déjeuner</p>
     {% if etudiant %}
       <p class="solde">Compte <strong>{{ etudiant.solde_cantine|gnf }}</strong> · <a href="/menu/recus">Mes reçus</a></p>

@@ -45,6 +45,9 @@
   margin-bottom: 0.35rem;
 }
 .hero p, .hero strong, .hero h1 { color: #F4F1EA; overflow-wrap: anywhere; }
+.logo-diima { display: block; height: 64px; width: auto; margin: 0 0 0.45rem; object-fit: contain; }
+.hero .logo-diima { height: 72px; filter: brightness(0) invert(1); }
+.affiche .logo-diima { margin: 0 auto 0.6rem; height: 88px; }
 .enseigne { letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.75rem; margin: 0; }
 .hero .enseigne, .hero .ouvert { color: #FEAB00; }
 .hero h1 { margin: 0.15rem 0; font-size: clamp(1.45rem, 6vw, 1.9rem); line-height: 1.15; }

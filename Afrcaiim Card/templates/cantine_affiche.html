@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block titre %}Affiche cantine{% endblock %}
-{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=8">{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=9">{% endblock %}
 {% block contenu %}
 <section class="affiche">
-  <img src="/static/marque.png" alt="Université AFRICAIIM">
-  <p class="enseigne">AfricaIIM Cantine</p>
+  <img class="logo-diima" src="/static/diima.png" alt="DiiMa Signature">
+  <p class="enseigne">Cantine scolaire · Université AFRICAIIM</p>
   <h1>Scanne pour commander</h1>
   <img class="qr" src="/cantine/qr.png" alt="QR code du menu">
   <p>{{ point.nom }}</p>

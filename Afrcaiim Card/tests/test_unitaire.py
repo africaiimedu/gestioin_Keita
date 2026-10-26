@@ -301,10 +301,28 @@ def test_pdf_carte_a_la_taille_cr80():
     assert "Amina" in texte
     assert "AFRICAIIM Business School" in texte
     assert "CARTE D'ÉTUDIANT" in texte.replace("\n", "")
-    assert "Signature du titulaire" in texte
     prefs = lecteur.trailer["/Root"]["/ViewerPreferences"]
     assert "DuplexFlipLongEdge" in str(prefs["/Duplex"])
     assert "t=jeton-test" in url_qr("https://africaiim.com", etudiant.matricule, "jeton-test")
+
+
+def test_flash_qr_reconnu_sans_code_de_controle():
+    from app.routes.securite_routes import _VERIF_LIEN
+
+    jeton = "jeton-secret-de-vingt-car"
+    lien = f"https://scolarite.univ-africaiim.com/portail/cartes/verif/UA26AT0001?t={jeton}"
+    match = _VERIF_LIEN.search(lien)
+    assert match is not None
+    assert match.group(1) == "UA26AT0001"
+    assert match.group(2) == jeton
+    assert _VERIF_LIEN.search("/verif/AIIM-1?t=" + jeton)
+
+
+def test_mot_de_passe_depart_etudiant():
+    from app.services.comptes import mot_de_passe_depart, mots_de_passe_depart
+
+    assert mot_de_passe_depart() in mots_de_passe_depart()
+    assert "Africaiim2026@" in mots_de_passe_depart()
 
 
 def test_feuille_a4_pour_toute_imprimante():

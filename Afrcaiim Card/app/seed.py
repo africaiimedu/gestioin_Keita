@@ -138,43 +138,14 @@ def _assurer_cuisiniere(db) -> None:
 def _assurer_menu(db) -> None:
     from secrets import token_urlsafe
 
-    from app.models import CategoriePlat, Plat, PointCantine
+    from app.models import PointCantine
 
     if db.scalar(select(PointCantine).limit(1)) is None:
         db.add(PointCantine(nom="Cantine principale", jeton=token_urlsafe(24), actif=True))
         db.commit()
-    if db.scalar(select(Plat).limit(1)) is not None:
-        return
-    groupes = [
-        ("Plats chauds", "chauds", [("Thiéboudienne", "Riz au poisson, légumes et sauce tomate.", 25000, "Plat du jour", "bol", 25, None), ("Poulet yassa", "Poulet citronné, oignons confits, riz blanc.", 20000, "Populaire", "bol", 20, None), ("Riz sauce arachide", "Sauce onctueuse, légumes et riz parfumé.", 15000, None, "bol", 20, None), ("Mafé", "Viande mijotée à la pâte d'arachide.", 18000, None, "bol", 25, None)]),
-        ("Grillades", "grill", [("Brochettes de bœuf", "Bœuf grillé, oignons et piment doux.", 12000, "Épicé", "grill", 15, 12), ("Poisson braisé", "Poisson entier, marinade et attiéké.", 22000, None, "grill", 20, 8), ("Attiéké poisson", "Semoule de manioc, poisson frit, piment.", 20000, "Populaire", "grill", 15, None)]),
-        ("Entrées", "entrees", [("Alloco", "Banane plantain frite, sel et piment.", 5000, "Populaire", "frit", 8, None), ("Fataya", "Beignet farci au poisson.", 3000, None, "frit", 8, None)]),
-        ("Végétarien", "vert", [("Salade d'avocat", "Avocat, tomate, oignon et citron.", 8000, "Végétarien", "feuille", 8, None)]),
-        ("Desserts", "doux", [("Thiakry", "Couscous sucré, lait caillé et vanille.", 4000, None, "creme", 5, None), ("Beignets", "Pâte frite, un peu sucrée.", 2000, None, "frit", 5, None)]),
-        ("Boissons", "boire", [("Jus de bissap", "Fleur d'hibiscus, menthe, peu sucré.", 3000, None, "verre", 3, None), ("Jus de gingembre", "Gingembre frais, citron et ananas.", 3000, "Épicé", "verre", 3, None), ("Formule yassa + bissap", "Poulet yassa et un verre de bissap.", 22000, "Formule", "bol", 20, None)]),
-    ]
-    ordre_cat = 0
-    for nom, slug, plats in groupes:
-        ordre_cat += 1
-        categorie = CategoriePlat(nom=nom, slug=slug, ordre=ordre_cat)
-        db.add(categorie)
-        db.flush()
-        for index, (titre, description, prix, badge, visuel, temps, stock) in enumerate(plats, start=1):
-            db.add(
-                Plat(
-                    categorie_id=categorie.id,
-                    nom=titre,
-                    description=description,
-                    prix=prix,
-                    badge=badge,
-                    visuel=visuel,
-                    temps_min=temps,
-                    stock=stock,
-                    disponible=True,
-                    ordre=index,
-                )
-            )
-    db.commit()
+    from app.services.menu_officiel import appliquer_menu_diima
+
+    appliquer_menu_diima(db, retirer_anciens=False)
 
 
 def _assurer_exemple(db) -> None:

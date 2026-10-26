@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.deps import Redirection, exiger_connecte, get_db, maison, utilisateur_courant
 from app.models import Utilisateur
 from app.security import hash_mot_de_passe, verifier_mot_de_passe
-from app.services.comptes import doit_choisir_mot_de_passe, mot_de_passe_depart
+from app.services.comptes import doit_choisir_mot_de_passe, mots_de_passe_depart
 from app.services.limite import autoriser
 from app.ui import csrf_valide, flash, render, retour_sur
 
@@ -87,9 +87,16 @@ def login(
     request.session.clear()
     request.session["uid"] = utilisateur.id
     request.session["csrf"] = secrets.token_urlsafe(32)
-    if doit_choisir_mot_de_passe(utilisateur):
+    chemin = _destination(utilisateur.role, suivant)
+    if utilisateur.role == "etudiant" and (
+        doit_choisir_mot_de_passe(utilisateur) or mot_de_passe in mots_de_passe_depart()
+    ):
+        utilisateur.doit_changer_mot_de_passe = True
+        db.commit()
+        if _SUIVANT.match(chemin):
+            request.session["apres_mdp"] = chemin
         return RedirectResponse("/compte", status_code=303)
-    return RedirectResponse(_destination(utilisateur.role, suivant), status_code=303)
+    return RedirectResponse(chemin, status_code=303)
 
 
 @router.post("/logout")
@@ -129,7 +136,7 @@ def changer_mot_de_passe(
     if nouveau.lower() == utilisateur.identifiant.lower():
         flash(request, "erreur", "Le mot de passe ne doit pas être identique à l'identifiant.")
         raise Redirection("/compte")
-    if nouveau == mot_de_passe_depart():
+    if nouveau in mots_de_passe_depart():
         flash(request, "erreur", "Choisissez un mot de passe différent du mot de passe de départ.")
         raise Redirection("/compte")
     premiere_fois = doit_choisir_mot_de_passe(utilisateur)
@@ -137,4 +144,7 @@ def changer_mot_de_passe(
     utilisateur.doit_changer_mot_de_passe = False
     db.commit()
     flash(request, "ok", "Mot de passe modifié.")
-    raise Redirection(maison(utilisateur.role) if premiere_fois else "/compte")
+    suite = request.session.pop("apres_mdp", "")
+    if premiere_fois:
+        raise Redirection(suite if _SUIVANT.match(suite) else maison(utilisateur.role))
+    raise Redirection("/compte")

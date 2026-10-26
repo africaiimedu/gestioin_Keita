@@ -4,13 +4,13 @@
 <section class="bloc">
   <img class="logo-page" src="/static/marque.png" alt="Université AFRICAIIM">
   <h1>Poste de la cuisinière</h1>
-  <p class="intro">Flashez le QR code de la carte avec l'appareil photo du téléphone connecté à ce compte, ou scannez son code-barres avec la douchette. La page affiche l'argent qui reste sur le compte cantine. Quand vous validez, ce même compte est débité et l'étudiant reçoit un e-mail.</p>
+  <p class="intro">Flashez le QR code au dos de la carte : l'étudiant est reconnu tout de suite. Le bouton repas débite ensuite le compte cantine.</p>
   {% if not user.peut_valider_qr %}
     <p class="resultat resultat-mauvais">L'administrateur n'a pas autorisé ce compte à valider les QR codes.</p>
   {% endif %}
   <form method="get" action="/scan" class="filtres scan-carte">
     <label for="scan-code">Code-barres de la carte</label>
-    <input id="scan-code" name="code" placeholder="Scannez le code-barres ou tapez le code de contrôle" maxlength="40" autocomplete="off" autofocus>
+    <input id="scan-code" name="code" placeholder="Flashez le QR de la carte" maxlength="400" autocomplete="off" autofocus>
     <button type="submit">Ouvrir la carte</button>
   </form>
   <p class="aide">Le rechargement se fait dans l'atelier, colonne Compte cantine de la base de données. La cuisinière ne crédite pas : elle débite le repas.</p>

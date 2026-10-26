@@ -1,5 +1,6 @@
-"""Page ouverte par le QR code : le personnel voit la validité de la carte, l'étudiant arrive sur le menu."""
+"""Page ouverte par le QR code : le scan suffit à confirmer l'étudiant, sans code à taper."""
 
+from datetime import timedelta
 from urllib.parse import quote
 import re
 
@@ -9,13 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.deps import PERSONNEL, Redirection, get_db, utilisateur_courant
-from app.models import BadgePersonnel, Carte
+from app.services.comptes import doit_choisir_mot_de_passe
+from app.models import BadgePersonnel, Carte, Journal
 from app.services.cantine import decision_repas, prix_repas, valider_repas
-from app.services.metier import journaliser
+from app.services.metier import journaliser, maintenant
 from app.services.courrier import formater_francs
 from app.services.limite import autoriser
 from app.services.photos import lire_photo, portrait_initiales
-from app.services.pdf_carte import code_controle
 from app.services.statut import statut_effectif
 from app.ui import csrf_valide, flash, render
 
@@ -33,6 +34,48 @@ def _meme_matricule(lien: str, carte: str) -> bool:
     return cle(lien) == cle(carte)
 
 
+def _peut_pointer(agent) -> bool:
+    return agent is not None and agent.role in ("securite", "scolarite", "admin")
+
+
+def _deja_pointe(db: Session, agent_id: int, carte_id: int | None) -> bool:
+    if not carte_id:
+        return False
+    dernier = db.scalar(
+        select(Journal.cree_le)
+        .where(
+            Journal.action == "qr_valide",
+            Journal.utilisateur_id == agent_id,
+            Journal.carte_id == carte_id,
+        )
+        .order_by(Journal.cree_le.desc())
+        .limit(1)
+    )
+    if dernier is None:
+        return False
+    actuel = maintenant()
+    if dernier.tzinfo is None and actuel.tzinfo is not None:
+        dernier = dernier.replace(tzinfo=actuel.tzinfo)
+    return actuel - dernier < timedelta(seconds=120)
+
+
+def _pointer_presence(db: Session, agent, carte: Carte | None, statut: str) -> bool:
+    if not _peut_pointer(agent) or carte is None or statut != "active":
+        return False
+    if _deja_pointe(db, agent.id, carte.id):
+        return True
+    journaliser(
+        db,
+        "qr_valide",
+        utilisateur_id=agent.id,
+        etudiant_id=carte.etudiant_id,
+        carte_id=carte.id,
+        details=f"Présence · {agent.identifiant}",
+    )
+    db.commit()
+    return True
+
+
 @router.get("/verif/{matricule}")
 def verifier(
     matricule: str,
@@ -42,6 +85,8 @@ def verifier(
 ):
     agent = utilisateur_courant(request, db)
     if agent is not None and agent.role not in PERSONNEL:
+        if doit_choisir_mot_de_passe(agent):
+            raise Redirection("/compte")
         raise Redirection("/menu")
     if agent is None:
         if t:
@@ -65,6 +110,7 @@ def verifier(
         prix = prix_repas()
         solde = int(etudiant.solde_cantine or 0)
         decision = decision_repas(solde, prix, etudiant.email or "", statut == "active")
+        pointe = _pointer_presence(db, agent, carte, statut)
         return _sans_cache(
             render(
                 request,
@@ -73,7 +119,6 @@ def verifier(
                 nom=f"{etudiant.prenom} {etudiant.nom}",
                 statut=statut,
                 jeton=carte.jeton,
-                controle=code_controle(carte.jeton),
                 matricule=etudiant.matricule,
                 ecole=etudiant.filiere or "",
                 programme=etudiant.programme or "",
@@ -87,6 +132,7 @@ def verifier(
                 role=agent.role if agent else "",
                 suivant=f"/verif/{quote(etudiant.matricule)}?t={quote(carte.jeton)}",
                 personnel=False,
+                pointe=pointe,
             )
         )
 
@@ -97,6 +143,7 @@ def verifier(
     if not _meme_matricule(matricule, personne.numero):
         return _sans_cache(render(request, "verif.html", mode="invalide"))
     statut = statut_effectif(badge.statut, badge.date_validite)
+    pointe = _peut_pointer(agent) and statut == "active"
     return _sans_cache(
         render(
             request,
@@ -105,7 +152,6 @@ def verifier(
             nom=f"{personne.prenom} {personne.nom}",
             statut=statut,
             jeton=badge.jeton,
-            controle=code_controle(badge.jeton),
             matricule=personne.numero,
             ecole=personne.fonction or "",
             programme="",
@@ -119,6 +165,7 @@ def verifier(
             role=agent.role if agent else "",
             suivant=f"/verif/{quote(personne.numero)}?t={quote(badge.jeton)}",
             personnel=True,
+            pointe=pointe,
         )
     )
 

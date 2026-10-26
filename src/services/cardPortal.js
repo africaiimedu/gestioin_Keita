@@ -36,7 +36,7 @@ header.barre{display:none!important}
 .login{min-height:70vh;background:transparent!important;display:grid!important;place-items:center}
 </style>
 <link rel="stylesheet" href="/portail-cartes.css?v=4">
-<script src="/portail-cartes.js?v=4" defer></script>`;
+<script src="/portail-cartes.js?v=5" defer></script>`;
 
 function cookiePair(header, name) {
   const source = Array.isArray(header) ? header.join("; ") : String(header || "");

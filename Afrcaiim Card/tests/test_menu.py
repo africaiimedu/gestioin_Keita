@@ -38,6 +38,7 @@ def test_quantite_par_plat_et_plat_en_double():
 _MATRICULE = "AIIM-MENU-TEST"
 _IDENTIFIANT = "test.menu"
 _CUISINIERE = "test.menu.cuisine"
+_SECURITE = "test.menu.porte"
 _MOT = "Cantine-test-2026"
 
 
@@ -47,7 +48,7 @@ def _nettoyer() -> None:
     with SessionLocal() as db:
         etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
         if etudiant is None:
-            db.execute(delete(Utilisateur).where(Utilisateur.identifiant.in_([_IDENTIFIANT, _CUISINIERE])))
+            db.execute(delete(Utilisateur).where(Utilisateur.identifiant.in_([_IDENTIFIANT, _CUISINIERE, _SECURITE])))
             db.execute(delete(Plat).where(Plat.nom == "Soupe test"))
             db.commit()
             return
@@ -60,7 +61,7 @@ def _nettoyer() -> None:
         db.execute(delete(Journal).where(Journal.etudiant_id == etudiant.id))
         db.execute(delete(Carte).where(Carte.etudiant_id == etudiant.id))
         db.execute(delete(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
-        db.execute(delete(Utilisateur).where(Utilisateur.identifiant == _CUISINIERE))
+        db.execute(delete(Utilisateur).where(Utilisateur.identifiant.in_([_CUISINIERE, _SECURITE])))
         db.execute(delete(Etudiant).where(Etudiant.id == etudiant.id))
         db.execute(delete(Plat).where(Plat.nom == "Soupe test"))
         db.commit()
@@ -103,7 +104,7 @@ def _compte(db, solde: int, statut: str = "active") -> tuple[Etudiant, Utilisate
     db.add(utilisateur)
     db.commit()
     point = db.scalar(select(PointCantine).where(PointCantine.actif.is_(True)))
-    plat = db.scalar(select(Plat).where(Plat.nom == "Thiéboudienne"))
+    plat = db.scalar(select(Plat).where(Plat.nom == "Sandwich au thon"))
     return etudiant, utilisateur, point, plat
 
 
@@ -170,10 +171,10 @@ def test_page_menu_et_commande():
             assert entre.headers["location"] == f"/m/{jeton}"
             menu = client.get(f"/m/{jeton}")
             assert menu.status_code == 200
-            assert "Thiéboudienne" in menu.text
+            assert "Sandwich au thon" in menu.text
             assert "Bonjour Mariam" in menu.text
-            assert 'data-filtre="chauds"' in menu.text
-            assert "/static/plats/thieb.jpg" in menu.text
+            assert 'data-filtre="petit-dej"' in menu.text
+            assert "/static/plats/sandwich-thon.jpg" in menu.text
             assert "apercu-recto" not in client.get("/espace").text
             assert "Programme" in client.get("/espace").text
             csrf = menu.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
@@ -399,15 +400,41 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
             connecter(_CUISINIERE)
             page = client.get(verif)
             assert page.status_code == 200
-            assert code_controle(jeton) in page.text
+            assert "Étudiant confirmé de l'Université AFRICAIIM" in page.text
             assert "Valider le repas" in page.text
+            assert "Valider cette carte" not in page.text
 
             code = code_controle(jeton)
             vers_carte = f"/verif/{quote(_MATRICULE)}?t={quote(jeton)}"
-            for saisie in (code, code.replace("-", "").lower(), f"  {code}  "):
+            for saisie in (code, code.replace("-", "").lower(), f"  {code}  ", verif, f"https://scolarite.example/portail/cartes{verif}"):
                 assert client.get(f"/scan?code={quote(saisie)}", follow_redirects=False).headers["location"] == vers_carte
             inconnu = client.get("/scan?code=0000-0000", follow_redirects=False)
             assert inconnu.headers["location"] == "/cantine"
+
+            client.cookies.clear()
+            with SessionLocal() as db:
+                db.add(
+                    Utilisateur(
+                        identifiant=_SECURITE,
+                        mot_de_passe_hash=hash_mot_de_passe(_MOT),
+                        role="securite",
+                        actif=True,
+                        doit_changer_mot_de_passe=False,
+                        peut_valider_qr=True,
+                        cree_le=maintenant(),
+                    )
+                )
+                db.commit()
+            connecter(_SECURITE)
+            porte = client.get(verif)
+            assert porte.status_code == 200
+            assert "Présence validée" in porte.text
+            assert "Étudiant confirmé de l'Université AFRICAIIM" in porte.text
+            assert "Valider cette carte" not in porte.text
+            assert "Valider le repas" not in porte.text
+            with SessionLocal() as db:
+                assert db.scalar(select(Journal).where(Journal.action == "qr_valide")) is not None
+            assert client.get("/securite", params={"q": verif}, follow_redirects=False).headers["location"] == vers_carte
     finally:
         _nettoyer()
 

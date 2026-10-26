@@ -38,4 +38,12 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tout);
   else tout();
+
+  var oubli = document.getElementById("oubli");
+  var note = document.getElementById("oubli-note");
+  if (oubli && note) {
+    oubli.addEventListener("click", function () {
+      note.hidden = !note.hidden;
+    });
+  }
 })();
