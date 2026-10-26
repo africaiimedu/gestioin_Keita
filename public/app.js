@@ -1388,6 +1388,7 @@ async function showStudent(screen, id) {
       ${data.payments.map((payment) => `<tr><td>${esc(frenchDay(payment.paid_on))}${payment.date_unconfirmed ? "<br><span class='muted'>Date à confirmer</span>" : ""}</td><td class="num"><strong>${gnf(payment.amount)}</strong></td><td>${esc(state.catalog.methods.find((item) => item.code === payment.method)?.label || payment.method)}${payment.status === "annule" ? `<br><span class="tag trop_percu">Annulé</span>` : ""}</td><td>${payment.receipt_number ? `<a href="/api/recus/${payment.receipt_id}.pdf" target="_blank">${esc(payment.receipt_number)}</a>${payment.status === "valide" ? printButton(`/api/recus/${payment.receipt_id}.pdf`) : ""}` : ""}</td><td>${payment.status === "annule" ? esc(payment.cancel_reason || "Annulé") : (allowed("payment.cancel") ? `<button class="btn secondary" type="button" data-correct="${payment.id}">Corriger</button>` : "")}</td></tr>`).join("")}
       </tbody></table></div></article>
     ${costumeCard(data.costume)}
+    ${cantineCard(data.cantine, id)}
     <article class="card" style="margin-top:14px"><h2>Échéances couvertes</h2>
       <div class="steps">${situation.plan.map((item, index) => {
         const covered = situation.covered[item.code] || 0;
@@ -1437,6 +1438,35 @@ async function showStudent(screen, id) {
         showStudent(screen, id);
       } catch (caught) {
         if (caught.data?.code === "AMOUNT_TOO_HIGH") notifyOverpay(caught.message);
+        error.hidden = false;
+        error.textContent = caught.message;
+        button.disabled = false;
+      }
+    });
+  }
+  const cantineForm = document.querySelector("#cantine-form");
+  if (cantineForm) {
+    cantineForm.amount.addEventListener("input", (event) => {
+      const digits = event.target.value.replace(/[^\d]/g, "");
+      event.target.value = digits ? grouped(Number(digits)) : "";
+    });
+    cantineForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const error = cantineForm.querySelector("[data-cantine-error]");
+      error.hidden = true;
+      const amount = moneyOf(cantineForm.amount);
+      if (!amount) {
+        error.hidden = false;
+        error.textContent = "Indiquez le montant à ajouter au compte cantine.";
+        return;
+      }
+      const button = cantineForm.querySelector("[type=submit]");
+      button.disabled = true;
+      try {
+        await api(`/api/etudiants/${id}/cantine`, { method: "POST", body: JSON.stringify({ amount }) });
+        saved("Compte cantine rechargé");
+        showStudent(screen, id);
+      } catch (caught) {
         error.hidden = false;
         error.textContent = caught.message;
         button.disabled = false;
@@ -1797,6 +1827,29 @@ function openPaymentCorrection(payment, student, onDone) {
   });
   dialog.showModal();
   form.amount.select();
+}
+
+function cantineCard(cantine, studentId) {
+  const canCredit = allowed("payment.create") || allowed("cards.manage");
+  if (!cantine?.found) {
+    const note = cantine?.unavailable
+      ? "Le compte cantine n'a pas pu être lu. Réessayez, ou ouvrez Cartes → Atelier étudiants."
+      : "Pas de fiche carte pour ce matricule. Le solde cantine se crée dans Cartes → Atelier étudiants.";
+    return `<article class="card costume-box" style="margin-top:14px"><h2>Cantine</h2><p class="muted">${esc(note)}</p></article>`;
+  }
+  return `<article class="card costume-box" style="margin-top:14px">
+    <div class="costume-head"><h2>Cantine</h2><span class="tag ${cantine.solde > 0 ? "solde" : "aucun_paiement"}">${cantine.solde > 0 ? "Compte approvisionné" : "Compte à 0"}</span></div>
+    <div class="stat-row">
+      <div class="stat-tile"><span>Solde du compte</span><strong>${gnf(cantine.solde)}</strong></div>
+      <div class="stat-tile"><span>Prix d'un repas (QR)</span><strong>${gnf(cantine.prixRepas || 0)}</strong></div>
+    </div>
+    ${canCredit ? `<form id="cantine-form" class="costume-form" novalidate>
+        <p><label>Ajouter au compte cantine (GNF)</label><input name="amount" inputmode="numeric" required placeholder="Ex. 50.000"></p>
+        <button class="btn" type="submit">Recharger</button>
+        <p class="error" data-cantine-error hidden></p>
+      </form>
+      <p class="muted">Ce solde est débité quand la cantine valide le QR de la carte.</p>` : `<p class="muted">Le rechargement se fait aussi dans Cartes → Atelier étudiants, bouton « Recharger la cantine ».</p>`}
+  </article>`;
 }
 
 function costumeCard(costume) {

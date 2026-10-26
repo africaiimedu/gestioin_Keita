@@ -71,10 +71,10 @@ export function cardCall(urlPath, { method = "GET", cookie = "", body = "", time
   const { transport, options, host } = cardTarget();
   const headers = { host };
   if (cookie) headers.cookie = cookie;
+  if (token) headers["x-jeton"] = token;
   if (body) {
     headers["content-type"] = "application/json";
     headers["content-length"] = Buffer.byteLength(body);
-    if (token) headers["x-jeton"] = token;
   }
   return new Promise((resolve) => {
     const request = transport.request({ ...options, method, path: urlPath, headers }, (response) => {

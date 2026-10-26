@@ -67,6 +67,7 @@ import { renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from ".
 import { renderListPdf } from "./services/listPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { syncStudentsToCard } from "./services/cardSync.js";
+import { creditCantine, readCantine } from "./services/cardCantine.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
 import { startEmbeddedCards } from "./services/cardRuntime.js";
 
@@ -247,7 +248,7 @@ app.get("/api/etudiants/prochain-matricule", requireAction("student.write"), asy
 });
 app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) => {
   const current = await studentSituation(db, Number(req.params.id));
-  const [payments, reminders, costume] = await Promise.all([
+  const [payments, reminders, costume, cantine] = await Promise.all([
     db.prepare(`
       SELECT p.id, p.amount, p.paid_on, p.method, p.reference, p.installment_code, p.note, p.status,
              p.date_unconfirmed, u.full_name AS agent, r.id AS receipt_id, r.number AS receipt_number, r.print_count,
@@ -261,6 +262,7 @@ app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) =>
     `).all(current.student.id),
     db.prepare("SELECT id, channel, message, created_at FROM reminders WHERE student_id = ? ORDER BY id DESC").all(current.student.id),
     costumeSituation(db, current.student.id),
+    readCantine(current.student.matricule),
   ]);
   res.json({
     student: publicStudent(current.student),
@@ -271,7 +273,18 @@ app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) =>
     payments,
     reminders,
     costume,
+    cantine,
   });
+});
+app.post("/api/etudiants/:id/cantine", async (req, res) => {
+  if (!req.user) throw new HttpError(401, "Connexion requise");
+  if (!can(req.user, "payment.create") && !can(req.user, "cards.manage")) {
+    throw new HttpError(403, "Vous n'avez pas le droit de recharger la cantine");
+  }
+  const current = await studentSituation(db, Number(req.params.id));
+  const amount = Number(String(req.body?.amount ?? "").replace(/[^\d]/g, "") || 0);
+  if (!Number.isInteger(amount) || amount <= 0) throw new HttpError(400, "Indiquez le montant à ajouter au compte cantine.");
+  res.json(await creditCantine(current.student.matricule, amount));
 });
 app.post("/api/etudiants/:id/costume", requireAction("payment.create"), async (req, res) => {
   res.status(201).json(await recordCostume(db, req.user, Number(req.params.id), req.body || {}));

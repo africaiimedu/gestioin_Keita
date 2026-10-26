@@ -58,6 +58,7 @@
           <th>Matricule</th>
           <th>École</th>
           <th>Année</th>
+          <th>Compte cantine</th>
           <th>Statut</th>
           <th>Photo</th>
         </tr>
@@ -69,6 +70,7 @@
             <td>{{ ligne.etudiant.matricule }}</td>
             <td>{{ ligne.etudiant.filiere }}</td>
             <td>{{ ligne.etudiant.annee_academique }}</td>
+            <td>{{ ligne.etudiant.solde_cantine|gnf }}</td>
             <td>
               {% if ligne.statut %}
                 <span class="pastille pastille-{{ ligne.statut }}">{{ ligne.statut|statutfr }}</span>

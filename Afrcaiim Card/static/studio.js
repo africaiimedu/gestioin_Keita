@@ -714,6 +714,8 @@ function dessinerGrille() {
   document.getElementById("info-etu").textContent = etu ? `${etu.prenom} ${etu.nom}` : "—";
   document.getElementById("info-matricule").textContent = etu ? etu.matricule : "—";
   document.getElementById("info-validite").textContent = etu ? dateCarte(etu.date_validite) : "—";
+  const cantine = document.getElementById("info-cantine");
+  if (cantine) cantine.textContent = etu ? francs(etu.solde_cantine) : "—";
 }
 
 function poserRegles() {

@@ -15,6 +15,7 @@ from app.deps import get_db, utilisateur_courant
 from app.models import Etudiant, Utilisateur
 from app.services.import_etudiants import _MATRICULE, controler_fiche
 from app.services.comptes import ADRESSE, aligner_compte
+from app.services.cantine import crediter, prix_repas
 from app.services.metier import creer_etudiant, journaliser, modifier_etudiant, supprimer_etudiant
 from app.services.universite_api import validite_connue
 
@@ -168,3 +169,49 @@ async def ouvrir_portail(request: Request, db: Session = Depends(get_db)):
     request.session["uid"] = utilisateur.id
     request.session["csrf"] = secrets.token_urlsafe(32)
     return {"ok": True, "role": utilisateur.role}
+
+
+def _fiche_cantine(db: Session, matricule: str):
+    propre = _matricule_propre(matricule)
+    if not _MATRICULE.match(propre):
+        return None, JSONResponse({"message": "le matricule doit ressembler à UA26AT0001 (lettres, chiffres, tirets)."}, status_code=400)
+    etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == propre))
+    if etudiant is None:
+        return None, JSONResponse({"message": "Pas de fiche carte pour ce matricule."}, status_code=404)
+    return etudiant, None
+
+
+@router.get("/api/cantine/{matricule}")
+def lire_cantine(matricule: str, request: Request, db: Session = Depends(get_db)):
+    if not _jeton_accepte(request):
+        return JSONResponse({"message": "Jeton refusé."}, status_code=401)
+    etudiant, erreur = _fiche_cantine(db, matricule)
+    if erreur:
+        return erreur
+    return {
+        "matricule": etudiant.matricule,
+        "solde": int(etudiant.solde_cantine or 0),
+        "prixRepas": prix_repas(),
+    }
+
+
+@router.post("/api/cantine/{matricule}")
+async def crediter_cantine_api(matricule: str, request: Request, db: Session = Depends(get_db)):
+    if not _jeton_accepte(request):
+        return JSONResponse({"message": "Jeton refusé."}, status_code=401)
+    etudiant, erreur = _fiche_cantine(db, matricule)
+    if erreur:
+        return erreur
+    try:
+        corps = await request.json()
+    except Exception:
+        corps = {}
+    try:
+        montant = int(str((corps or {}).get("montant") or "").replace(" ", "").replace(".", ""))
+        solde = crediter(db, etudiant, montant, None)
+    except (TypeError, ValueError) as exc:
+        texte = str(exc)
+        if "invalid literal" in texte or not texte:
+            texte = "Indiquez un montant en francs guinéens, sans virgule."
+        return JSONResponse({"message": texte}, status_code=400)
+    return {"matricule": etudiant.matricule, "solde": solde, "prixRepas": prix_repas()}
