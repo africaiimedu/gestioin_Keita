@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=12">
+<link rel="stylesheet" href="/static/menu.css?v=13">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
@@ -12,7 +12,7 @@
     </div>
     <p class="enseigne">Cantine scolaire · Université AFRICAIIM</p>
     <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Carte des menus{% endif %}</h1>
-    <p class="ouvert">{% if jour_actuel == "semaine" %}Fermé le dimanche · carte de la semaine{% else %}Menu du {{ jour_actuel|lower }} · déjeuner et dîner{% endif %}</p>
+    <p class="ouvert" id="menu-jour">{% if jour_actuel == "semaine" %}Fermé le dimanche · carte de la semaine{% else %}Menu du {{ jour_actuel|lower }} · déjeuner et dîner{% endif %}</p>
     {% if etudiant and etudiant.abonne_cantine %}
       <p class="solde">Abonnement mensuel <strong>600 000 GNF</strong> · aucun débit · <a href="/menu/recus">Mes reçus</a></p>
     {% elif etudiant %}
@@ -33,12 +33,22 @@
     {% endfor %}
   </div>
 
+  <section class="engagements">
+    <p>ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM ; 600 000 FG AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU</p>
+    <p>Une bouteille d’eau est recommandée à chaque repas.</p>
+    <ul>
+      <li>Portions adaptées aux besoins des étudiants.</li>
+      <li>Allergènes à signaler ; règles d’hygiène à respecter.</li>
+      <li>Fruits et légumes de saison privilégiés.</li>
+    </ul>
+  </section>
+
   {% for groupe in groupes %}
     <section class="rayon" data-cat="{{ groupe.categorie.slug }}">
       <h2>{{ groupe.categorie.nom }}</h2>
       <div class="grille">
         {% for plat in groupe.plats %}
-          <article class="plat {% if not plat.disponible %}epuise{% endif %}" data-jour="{{ plat.badge or '' }}">
+          <article class="plat {% if not plat.disponible %}epuise{% endif %}" data-jour="{{ plat.badge or '' }}" data-permanent="{{ 0 if plat.badge in jours else 1 }}">
             <img src="{{ image_plat(plat) }}" alt="{{ plat.nom }}">
             <div class="fiche">
               {% if plat.badge %}<span class="badge">{{ plat.badge }}</span>{% endif %}
@@ -62,16 +72,6 @@
       </div>
     </section>
   {% endfor %}
-
-  <section class="engagements">
-    <p>ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM ; 600 000 FG AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU</p>
-    <p>Une bouteille d’eau est recommandée à chaque repas.</p>
-    <ul>
-      <li>Portions adaptées aux besoins des étudiants.</li>
-      <li>Allergènes à signaler ; règles d’hygiène à respecter.</li>
-      <li>Fruits et légumes de saison privilégiés.</li>
-    </ul>
-  </section>
 
   {% if commandes %}
     <section class="rayon historique">
@@ -134,5 +134,5 @@
       </div>
     </form>
   </section>
-<script src="/static/menu.js?v=8"></script>
+<script src="/static/menu.js?v=9"></script>
 {% endblock %}

@@ -20,12 +20,19 @@
       var visibles = 0;
       rayon.querySelectorAll("article.plat").forEach(function (plat) {
         var badge = plat.dataset.jour || "";
-        var jourOk = jourChoisi === "semaine" || !joursSemaine[badge] || badge === jourChoisi;
+        var tousLesJours = plat.dataset.permanent === "1" || !joursSemaine[badge];
+        var jourOk = jourChoisi === "semaine" || tousLesJours || badge === jourChoisi;
         plat.hidden = !(catOk && jourOk);
         if (!plat.hidden) visibles += 1;
       });
       rayon.hidden = !catOk || visibles === 0;
     });
+    var libelle = document.getElementById("menu-jour");
+    if (libelle) {
+      libelle.textContent = jourChoisi === "semaine"
+        ? "Toute la semaine · déjeuner et dîner"
+        : "Menu du " + jourChoisi.toLowerCase() + " · déjeuner et dîner";
+    }
   }
 
   pucesJour.forEach(function (puce) {

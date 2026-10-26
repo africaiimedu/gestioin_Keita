@@ -285,7 +285,10 @@ def test_page_menu_et_commande():
             assert "Toute la semaine" in menu.text
             assert "/static/marque-blanc.png" in menu.text
             assert "CHAWARMA" in menu.text
+            assert 'data-permanent="1"' in menu.text
+            assert "ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM" in menu.text
             assert "600 000 FG" in menu.text
+            assert "Allergènes à signaler" in menu.text
             assert "Eau minérale" in menu.text
             assert "10.000 GNF" in menu.text
             assert "/static/plats/sandwich-thon.jpg" in menu.text

@@ -109,6 +109,7 @@
   box-shadow: 0 10px 28px rgba(26, 26, 26, 0.08);
   min-width: 0;
 }
+.plat[hidden], .rayon[hidden] { display: none !important; }
 .plat img {
   width: 100%;
   height: auto;
