@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=14">
+<link rel="stylesheet" href="/static/menu.css?v=15">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
@@ -17,17 +17,19 @@
     {% endif %}
   </section>
 
-  <div class="chips chips-jours" role="toolbar" aria-label="Jour du menu" data-jour="{{ jour_actuel }}">
-    <button type="button" class="puce{% if jour_actuel == 'semaine' %} actif{% endif %}" data-jour="semaine" aria-pressed="{{ 'true' if jour_actuel == 'semaine' else 'false' }}">Toute la semaine</button>
-    {% for jour in jours %}
-      <button type="button" class="puce{% if jour == jour_actuel %} actif{% endif %}" data-jour="{{ jour }}" aria-pressed="{{ 'true' if jour == jour_actuel else 'false' }}">{{ jour }}</button>
-    {% endfor %}
-  </div>
-  <div class="chips chips-cats" role="toolbar" aria-label="Type de plat">
-    <button type="button" class="puce actif" data-filtre="tout" aria-pressed="true">Tout</button>
-    {% for groupe in groupes %}
-      <button type="button" class="puce" data-filtre="{{ groupe.categorie.slug }}" aria-pressed="false">{{ groupe.categorie.nom }}</button>
-    {% endfor %}
+  <div class="menu-haut" id="menu-haut">
+    <div class="chips chips-jours" role="toolbar" aria-label="Jour du menu" data-jour="{{ jour_actuel }}">
+      <button type="button" class="puce{% if jour_actuel == 'semaine' %} actif{% endif %}" data-jour="semaine" aria-pressed="{{ 'true' if jour_actuel == 'semaine' else 'false' }}">Toute la semaine</button>
+      {% for jour in jours %}
+        <button type="button" class="puce{% if jour == jour_actuel %} actif{% endif %}" data-jour="{{ jour }}" aria-pressed="{{ 'true' if jour == jour_actuel else 'false' }}">{{ jour }}</button>
+      {% endfor %}
+    </div>
+    <div class="chips chips-cats" role="toolbar" aria-label="Type de plat">
+      <button type="button" class="puce actif" data-filtre="tout" aria-pressed="true">Tout</button>
+      {% for groupe in groupes %}
+        <button type="button" class="puce" data-filtre="{{ groupe.categorie.slug }}" aria-pressed="false">{{ groupe.categorie.nom }}</button>
+      {% endfor %}
+    </div>
   </div>
 
   <section class="engagements">
@@ -131,5 +133,5 @@
       </div>
     </form>
   </section>
-<script src="/static/menu.js?v=10"></script>
+<script src="/static/menu.js?v=11"></script>
 {% endblock %}

@@ -56,6 +56,44 @@
   });
   appliquerFiltres();
 
+  (function () {
+    var filtres = document.getElementById("menu-haut");
+    var enTete = document.querySelector("header.barre");
+    var dernier = window.scrollY || 0;
+    var pause = 0;
+    function hauteurEnTete() {
+      if (!enTete) return 0;
+      var style = window.getComputedStyle(enTete);
+      if (style.display === "none" || style.visibility === "hidden") return 0;
+      return enTete.offsetHeight || 0;
+    }
+    function placer() {
+      var haut = hauteurEnTete();
+      if (filtres) {
+        filtres.style.top = haut + "px";
+        filtres.style.setProperty("--barre-h", haut + "px");
+      }
+    }
+    placer();
+    window.addEventListener("resize", placer);
+    window.addEventListener("scroll", function () {
+      var y = window.scrollY || 0;
+      if (Date.now() < pause) {
+        dernier = y;
+        return;
+      }
+      var cachee = document.body.classList.contains("menu-barre-cachee");
+      if (y < 12) cachee = false;
+      else if (y > dernier + 8) cachee = true;
+      else if (y < dernier - 8) cachee = false;
+      document.body.classList.toggle("menu-barre-cachee", cachee);
+      dernier = y;
+    }, { passive: true });
+    document.querySelectorAll(".chips .puce").forEach(function (puce) {
+      puce.addEventListener("click", function () { pause = Date.now() + 450; });
+    });
+  })();
+
   var barre = document.getElementById("ouvrir-panier");
   if (!barre) return;
   var stockage = "cantine-panier";

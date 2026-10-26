@@ -53,19 +53,35 @@
 .hero h1 { margin: 0.15rem 0; font-size: clamp(1.45rem, 6vw, 1.9rem); line-height: 1.15; }
 .ouvert { margin: 0; }
 .hero .solde { margin: 0.55rem 0 0; font-size: 1.05rem; font-weight: 600; color: #F4F1EA; }
+.menu-haut {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: #F4F1EA;
+  padding: 0.15rem 0 0.45rem;
+  transition: transform 0.22s ease;
+}
+body:has(.salle) header.barre {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  transition: transform 0.22s ease;
+}
+body.menu-barre-cachee header.barre {
+  transform: translateY(-100%);
+}
+body.menu-barre-cachee .menu-haut {
+  transform: translateY(calc(-100% - var(--barre-h, 0px)));
+}
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  position: sticky;
-  top: 0;
-  z-index: 3;
   background: #F4F1EA;
-  padding: 0.65rem 0;
+  padding: 0.4rem 0 0.2rem;
   margin: 0;
 }
-.chips-jours { z-index: 4; padding-bottom: 0.2rem; }
-.chips-cats { top: 3.35rem; padding-top: 0.35rem; }
+.chips-cats { padding-top: 0.25rem; }
 .puce {
   flex: 0 0 auto;
   white-space: nowrap;
