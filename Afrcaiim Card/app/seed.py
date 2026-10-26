@@ -32,6 +32,7 @@ def initialiser() -> None:
         _assurer_cantine_exemple(db)
         _assurer_menu(db)
         _retirer_ecoles_hors_liste(db)
+        _assurer_comptes_atelier(db)
 
 
 def _colonnes_cantine() -> None:
@@ -154,6 +155,18 @@ def _assurer_menu(db) -> None:
     from app.services.menu_officiel import appliquer_menu_diima
 
     appliquer_menu_diima(db, retirer_anciens=False)
+
+
+def _assurer_comptes_atelier(db) -> None:
+    """Les fiches déjà dans l'atelier ont un compte matricule + mot de passe de départ."""
+    from app.services.comptes import assurer_compte_etudiant
+
+    for etudiant in db.scalars(select(Etudiant)).all():
+        try:
+            assurer_compte_etudiant(db, etudiant)
+        except ValueError:
+            continue
+    db.commit()
 
 
 def _assurer_exemple(db) -> None:

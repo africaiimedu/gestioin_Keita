@@ -12,7 +12,12 @@ from sqlalchemy.orm import Session
 from app.deps import Redirection, exiger_connecte, get_db, maison, utilisateur_courant
 from app.models import Utilisateur
 from app.security import hash_mot_de_passe, verifier_mot_de_passe
-from app.services.comptes import doit_choisir_mot_de_passe, mots_de_passe_depart, trouver_utilisateur
+from app.services.comptes import (
+    doit_choisir_mot_de_passe,
+    inscrire_professionnel,
+    mots_de_passe_depart,
+    trouver_utilisateur,
+)
 from app.services.limite import autoriser
 from app.ui import csrf_valide, flash, render
 
@@ -53,7 +58,12 @@ def login_page(request: Request, suivant: str = "", db: Session = Depends(get_db
     utilisateur = utilisateur_courant(request, db)
     if utilisateur is not None:
         raise Redirection(_destination(utilisateur.role, suivant))
-    return render(request, "login.html", suivant=suivant if _SUIVANT.match(suivant) else "")
+    return render(
+        request,
+        "login.html",
+        suivant=suivant if _SUIVANT.match(suivant) else "",
+        creer=request.query_params.get("creer") == "1",
+    )
 
 
 @router.post("/login")
@@ -84,16 +94,31 @@ def login(
     request.session.clear()
     request.session["uid"] = utilisateur.id
     request.session["csrf"] = secrets.token_urlsafe(32)
-    chemin = _destination(utilisateur.role, suivant)
-    if utilisateur.role == "etudiant" and (
-        doit_choisir_mot_de_passe(utilisateur) or mot_de_passe in mots_de_passe_depart()
-    ):
-        utilisateur.doit_changer_mot_de_passe = True
-        db.commit()
-        if _SUIVANT.match(chemin):
-            request.session["apres_mdp"] = chemin
-        return RedirectResponse("/compte", status_code=303)
-    return RedirectResponse(chemin, status_code=303)
+    db.commit()
+    return RedirectResponse(_destination(utilisateur.role, suivant), status_code=303)
+
+
+@router.post("/inscription")
+def inscription(
+    request: Request,
+    email: str = Form(""),
+    role: str = Form(""),
+    csrf: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    if not csrf_valide(request, csrf):
+        flash(request, "erreur", "Formulaire expiré. Rechargez la page.")
+        return RedirectResponse("/login?creer=1", status_code=303)
+    if not autoriser(f"inscription:{_adresse(request)}", 6, 600):
+        flash(request, "erreur", "Trop de tentatives. Réessayez dans quelques minutes.")
+        return RedirectResponse("/login?creer=1", status_code=303)
+    try:
+        inscrire_professionnel(db, email, role)
+    except ValueError as exc:
+        flash(request, "erreur", str(exc))
+        return RedirectResponse("/login?creer=1", status_code=303)
+    flash(request, "ok", "Compte créé. Connectez-vous avec votre mail et Africaiim2026@.")
+    return RedirectResponse("/login", status_code=303)
 
 
 @router.post("/logout")

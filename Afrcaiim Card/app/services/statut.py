@@ -46,6 +46,8 @@ LIBELLES_ROLE = {
     "cuisiniere": "Cuisinière",
     "securite": "Sécurité",
     "etudiant": "Étudiant",
+    "professeur": "Professeur",
+    "personnel": "Personnel",
 }
 
 

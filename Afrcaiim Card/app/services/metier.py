@@ -22,7 +22,7 @@ from app.models import (
     maintenant,
 )
 from app.security import hash_mot_de_passe, mot_de_passe_temporaire, nouveau_jeton
-from app.services.comptes import ADRESSE, adresse_compte, mot_de_passe_depart
+from app.services.comptes import ADRESSE, adresse_compte, assurer_compte_etudiant, mot_de_passe_depart
 from app.services.ecoles import annee_academique_courante
 from app.services.import_etudiants import validite_par_defaut
 from app.services.photos import enregistrer_photo, enregistrer_photo_personnel
@@ -114,20 +114,9 @@ def creer_etudiant(
         if jpeg:
             etudiant.photo_chemin = enregistrer_photo(etudiant.id, jpeg)
         secret = mot_de_passe or mot_de_passe_depart()
-        compte = identifiant or adresse_compte(db, prenom, nom) or compte
-        if not etudiant.email and ADRESSE.match(compte):
-            etudiant.email = compte
-        db.add(
-            Utilisateur(
-                identifiant=compte,
-                mot_de_passe_hash=hash_mot_de_passe(secret),
-                role="etudiant",
-                actif=True,
-                doit_changer_mot_de_passe=True,
-                etudiant_id=etudiant.id,
-                cree_le=maintenant(),
-            )
-        )
+        if identifiant and ADRESSE.match(identifiant.strip().lower()) and not etudiant.email:
+            etudiant.email = identifiant.strip().lower()
+        compte = assurer_compte_etudiant(db, etudiant, mot_de_passe=secret).identifiant
         carte = _nouvelle_carte(etudiant, 1)
         db.add(carte)
         db.flush()

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import env
 from app.models import Etudiant
 from app.services.import_etudiants import controler_fiche
+from app.services.comptes import assurer_compte_etudiant
 from app.services.metier import carte_courante, creer_etudiant, modifier_etudiant, remplacer_photo, supprimer_etudiant
 from app.services.photos import normaliser_photo
 
@@ -330,6 +331,7 @@ def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tu
             sexe=existant.sexe or "M",
             acteur_id=acteur_id,
         )
+        assurer_compte_etudiant(db, existant)
     return fiche.matricule, raw["photo_url"], existant is None
 
 

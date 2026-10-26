@@ -38,8 +38,11 @@
     <a href="/cantine/rapport" {% if chemin.startswith("/cantine/rapport") %}class="actif" aria-current="page"{% endif %}>Rapport</a>
   {% elif user and user.role == "securite" %}
     <a href="/securite" {% if chemin.startswith("/securite") %}class="actif" aria-current="page"{% endif %}>Contrôle</a>
-  {% elif user %}
+  {% elif user and user.role == "etudiant" %}
     <a href="/espace" {% if chemin.startswith("/espace") %}class="actif" aria-current="page"{% endif %}>Mon compte</a>
+    <a href="/menu" {% if (chemin.startswith("/menu") and not chemin.startswith("/menu/recus")) or chemin.startswith("/m/") %}class="actif" aria-current="page"{% endif %}>Commander</a>
+    <a href="/menu/recus" {% if chemin.startswith("/menu/recus") %}class="actif" aria-current="page"{% endif %}>Reçus</a>
+  {% elif user %}
     <a href="/menu" {% if (chemin.startswith("/menu") and not chemin.startswith("/menu/recus")) or chemin.startswith("/m/") %}class="actif" aria-current="page"{% endif %}>Commander</a>
     <a href="/menu/recus" {% if chemin.startswith("/menu/recus") %}class="actif" aria-current="page"{% endif %}>Reçus</a>
   {% elif not chemin.startswith("/login") %}

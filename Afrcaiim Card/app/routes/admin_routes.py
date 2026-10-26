@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import ROOT, base_url
 from app.services import cups, relais
 from app.services.cantine import ABONNEMENT_MENSUEL, crediter, poser_abonnement, prix_repas, regler_prix
-from app.services.comptes import adresse_compte
+from app.services.comptes import adresse_compte, assurer_compte_etudiant
 from app.services.courrier import formater_francs
 from app.deps import Redirection, exiger_admin, exiger_bureau, get_db
 from app.models import Etudiant, Journal, MouvementCantine, Personnel, Utilisateur
@@ -325,6 +325,7 @@ def changer_matricule(
     ancien = etudiant.matricule
     etudiant.matricule = nouveau
     journaliser(db, "matricule_modifie", utilisateur_id=admin.id, etudiant_id=etudiant.id, details=f"{ancien} → {nouveau}")
+    assurer_compte_etudiant(db, etudiant)
     db.commit()
     raise Redirection(f"{retour}?matricule=ok")
 

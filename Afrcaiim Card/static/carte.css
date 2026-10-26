@@ -247,7 +247,12 @@ body:has(.login) .flash {
   transform: none;
 }
 .login .oubli button:hover { background: none; box-shadow: none; transform: none; }
-.login input {
+.login .oubli a {
+  color: var(--vert);
+  font: inherit;
+  text-decoration: underline;
+}
+.login input, .login select {
   background: rgba(255, 255, 255, 0.55);
   border-color: rgba(0, 76, 34, 0.16);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;

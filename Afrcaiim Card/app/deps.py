@@ -49,6 +49,8 @@ def maison(role: str) -> str:
         return "/cantine"
     if role == "securite":
         return "/securite"
+    if role in {"professeur", "personnel"}:
+        return "/menu"
     return "/espace"
 
 

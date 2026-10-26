@@ -14,7 +14,7 @@ from app.config import env
 from app.deps import get_db, utilisateur_courant
 from app.models import Etudiant, Utilisateur
 from app.services.import_etudiants import _MATRICULE, controler_fiche
-from app.services.comptes import ADRESSE, aligner_compte
+from app.services.comptes import ADRESSE, aligner_compte, assurer_compte_etudiant
 from app.services.cantine import crediter, prix_repas
 from app.services.metier import creer_etudiant, journaliser, modifier_etudiant, supprimer_etudiant
 from app.services.universite_api import validite_connue
@@ -89,6 +89,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
                 return JSONResponse({"message": f"Le matricule {fiche.matricule} existe déjà dans les cartes."}, status_code=409)
             renomme.matricule = fiche.matricule
             journaliser(db, "matricule_modifie", etudiant_id=renomme.id, details=f"{ancien} → {fiche.matricule}")
+            assurer_compte_etudiant(db, renomme)
             existant = renomme
     fin_programme = validite_connue(fiche.matricule)
     if existant is None:

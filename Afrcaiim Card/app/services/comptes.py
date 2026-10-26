@@ -1,8 +1,4 @@
-"""Comptes des étudiants : adresse prenom.nom@univ-africaiim.com et mot de passe de départ.
-
-La scolarité attribue l'adresse et l'envoie avec l'inscription ; la règle ci-dessous ne sert
-que pour une fiche créée directement dans les cartes.
-"""
+"""Comptes : matricule pour les étudiants de l'atelier, mail professionnel pour le personnel."""
 
 from __future__ import annotations
 
@@ -17,6 +13,7 @@ from app.security import hash_mot_de_passe
 
 DOMAINE = "univ-africaiim.com"
 ADRESSE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,60}@univ-africaiim\.com$")
+ROLES_PUBLICS = ("professeur", "personnel")
 
 
 def mot_de_passe_depart() -> str:
@@ -56,33 +53,59 @@ def adresse_compte(db, prenom: str, nom: str) -> str | None:
     return f"{base}{rang if rang > 1 else ''}@{DOMAINE}"
 
 
-def aligner_compte(db, etudiant: Etudiant, adresse: str) -> bool:
-    """Le compte de l'étudiant prend l'adresse donnée par la scolarité. Renvoie True s'il a changé.
-
-    Un compte jamais utilisé repart du mot de passe de départ ; un mot de passe déjà choisi est gardé.
-    """
+def assurer_compte_etudiant(db, etudiant: Etudiant, mot_de_passe: str | None = None) -> Utilisateur:
+    """Chaque fiche de l'atelier a un compte : identifiant = matricule, mot de passe de départ."""
+    matricule = (etudiant.matricule or "").strip()
+    if not matricule:
+        raise ValueError("Le matricule est obligatoire pour créer le compte.")
     compte = db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
-    if not _libre(db, adresse, compte.id if compte else None):
-        raise ValueError(f"L'adresse {adresse} est déjà utilisée par un autre compte.")
+    secret = mot_de_passe or mot_de_passe_depart()
     if compte is None:
-        db.add(
-            Utilisateur(
-                identifiant=adresse,
-                mot_de_passe_hash=hash_mot_de_passe(mot_de_passe_depart()),
-                role="etudiant",
-                actif=True,
-                doit_changer_mot_de_passe=True,
-                etudiant_id=etudiant.id,
-                cree_le=maintenant(),
-            )
+        pris = db.scalar(select(Utilisateur).where(func.lower(Utilisateur.identifiant) == matricule.lower()))
+        if pris is not None:
+            if pris.etudiant_id not in (None, etudiant.id):
+                raise ValueError(f"Le matricule {matricule} est déjà utilisé comme identifiant.")
+            pris.identifiant = matricule
+            pris.role = "etudiant"
+            pris.actif = True
+            pris.etudiant_id = etudiant.id
+            if mot_de_passe:
+                pris.mot_de_passe_hash = hash_mot_de_passe(secret)
+            return pris
+        compte = Utilisateur(
+            identifiant=matricule,
+            mot_de_passe_hash=hash_mot_de_passe(secret),
+            role="etudiant",
+            actif=True,
+            doit_changer_mot_de_passe=False,
+            etudiant_id=etudiant.id,
+            cree_le=maintenant(),
         )
-        return True
-    if compte.identifiant.lower() == adresse:
-        return False
-    compte.identifiant = adresse
-    if compte.doit_changer_mot_de_passe:
-        compte.mot_de_passe_hash = hash_mot_de_passe(mot_de_passe_depart())
-    return True
+        db.add(compte)
+        db.flush()
+        return compte
+    if compte.identifiant.lower() != matricule.lower() and _libre(db, matricule.lower(), compte.id):
+        compte.identifiant = matricule
+    compte.role = "etudiant"
+    compte.etudiant_id = etudiant.id
+    compte.doit_changer_mot_de_passe = False
+    return compte
+
+
+def aligner_compte(db, etudiant: Etudiant, adresse: str) -> bool:
+    """Garde le login sur le matricule. L'adresse professionnelle reste sur la fiche."""
+    change = False
+    propre = (adresse or "").strip().lower()
+    if propre:
+        if not ADRESSE.match(propre):
+            raise ValueError("L'adresse du compte doit finir par @univ-africaiim.com.")
+        if (etudiant.email or "").lower() != propre:
+            etudiant.email = propre
+            change = True
+    avant = db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
+    identifiant = avant.identifiant if avant else None
+    compte = assurer_compte_etudiant(db, etudiant)
+    return change or identifiant != compte.identifiant
 
 
 def doit_choisir_mot_de_passe(utilisateur: Utilisateur | None) -> bool:
@@ -90,11 +113,18 @@ def doit_choisir_mot_de_passe(utilisateur: Utilisateur | None) -> bool:
 
 
 def trouver_utilisateur(db, saisie: str) -> Utilisateur | None:
-    """Adresse du compte, e-mail de la fiche, ou matricule."""
+    """Matricule (atelier), identifiant du compte, ou e-mail professionnel."""
     cle = (saisie or "").strip()
     if not cle:
         return None
     minuscule = cle.lower()
+    matricule = cle.replace(" ", "").upper()
+    etudiant = db.scalar(select(Etudiant).where(func.upper(Etudiant.matricule) == matricule))
+    if etudiant is not None:
+        compte = db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
+        if compte is not None:
+            return compte
+        return assurer_compte_etudiant(db, etudiant)
     utilisateur = db.scalar(
         select(Utilisateur).where(func.lower(Utilisateur.identifiant) == minuscule)
     )
@@ -102,9 +132,34 @@ def trouver_utilisateur(db, saisie: str) -> Utilisateur | None:
         return utilisateur
     etudiant = db.scalar(select(Etudiant).where(func.lower(Etudiant.email) == minuscule))
     if etudiant is None:
-        etudiant = db.scalar(
-            select(Etudiant).where(func.upper(Etudiant.matricule) == cle.replace(" ", "").upper())
-        )
-    if etudiant is None:
         return None
-    return db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
+    compte = db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
+    return compte or assurer_compte_etudiant(db, etudiant)
+
+
+def inscrire_professionnel(db, email: str, role: str) -> Utilisateur:
+    """Professeur ou personnel : adresse @univ-africaiim.com, mot de passe de départ."""
+    adresse = (email or "").strip().lower()
+    poste = (role or "").strip().lower()
+    if not ADRESSE.match(adresse):
+        raise ValueError("Utilisez votre adresse professionnelle qui se termine par @univ-africaiim.com.")
+    if poste not in ROLES_PUBLICS:
+        raise ValueError("Choisissez professeur ou personnel.")
+    if db.scalar(select(Etudiant.id).where(func.lower(Etudiant.email) == adresse)):
+        raise ValueError("Cette adresse appartient à un étudiant. Connectez-vous avec le matricule.")
+    if db.scalar(select(Etudiant.id).where(func.upper(Etudiant.matricule) == adresse.upper())):
+        raise ValueError("Cette adresse ne peut pas servir de compte professionnel.")
+    if not _libre(db, adresse):
+        raise ValueError("Un compte existe déjà pour cette adresse. Connectez-vous.")
+    compte = Utilisateur(
+        identifiant=adresse,
+        mot_de_passe_hash=hash_mot_de_passe(mot_de_passe_depart()),
+        role=poste,
+        actif=True,
+        doit_changer_mot_de_passe=False,
+        cree_le=maintenant(),
+    )
+    db.add(compte)
+    db.commit()
+    db.refresh(compte)
+    return compte

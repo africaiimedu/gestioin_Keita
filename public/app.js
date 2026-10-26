@@ -729,9 +729,8 @@ async function onLogin(event) {
     else openHome();
     render();
   } catch (caught) {
-    const email = String(form.get("email") || "").trim().toLowerCase();
-    if (/^[a-z0-9-]+\.[a-z0-9.-]+@univ-africaiim\.com$/.test(email)
-      && await studentLogin(email, String(form.get("password") || "")).catch(() => false)) return;
+    const identifiant = String(form.get("email") || "").trim();
+    if (identifiant && await studentLogin(identifiant, String(form.get("password") || "")).catch(() => false)) return;
     error.hidden = false;
     error.textContent = caught.message;
   }
