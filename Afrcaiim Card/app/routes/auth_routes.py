@@ -7,15 +7,14 @@ import secrets
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.deps import Redirection, exiger_connecte, get_db, maison, utilisateur_courant
 from app.models import Utilisateur
 from app.security import hash_mot_de_passe, verifier_mot_de_passe
-from app.services.comptes import doit_choisir_mot_de_passe, mots_de_passe_depart
+from app.services.comptes import doit_choisir_mot_de_passe, mots_de_passe_depart, trouver_utilisateur
 from app.services.limite import autoriser
-from app.ui import csrf_valide, flash, render, retour_sur
+from app.ui import csrf_valide, flash, render
 
 router = APIRouter()
 
@@ -75,9 +74,7 @@ def login(
         flash(request, "erreur", "Trop d'essais. Réessayez dans quelques minutes.")
         return RedirectResponse("/login", status_code=303)
 
-    utilisateur = db.scalar(
-        select(Utilisateur).where(func.lower(Utilisateur.identifiant) == identifiant.strip().lower())
-    )
+    utilisateur = trouver_utilisateur(db, identifiant)
     stocke = utilisateur.mot_de_passe_hash if utilisateur else _HASH_FICTIF
     correct = verifier_mot_de_passe(mot_de_passe, stocke)
     if utilisateur is None or not utilisateur.actif or not correct:

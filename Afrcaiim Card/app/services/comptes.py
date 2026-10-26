@@ -87,3 +87,24 @@ def aligner_compte(db, etudiant: Etudiant, adresse: str) -> bool:
 
 def doit_choisir_mot_de_passe(utilisateur: Utilisateur | None) -> bool:
     return bool(utilisateur and utilisateur.role == "etudiant" and utilisateur.doit_changer_mot_de_passe)
+
+
+def trouver_utilisateur(db, saisie: str) -> Utilisateur | None:
+    """Adresse du compte, e-mail de la fiche, ou matricule."""
+    cle = (saisie or "").strip()
+    if not cle:
+        return None
+    minuscule = cle.lower()
+    utilisateur = db.scalar(
+        select(Utilisateur).where(func.lower(Utilisateur.identifiant) == minuscule)
+    )
+    if utilisateur is not None:
+        return utilisateur
+    etudiant = db.scalar(select(Etudiant).where(func.lower(Etudiant.email) == minuscule))
+    if etudiant is None:
+        etudiant = db.scalar(
+            select(Etudiant).where(func.upper(Etudiant.matricule) == cle.replace(" ", "").upper())
+        )
+    if etudiant is None:
+        return None
+    return db.scalar(select(Utilisateur).where(Utilisateur.etudiant_id == etudiant.id))
