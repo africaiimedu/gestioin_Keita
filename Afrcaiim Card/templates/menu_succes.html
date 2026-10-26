@@ -59,6 +59,9 @@
       if (!etat.ok) return;
       if (etat.statut !== ticket.dataset.statut || String(etat.payee ? 1 : 0) !== ticket.dataset.payee) {
         location.reload();
+      } else if (etat.prete && ticket.dataset.statut === "prete") {
+        var libelle = document.getElementById("etat-libelle");
+        if (libelle) libelle.textContent = etat.libelle;
       }
     }).catch(function () {});
   }, 4000);

@@ -74,7 +74,7 @@ function portalRole(user) {
 
 function portalAllowed(user, tail) {
   if (!user) return false;
-  if (tail.startsWith("/m/") || tail === "/menu" || tail.startsWith("/menu/")) return true;
+  if (tail.startsWith("/m/") || tail === "/menu" || tail.startsWith("/menu/") || tail.startsWith("/messages")) return true;
   if (tail.startsWith("/cantine")) return can(user, "kitchen.manage");
   if (tail.startsWith("/verif") || tail.startsWith("/scan")) return can(user, "kitchen.manage") || can(user, "cards.manage");
   if (tail.startsWith("/login")) return can(user, "cards.manage") || can(user, "kitchen.manage");

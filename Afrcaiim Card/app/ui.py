@@ -6,9 +6,12 @@ import secrets
 from datetime import date, datetime, timezone
 
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from starlette.requests import Request
 
 from app.config import ROOT, charger_config
+from app.database import SessionLocal
+from app.models import MessageApp
 from app.services.courrier import formater_francs
 from app.services.ecoles import ECOLES, annee_academique_courante
 from app.services.import_etudiants import validite_par_defaut
@@ -80,4 +83,18 @@ def render(request: Request, modele: str, **contexte):
     contexte["csrf"] = assurer_csrf(request)
     contexte["flash"] = request.session.pop("flash", None)
     contexte["cfg"] = charger_config()
+    if "messages_app" not in contexte:
+        contexte["messages_app"] = _messages_non_lus(contexte.get("user"))
     return templates.TemplateResponse(request, modele, contexte)
+
+
+def _messages_non_lus(utilisateur) -> list:
+    if utilisateur is None:
+        return []
+    with SessionLocal() as db:
+        return db.scalars(
+            select(MessageApp)
+            .where(MessageApp.utilisateur_id == utilisateur.id, MessageApp.lu_le.is_(None))
+            .order_by(MessageApp.id.desc())
+            .limit(8)
+        ).all()

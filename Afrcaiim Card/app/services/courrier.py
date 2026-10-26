@@ -28,32 +28,6 @@ def message_debit(prenom: str, nom: str, montant: int, solde: int) -> tuple[str,
     return sujet, corps
 
 
-def message_pret(prenom: str, nom: str, numero: str, montant: int, lien: str, par_solde: bool) -> tuple[str, str]:
-    sujet = f"Cantine — {numero} est prêt"
-    if par_solde:
-        corps = (
-            f"Bonjour {prenom} {nom},\n\n"
-            f"Votre commande {numero} est prête ({formater_francs(montant)}).\n"
-            "Ouvrez ce lien pour valider le paiement : votre compte cantine sera débité tout de suite.\n"
-            f"{lien}\n\n"
-            "Université AFRICAIIM\n"
-        )
-    else:
-        corps = (
-            f"Bonjour {prenom} {nom},\n\n"
-            f"Votre commande {numero} est prête. Présentez ce numéro au comptoir.\n"
-            f"Si le paiement n'est pas encore fait, réglez {formater_francs(montant)} à la caisse.\n"
-            f"{lien}\n\n"
-            "Université AFRICAIIM\n"
-        )
-    return sujet, corps
-
-
-def expedier_alerte(destinataire: str, prenom: str, nom: str, numero: str, montant: int, lien: str, par_solde: bool) -> bool:
-    sujet, corps = message_pret(prenom, nom, numero, montant, lien, par_solde)
-    return _envoyer(destinataire, sujet, corps)
-
-
 def expedier_debit(destinataire: str, prenom: str, nom: str, montant: int, solde: int) -> bool:
     """Envoie le message. Retourne False si aucun serveur n'est configuré ou s'il ne répond pas."""
     sujet, corps = message_debit(prenom, nom, montant, solde)

@@ -7,7 +7,7 @@
   <title>{% block titre %}Cartes{% endblock %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/carte.css?v=23">
+  <link rel="stylesheet" href="/static/carte.css?v=24">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <script src="/static/mot-de-passe.js?v=2" defer></script>
   <script src="/static/impression-locale.js?v=2" defer></script>
@@ -27,7 +27,42 @@
     {% if flash %}
       <p class="flash flash-{{ flash.type }}">{{ flash.message }}</p>
     {% endif %}
+    {% if user %}
+      <div id="avis-app" class="avis-app" {% if not messages_app %}hidden{% endif %} role="status">
+        {% for note in messages_app %}
+          <a class="avis-app-carte" href="/messages/{{ note.id }}">
+            <strong>{{ note.titre }}</strong>
+            <span>{{ note.corps }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
     {% block contenu %}{% endblock %}
   </main>
+  {% if user %}
+  <script>
+  (function () {
+    var boite = document.getElementById("avis-app");
+    if (!boite) return;
+    function afficher(notes) {
+      if (!notes || !notes.length) {
+        boite.hidden = true;
+        boite.innerHTML = "";
+        return;
+      }
+      boite.hidden = false;
+      boite.innerHTML = notes.map(function (note) {
+        return '<a class="avis-app-carte" href="/messages/' + note.id + '"><strong>' +
+          note.titre + '</strong><span>' + note.corps + '</span></a>';
+      }).join("");
+    }
+    setInterval(function () {
+      fetch("/messages.json", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (data) {
+        if (data.ok) afficher(data.messages);
+      }).catch(function () {});
+    }, 4000);
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>

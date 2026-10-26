@@ -18,6 +18,7 @@ from app.deps import (
     exiger_cuisiniere,
     exiger_etudiant,
     get_db,
+    maison,
     utilisateur_courant,
 )
 from app.models import (
@@ -25,6 +26,7 @@ from app.models import (
     CommandeCantine,
     Etudiant,
     LigneCommande,
+    MessageApp,
     Plat,
     PointCantine,
     RecuCantine,
@@ -218,7 +220,42 @@ def etat_commande(commande_id: int, request: Request, db: Session = Depends(get_
         "libelle": _LIBELLES.get(commande.statut, commande.statut),
         "payee": recu_commande is not None,
         "mode": commande.mode_paiement,
+        "prete": commande.statut == "prete",
     }
+
+
+@router.get("/messages.json")
+def messages_json(request: Request, db: Session = Depends(get_db)):
+    utilisateur = utilisateur_courant(request, db)
+    if utilisateur is None:
+        return {"ok": False, "messages": []}
+    notes = db.scalars(
+        select(MessageApp)
+        .where(MessageApp.utilisateur_id == utilisateur.id, MessageApp.lu_le.is_(None))
+        .order_by(MessageApp.id.desc())
+        .limit(8)
+    ).all()
+    return {
+        "ok": True,
+        "messages": [
+            {"id": note.id, "titre": note.titre, "corps": note.corps, "lien": note.lien}
+            for note in notes
+        ],
+    }
+
+
+@router.get("/messages/{message_id}")
+def ouvrir_message(message_id: int, request: Request, db: Session = Depends(get_db)):
+    utilisateur = utilisateur_courant(request, db)
+    if utilisateur is None:
+        raise Redirection("/login")
+    note = db.get(MessageApp, message_id)
+    if note is None or note.utilisateur_id != utilisateur.id:
+        raise Redirection(maison(utilisateur.role))
+    if note.lu_le is None:
+        note.lu_le = maintenant()
+        db.commit()
+    raise Redirection(note.lien or maison(utilisateur.role))
 
 
 @router.post("/menu/commande/{commande_id}/payer")

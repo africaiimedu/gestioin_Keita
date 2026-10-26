@@ -14,6 +14,7 @@ from app.models import (
     CommandeCantine,
     Etudiant,
     LigneCommande,
+    MessageApp,
     MouvementCantine,
     Plat,
     PointCantine,
@@ -22,7 +23,7 @@ from app.models import (
     maintenant,
 )
 from app.security import hash_mot_de_passe
-from app.services.courrier import expedier_alerte, expedier_debit, formater_francs
+from app.services.courrier import expedier_debit, formater_francs
 from app.services.metier import carte_courante, journaliser
 from app.services.recus import MODES, MODES_CAISSE, annuler_recus_commande, details_lignes, emettre_recu
 from app.services.statut import statut_effectif
@@ -452,31 +453,41 @@ def avancer_statut(db, commande: CommandeCantine, utilisateur_id: int) -> str:
 
 
 def _alerter_pret(db, commande: CommandeCantine) -> None:
-    from app.config import base_url
-
-    lien = f"{base_url()}/menu/commande/{commande.id}"
-    prenom, nom, destinataire = "", commande.nom_client or "client", ""
-    if commande.etudiant_id:
-        etudiant = db.get(Etudiant, commande.etudiant_id)
-        if etudiant is not None:
-            prenom, nom = etudiant.prenom, etudiant.nom
-            destinataire = etudiant.email or ""
-    if not destinataire and commande.utilisateur_id:
-        compte = db.get(Utilisateur, commande.utilisateur_id)
-        if compte and "@" in (compte.identifiant or ""):
-            destinataire = compte.identifiant
-            if not nom:
-                nom = compte.identifiant
-    if destinataire:
-        expedier_alerte(
-            destinataire,
-            prenom or "",
-            nom,
-            commande.numero,
-            commande.montant,
-            lien,
-            commande.mode_paiement == "solde",
+    """Dépose un message dans l'application pour l'étudiant, le prof ou le personnel."""
+    uid = commande.utilisateur_id
+    if not uid and commande.etudiant_id:
+        uid = db.scalar(select(Utilisateur.id).where(Utilisateur.etudiant_id == commande.etudiant_id))
+    if not uid:
+        return
+    deja = db.scalar(
+        select(MessageApp.id).where(
+            MessageApp.commande_id == commande.id,
+            MessageApp.utilisateur_id == uid,
         )
+    )
+    if deja:
+        return
+    if commande.mode_paiement == "solde":
+        corps = (
+            f"Votre commande {commande.numero} est prête ({formater_francs(commande.montant)}). "
+            "Validez le paiement ici : votre compte cantine sera débité tout de suite."
+        )
+    else:
+        corps = (
+            f"Votre commande {commande.numero} est prête. "
+            "Présentez ce numéro au comptoir."
+        )
+    db.add(
+        MessageApp(
+            utilisateur_id=uid,
+            commande_id=commande.id,
+            titre="Repas prêt",
+            corps=corps,
+            lien=f"/menu/commande/{commande.id}",
+            cree_le=maintenant(),
+        )
+    )
+    db.commit()
 
 
 _VISUELS = {

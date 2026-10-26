@@ -119,6 +119,26 @@ main { padding: 1.4rem 1.2rem 3rem; max-width: 1080px; margin: 0 auto; }
 .flash-erreur { background: #f8e8e4; color: #6e2c22; }
 .flash-avertissement { background: #fff4d6; color: #5c4300; }
 
+.avis-app {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+}
+.avis-app-carte {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.9rem 1.05rem;
+  border-radius: 10px;
+  background: #0c3d2e;
+  color: #fff8e8;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(12, 61, 46, 0.18);
+}
+.avis-app-carte strong { font-size: 1.05rem; }
+.avis-app-carte span { opacity: 0.92; line-height: 1.4; }
+
 body:has(.login) {
   background: #102418;
 }

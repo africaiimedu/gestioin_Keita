@@ -173,6 +173,21 @@ class CommandeCantine(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
 
 
+class MessageApp(Base):
+    """Message visible dans l'application (cantine, etc.), pas un e-mail."""
+
+    __tablename__ = "messages_app"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    utilisateur_id: Mapped[int] = mapped_column(ForeignKey("utilisateurs.id"), index=True)
+    commande_id: Mapped[int | None] = mapped_column(ForeignKey("commandes_cantine.id"), nullable=True, index=True)
+    titre: Mapped[str] = mapped_column(String(80))
+    corps: Mapped[str] = mapped_column(String(400))
+    lien: Mapped[str] = mapped_column(String(120), default="")
+    lu_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
+
+
 class LigneCommande(Base):
     __tablename__ = "lignes_commande"
 

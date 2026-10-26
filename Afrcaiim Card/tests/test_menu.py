@@ -14,6 +14,7 @@ from app.models import (
     Etudiant,
     Journal,
     LigneCommande,
+    MessageApp,
     MouvementCantine,
     Plat,
     PointCantine,
@@ -23,7 +24,7 @@ from app.models import (
 )
 from app.security import hash_mot_de_passe
 from app.seed import _assurer_menu, _colonnes_cantine
-from app.services.menu_cantine import QTE_MAX, RefusCommande, lire_panier, passer_commande
+from app.services.menu_cantine import QTE_MAX, RefusCommande, avancer_statut, lire_panier, passer_commande
 
 
 def test_quantite_par_plat_et_plat_en_double():
@@ -48,6 +49,9 @@ def _nettoyer() -> None:
     with SessionLocal() as db:
         etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
         if etudiant is None:
+            uids = db.scalars(select(Utilisateur.id).where(Utilisateur.identifiant.in_([_IDENTIFIANT, _CUISINIERE, _SECURITE]))).all()
+            if uids:
+                db.execute(delete(MessageApp).where(MessageApp.utilisateur_id.in_(uids)))
             db.execute(delete(Utilisateur).where(Utilisateur.identifiant.in_([_IDENTIFIANT, _CUISINIERE, _SECURITE])))
             db.execute(delete(Plat).where(Plat.nom == "Soupe test"))
             db.commit()
@@ -55,8 +59,12 @@ def _nettoyer() -> None:
         commandes = db.scalars(select(CommandeCantine.id).where(CommandeCantine.etudiant_id == etudiant.id)).all()
         db.execute(delete(RecuCantine).where(RecuCantine.etudiant_id == etudiant.id))
         if commandes:
+            db.execute(delete(MessageApp).where(MessageApp.commande_id.in_(commandes)))
             db.execute(delete(LigneCommande).where(LigneCommande.commande_id.in_(commandes)))
             db.execute(delete(CommandeCantine).where(CommandeCantine.id.in_(commandes)))
+        uids = db.scalars(select(Utilisateur.id).where(Utilisateur.identifiant.in_([_IDENTIFIANT, _CUISINIERE, _SECURITE]))).all()
+        if uids:
+            db.execute(delete(MessageApp).where(MessageApp.utilisateur_id.in_(uids)))
         db.execute(delete(MouvementCantine).where(MouvementCantine.etudiant_id == etudiant.id))
         db.execute(delete(Journal).where(Journal.etudiant_id == etudiant.id))
         db.execute(delete(Carte).where(Carte.etudiant_id == etudiant.id))
@@ -143,6 +151,59 @@ def test_debit_unique_solde_et_carte():
                 raise AssertionError("une carte perdue aurait dû être refusée")
             except RefusCommande:
                 pass
+    finally:
+        _nettoyer()
+
+
+def test_repas_pret_message_dans_l_app():
+    _nettoyer()
+    with SessionLocal() as db:
+        _assurer_menu(db)
+    try:
+        with SessionLocal() as db:
+            etudiant, utilisateur, point, plat = _compte(db, 40000)
+            commande, _ = passer_commande(
+                db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-message-01"
+            )
+            cuisine = Utilisateur(
+                identifiant=_CUISINIERE,
+                mot_de_passe_hash=hash_mot_de_passe(_MOT),
+                role="cuisiniere",
+                actif=True,
+                peut_valider_qr=True,
+                doit_changer_mot_de_passe=False,
+                cree_le=maintenant(),
+            )
+            db.add(cuisine)
+            db.commit()
+            db.refresh(commande)
+            db.refresh(cuisine)
+            assert avancer_statut(db, commande, cuisine.id) == "preparation"
+            db.refresh(commande)
+            assert avancer_statut(db, commande, cuisine.id) == "prete"
+            note = db.scalar(select(MessageApp).where(MessageApp.commande_id == commande.id))
+            assert note is not None
+            assert note.utilisateur_id == utilisateur.id
+            assert "prête" in note.corps
+            assert note.lien == f"/menu/commande/{commande.id}"
+            commande_id, note_id = commande.id, note.id
+        with TestClient(app) as client:
+            _entrer(client, _IDENTIFIANT)
+            liste = client.get("/messages.json")
+            assert liste.status_code == 200
+            notes = liste.json()["messages"]
+            assert any(item["id"] == note_id for item in notes)
+            suivi = client.get(f"/menu/commande/{commande_id}")
+            assert suivi.status_code == 200
+            assert "avis-app-carte" in suivi.text
+            assert "Repas prêt" in suivi.text
+            assert "Le repas est prêt" in suivi.text
+            etat = client.get(f"/menu/commande/{commande_id}/etat.json")
+            assert etat.json()["prete"] is True
+            ouvert = client.get(f"/messages/{note_id}", follow_redirects=False)
+            assert ouvert.status_code == 303
+            assert ouvert.headers["location"] == f"/menu/commande/{commande_id}"
+            assert client.get("/messages.json").json()["messages"] == []
     finally:
         _nettoyer()
 
