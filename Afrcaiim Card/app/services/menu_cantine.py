@@ -94,7 +94,16 @@ def catalogue(db) -> list[dict]:
     return [{"categorie": cat, "plats": par_cat.get(cat.id, [])} for cat in categories if par_cat.get(cat.id)]
 
 
+JOURS_CARTE = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi")
 QTE_MAX = 10
+
+
+def jour_menu(instant=None) -> str:
+    """Jour affiché sur la carte : lundi à samedi, ou toute la semaine le dimanche."""
+    indice = (instant or maintenant()).weekday()
+    if indice >= 6:
+        return "semaine"
+    return JOURS_CARTE[indice]
 
 
 def lire_panier(brut: list) -> list[tuple[int, int]]:
@@ -155,7 +164,7 @@ def passer_commande(
     cle: str,
     pin_nouveau: str | None = None,
 ) -> tuple[CommandeCantine, bool]:
-    """Enregistre la commande pour la cuisine. Le solde étudiant n'est débité que lorsque le repas est prêt."""
+    """Enregistre la commande. Un abonné n'est jamais débité ; les autres paient à la caisse."""
     if not _CLE.match(cle or ""):
         raise RefusCommande("La commande n'a pas de clé de sécurité.")
     deja = db.scalar(select(CommandeCantine).where(CommandeCantine.cle == cle))
@@ -181,11 +190,8 @@ def passer_commande(
         raise
     total_solde = sum(prix * qte for _, prix, _, qte, _ in prepares)
     total_caisse = sum(prix * qte for _, _, prix, qte, _ in prepares)
-    par_solde = False
-    if verrouille is not None:
-        disponible = int(verrouille.solde_cantine or 0) - _solde_reserve(db, verrouille.id)
-        par_solde = disponible >= total_solde
-    total = total_solde if par_solde else total_caisse
+    abonne = bool(verrouille is not None and getattr(verrouille, "abonne_cantine", False))
+    total = total_solde if abonne else total_caisse
     for plat, _, _, qte, _ in prepares:
         if plat.stock is not None:
             plat.stock -= qte
@@ -205,8 +211,8 @@ def passer_commande(
         nom_client=nom_client,
         point_id=point.id,
         montant=total,
-        statut="recue" if par_solde else "a_payer",
-        mode_paiement="solde" if par_solde else "caisse",
+        statut="recue" if abonne else "a_payer",
+        mode_paiement="abonnement" if abonne else "caisse",
         cle=cle,
         cree_le=maintenant(),
     )
@@ -219,13 +225,13 @@ def passer_commande(
                 commande_id=commande.id,
                 plat_id=plat.id,
                 nom=nom,
-                prix=prix_solde if par_solde else prix_caisse,
+                prix=prix_solde if abonne else prix_caisse,
                 quantite=qte,
             )
         )
     suite = (
-        f"{formater_francs(total)} · paiement à la confirmation du repas"
-        if par_solde
+        f"{formater_francs(total)} · abonnement mensuel, aucun débit"
+        if abonne
         else f"{formater_francs(total)} à payer à la caisse"
     )
     journaliser(
@@ -248,11 +254,11 @@ def passer_commande(
 
 
 def confirmer_paiement_solde(db, commande: CommandeCantine, utilisateur: Utilisateur) -> RecuCantine:
-    """L'étudiant valide le paiement une fois le repas prêt : le compte cantine est débité."""
+    """L'étudiant confirme le repas prêt. Un abonné n'est pas débité ; l'ancien mode solde reste honoré."""
     commande = db.scalar(select(CommandeCantine).where(CommandeCantine.id == commande.id).with_for_update())
     if commande is None or commande.statut != "prete":
-        raise RefusCommande("Le paiement sur le compte se fait quand le repas est marqué prêt.")
-    if commande.mode_paiement != "solde" or commande.etudiant_id is None:
+        raise RefusCommande("La confirmation se fait quand le repas est marqué prêt.")
+    if commande.mode_paiement not in ("abonnement", "solde") or commande.etudiant_id is None:
         raise RefusCommande("Cette commande se paie à la caisse.")
     deja = db.scalar(
         select(RecuCantine).where(RecuCantine.commande_id == commande.id, RecuCantine.annule_le.is_(None))
@@ -260,12 +266,35 @@ def confirmer_paiement_solde(db, commande: CommandeCantine, utilisateur: Utilisa
     if deja is not None:
         return deja
     verrouille = db.scalar(select(Etudiant).where(Etudiant.id == commande.etudiant_id).with_for_update())
+    carte = carte_courante(db, verrouille.id)
+    lignes = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
+    if commande.mode_paiement == "abonnement":
+        recu = emettre_recu(
+            db,
+            verrouille,
+            nature="commande",
+            mode="abonnement",
+            montant=commande.montant,
+            solde_apres=int(verrouille.solde_cantine or 0),
+            commande=commande,
+            details=details_lignes(lignes),
+            agent_id=utilisateur.id,
+        )
+        journaliser(
+            db,
+            "commande_cantine",
+            utilisateur_id=utilisateur.id,
+            etudiant_id=verrouille.id,
+            carte_id=carte.id if carte else None,
+            details=f"{commande.numero} · abonnement mensuel, aucun débit · reste {formater_francs(verrouille.solde_cantine)}",
+        )
+        db.commit()
+        return recu
     solde = int(verrouille.solde_cantine or 0)
     if solde < commande.montant:
         raise RefusCommande(
             f"Solde insuffisant ({formater_francs(solde)}). Passez à la caisse pour {formater_francs(commande.montant)}."
         )
-    carte = carte_courante(db, verrouille.id)
     verrouille.solde_cantine = solde - commande.montant
     db.add(
         MouvementCantine(
@@ -277,7 +306,6 @@ def confirmer_paiement_solde(db, commande: CommandeCantine, utilisateur: Utilisa
             cree_le=maintenant(),
         )
     )
-    lignes = db.scalars(select(LigneCommande).where(LigneCommande.commande_id == commande.id)).all()
     recu = emettre_recu(
         db,
         verrouille,
@@ -433,8 +461,12 @@ def refuser_commande(db, commande_id: int, agent_id: int) -> None:
 def avancer_statut(db, commande: CommandeCantine, utilisateur_id: int) -> str:
     if commande.statut == "a_payer":
         raise RefusCommande("Encaissez d'abord cette commande à la caisse.")
-    if commande.statut == "prete" and commande.mode_paiement == "solde" and not _commande_payee(db, commande.id):
-        raise RefusCommande("Le client doit d'abord valider le paiement de son repas prêt.")
+    if (
+        commande.statut == "prete"
+        and commande.mode_paiement in ("solde", "abonnement")
+        and not _commande_payee(db, commande.id)
+    ):
+        raise RefusCommande("Le client doit d'abord confirmer que le repas prêt lui a été annoncé.")
     suivant = _SUIVANT.get(commande.statut)
     if suivant is None:
         raise RefusCommande("Cette commande ne change plus d'étape.")
@@ -467,7 +499,12 @@ def _alerter_pret(db, commande: CommandeCantine) -> None:
     )
     if deja:
         return
-    if commande.mode_paiement == "solde":
+    if commande.mode_paiement == "abonnement":
+        corps = (
+            f"Votre commande {commande.numero} est prête ({formater_francs(commande.montant)}). "
+            "Validez ici : rien n'est débité, l'abonnement mensuel couvre le repas."
+        )
+    elif commande.mode_paiement == "solde":
         corps = (
             f"Votre commande {commande.numero} est prête ({formater_francs(commande.montant)}). "
             "Validez le paiement ici : votre compte cantine sera débité tout de suite."

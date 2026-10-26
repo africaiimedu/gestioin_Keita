@@ -1848,7 +1848,7 @@ function cantineCard(cantine, studentId) {
         <button class="btn" type="submit">Recharger</button>
         <p class="error" data-cantine-error hidden></p>
       </form>
-      <p class="muted">Ce solde est débité quand la cantine valide le QR de la carte.</p>` : `<p class="muted">Le rechargement se fait aussi dans Cartes → Atelier étudiants, bouton « Recharger la cantine ».</p>`}
+      <p class="muted">Abonnement mensuel élèves : 600 000 FG, plat du jour et une bouteille d'eau. Un abonné n'est pas débité à chaque repas ; les autres paient à la caisse. L'abonnement se pose dans Cartes.</p>` : `<p class="muted">L'abonnement mensuel (600 000 FG) se pose dans Cartes → Atelier étudiants.</p>`}
   </article>`;
 }
 

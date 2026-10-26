@@ -1,6 +1,6 @@
 """Une commande débite une seule fois, et jamais en dessous de zéro."""
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
@@ -24,7 +24,7 @@ from app.models import (
 )
 from app.security import hash_mot_de_passe
 from app.seed import _assurer_menu, _colonnes_cantine
-from app.services.menu_cantine import QTE_MAX, RefusCommande, avancer_statut, lire_panier, passer_commande
+from app.services.menu_cantine import QTE_MAX, RefusCommande, avancer_statut, jour_menu, lire_panier, passer_commande
 
 
 def test_quantite_par_plat_et_plat_en_double():
@@ -35,6 +35,13 @@ def test_quantite_par_plat_et_plat_en_double():
             raise AssertionError(f"panier accepté à tort : {mauvais}")
         except RefusCommande:
             pass
+
+
+def test_jour_menu_lundi_au_dimanche():
+    assert jour_menu(datetime(2026, 10, 26, tzinfo=timezone.utc)) == "Lundi"
+    assert jour_menu(datetime(2026, 10, 27, tzinfo=timezone.utc)) == "Mardi"
+    assert jour_menu(datetime(2026, 10, 31, tzinfo=timezone.utc)) == "Samedi"
+    assert jour_menu(datetime(2026, 10, 25, tzinfo=timezone.utc)) == "semaine"
 
 _MATRICULE = "AIIM-MENU-TEST"
 _IDENTIFIANT = "test.menu"
@@ -85,6 +92,7 @@ def _compte(db, solde: int, statut: str = "active") -> tuple[Etudiant, Utilisate
         date_validite=date(2027, 8, 31),
         email="test.menu@example.com",
         solde_cantine=solde,
+        abonne_cantine=False,
         cree_le=maintenant(),
     )
     db.add(etudiant)
@@ -127,8 +135,8 @@ def test_debit_unique_solde_et_carte():
                 db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-test-0001", "2468"
             )
             assert neuve is True
-            assert commande.statut == "recue"
-            assert commande.mode_paiement == "solde"
+            assert commande.statut == "a_payer"
+            assert commande.mode_paiement == "caisse"
             db.refresh(etudiant)
             assert etudiant.solde_cantine == 30000
             encore, deuxieme = passer_commande(
@@ -155,6 +163,28 @@ def test_debit_unique_solde_et_carte():
         _nettoyer()
 
 
+def test_abonne_aucun_debit():
+    _nettoyer()
+    with SessionLocal() as db:
+        _assurer_menu(db)
+    try:
+        with SessionLocal() as db:
+            etudiant, utilisateur, point, plat = _compte(db, 0)
+            etudiant.abonne_cantine = True
+            etudiant.solde_cantine = 600000
+            db.commit()
+            commande, neuve = passer_commande(
+                db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-abonne-0001"
+            )
+            assert neuve is True
+            assert commande.statut == "recue"
+            assert commande.mode_paiement == "abonnement"
+            db.refresh(etudiant)
+            assert etudiant.solde_cantine == 600000
+    finally:
+        _nettoyer()
+
+
 def test_repas_pret_message_dans_l_app():
     _nettoyer()
     with SessionLocal() as db:
@@ -162,6 +192,8 @@ def test_repas_pret_message_dans_l_app():
     try:
         with SessionLocal() as db:
             etudiant, utilisateur, point, plat = _compte(db, 40000)
+            etudiant.abonne_cantine = True
+            db.commit()
             commande, _ = passer_commande(
                 db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-menu-message-01"
             )
@@ -248,7 +280,12 @@ def test_page_menu_et_commande():
             assert 'data-filtre="petit-dej"' in menu.text
             assert 'data-filtre="diner"' in menu.text
             assert 'data-filtre="extras"' in menu.text
-            assert "Chawarma" in menu.text
+            assert 'data-jour="Lundi"' in menu.text
+            assert 'data-jour="Mardi"' in menu.text
+            assert "Toute la semaine" in menu.text
+            assert "/static/marque-blanc.png" in menu.text
+            assert "CHAWARMA" in menu.text
+            assert "600 000 FG" in menu.text
             assert "Eau minérale" in menu.text
             assert "10.000 GNF" in menu.text
             assert "/static/plats/sandwich-thon.jpg" in menu.text
@@ -279,7 +316,7 @@ def test_page_menu_et_commande():
             recu = client.get(commande.headers["location"])
             assert recu.status_code == 200
             assert "A-" in recu.text
-            assert "paiement à la confirmation" in recu.text
+            assert "À payer à la caisse" in recu.text
             with SessionLocal() as db:
                 etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
                 assert etudiant.solde_cantine == 40000

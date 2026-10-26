@@ -35,6 +35,7 @@ from app.models import (
 )
 from app.services.comptes import doit_choisir_mot_de_passe
 from app.services.menu_cantine import (
+    JOURS_CARTE,
     RefusCommande,
     annuler_commande,
     avancer_statut,
@@ -42,6 +43,7 @@ from app.services.menu_cantine import (
     catalogue,
     confirmer_paiement_solde,
     encaisser_commande,
+    jour_menu,
     lire_panier,
     modifier_plat,
     passer_commande,
@@ -129,6 +131,8 @@ def menu(
         apercu=False,
         libelles=_LIBELLES,
         role=utilisateur.role if utilisateur else "",
+        jours=JOURS_CARTE,
+        jour_actuel=jour_menu(),
     )
 
 
@@ -170,7 +174,9 @@ def commander(
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
         raise Redirection(retour) from exc
-    if etudiant is None:
+    if etudiant is not None and getattr(etudiant, "abonne_cantine", False):
+        flash(request, "ok", "Commande envoyée à la cuisine. Abonnement mensuel : aucun débit.")
+    else:
         flash(request, "ok", "Commande envoyée à la cuisine. Passez à la caisse pour payer.")
     raise Redirection(f"/menu/commande/{commande.id}")
 
@@ -279,7 +285,10 @@ def payer_quand_pret(
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
         raise Redirection(f"/menu/commande/{commande_id}") from exc
-    flash(request, "ok", f"Paiement validé. Compte débité. Reçu {recu_emis.numero}.")
+    if recu_emis.mode == "abonnement":
+        flash(request, "ok", f"Repas confirmé. Rien n'a été débité (abonnement mensuel). Reçu {recu_emis.numero}.")
+    else:
+        flash(request, "ok", f"Paiement validé. Compte débité. Reçu {recu_emis.numero}.")
     raise Redirection(f"/menu/commande/{commande_id}")
 
 

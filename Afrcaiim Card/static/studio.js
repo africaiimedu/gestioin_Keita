@@ -1008,7 +1008,9 @@ document.getElementById("recharger").onclick = () => {
     return;
   }
   document.getElementById("recharge-qui").textContent = `${etu.prenom} ${etu.nom} · ${etu.matricule}`;
-  document.getElementById("recharge-solde").textContent = `Compte actuel : ${francs(etu.solde_cantine)}`;
+  document.getElementById("recharge-solde").textContent = etu.abonne_cantine
+    ? "Abonné · 600 000 GNF / mois · aucun débit"
+    : `Non abonné · compte actuel : ${francs(etu.solde_cantine)}`;
   document.getElementById("recharge").showModal();
 };
 
@@ -1046,6 +1048,25 @@ document.getElementById("synchro-universite")?.addEventListener("click", async (
     if (bouton) bouton.disabled = false;
   }
 });
+document.getElementById("poser-abonnement")?.addEventListener("click", async () => {
+  const etu = courant();
+  if (!etu) return;
+  const reponse = await fetch(`/admin/api/etudiants/${etu.id}/abonnement`, {
+    method: "POST",
+    headers: entetes(),
+    body: "{}",
+  });
+  const corps = await reponse.json();
+  if (!reponse.ok) {
+    message(corps.message || "Abonnement impossible.");
+    return;
+  }
+  Object.assign(etu, corps);
+  document.getElementById("recharge").close();
+  message(`${etu.matricule} : abonnement mensuel 600 000 FG, aucun débit à chaque repas.`);
+  dessinerGrille();
+  dessinerCarte();
+});
 document.getElementById("fermer-recharge").onclick = () => document.getElementById("recharge").close();
 document.getElementById("form-recharge").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -1065,7 +1086,7 @@ document.getElementById("form-recharge").addEventListener("submit", async (ev) =
   Object.assign(etu, corps);
   document.getElementById("recharge").close();
   ev.target.reset();
-  message(`Compte de ${etu.matricule} : ${francs(etu.solde_cantine)}. Le QR débite ce compte.`);
+  message(`Compte de ${etu.matricule} : ${francs(etu.solde_cantine)}.`);
   dessinerGrille();
   dessinerCarte();
 });

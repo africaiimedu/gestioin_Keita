@@ -29,6 +29,7 @@ class Etudiant(Base):
     photo_chemin: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str] = mapped_column(String(120), default="")
     solde_cantine: Mapped[int] = mapped_column(Integer, default=0)
+    abonne_cantine: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
 
     cartes: Mapped[list[Carte]] = relationship(back_populates="etudiant")

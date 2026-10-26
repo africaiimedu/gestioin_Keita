@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import ROOT, base_url
 from app.deps import exiger_bureau, get_db
 from app.models import Etudiant, Personnel, Utilisateur
-from app.services.cantine import crediter
+from app.services.cantine import crediter, poser_abonnement
 from app.services.designs import asset_valide, enregistrer_design, lister_designs, supprimer_design, url_design
 from app.services.import_etudiants import controler_fiche
 from app.services.metier import (
@@ -156,6 +156,7 @@ def _ligne(etudiant: Etudiant) -> dict:
         "email": etudiant.email or "",
         "sexe": etudiant.sexe if etudiant.sexe in {"M", "F"} else "M",
         "solde_cantine": int(etudiant.solde_cantine or 0),
+        "abonne_cantine": bool(getattr(etudiant, "abonne_cantine", False)),
         "url": url_affichee(base_url(), etudiant.matricule),
         "controle": code_controle(carte.jeton) if carte else "",
     }
@@ -444,6 +445,25 @@ async def recharger(
         if "invalid literal" in texte or not texte:
             texte = "Indiquez un montant en francs guinéens, sans virgule."
         return JSONResponse({"message": texte}, status_code=400)
+    etudiant = db.scalar(
+        select(Etudiant).options(selectinload(Etudiant.cartes)).where(Etudiant.id == etudiant_id)
+    )
+    return _ligne(etudiant)
+
+
+@router.post("/etudiants/{etudiant_id}/abonnement")
+async def abonner(
+    etudiant_id: int,
+    request: Request,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    etudiant = db.get(Etudiant, etudiant_id)
+    if etudiant is None:
+        return JSONResponse({"message": "Étudiant introuvable."}, status_code=404)
+    poser_abonnement(db, etudiant, admin.id)
     etudiant = db.scalar(
         select(Etudiant).options(selectinload(Etudiant.cartes)).where(Etudiant.id == etudiant_id)
     )

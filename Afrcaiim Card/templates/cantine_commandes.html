@@ -9,7 +9,7 @@
     <a class="bouton bouton-secondaire" href="/cantine/rapport">Rapport</a>
     <a class="bouton bouton-secondaire" href="/cantine/affiche">Affiche QR à imprimer</a>
   </p>
-  <p class="intro">La liste se met à jour toute seule. Un son bref signale une nouvelle commande. « À payer à la caisse » : personnel, professeur ou solde insuffisant — encaissez puis préparez. Pour un étudiant avec solde, préparez tout de suite ; au bouton Prête, le client est alerté et valide le paiement.</p>
+  <p class="intro">La liste se met à jour toute seule. Un son bref signale une nouvelle commande. « À payer à la caisse » : non abonné, personnel ou professeur — encaissez puis préparez. Pour un élève abonné (600 000 FG / mois), préparez tout de suite : au bouton Prête, il confirme et rien n'est débité.</p>
   <div id="file">
     {% for commande in commandes %}
       <article class="ticket{% if commande.statut == 'a_payer' %} ticket-a-payer{% endif %}" data-id="{{ commande.id }}">
@@ -35,7 +35,7 @@
             </form>
           </div>
         {% else %}
-          <p class="mode-paye">{% if commande.recu_id %}{% if commande.mode_paiement == "caisse" %}Payée à la caisse{% else %}Payée sur le compte cantine{% endif %}{% elif commande.mode_paiement == "solde" %}Paiement à la confirmation du client{% else %}En attente de caisse{% endif %} · {{ commande.montant|gnf }}{% if commande.recu_id %} · <a href="/cantine/recus/{{ commande.recu_id }}">reçu</a>{% endif %}</p>
+          <p class="mode-paye">{% if commande.recu_id %}{% if commande.mode_paiement == "caisse" %}Payée à la caisse{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% else %}Payée sur le compte cantine{% endif %}{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% elif commande.mode_paiement == "solde" %}Paiement à la confirmation du client{% else %}En attente de caisse{% endif %} · {{ commande.montant|gnf }}{% if commande.recu_id %} · <a href="/cantine/recus/{{ commande.recu_id }}">reçu</a>{% endif %}</p>
           <form method="post" action="/cantine/commandes/{{ commande.id }}">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button class="bouton" type="submit">

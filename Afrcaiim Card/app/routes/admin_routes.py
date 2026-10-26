@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import ROOT, base_url
 from app.services import cups, relais
-from app.services.cantine import crediter, prix_repas, regler_prix
+from app.services.cantine import ABONNEMENT_MENSUEL, crediter, poser_abonnement, prix_repas, regler_prix
 from app.services.comptes import adresse_compte
 from app.services.courrier import formater_francs
 from app.deps import Redirection, exiger_admin, exiger_bureau, get_db
@@ -438,6 +438,25 @@ def crediter_cantine(
         flash(request, "erreur", texte)
         raise Redirection(f"/admin/etudiants/{etudiant_id}") from exc
     flash(request, "ok", f"Compte crédité. Il reste {formater_francs(solde)}.")
+    raise Redirection(f"/admin/etudiants/{etudiant_id}")
+
+
+@router.post("/etudiants/{etudiant_id}/abonnement")
+def abonner_cantine(
+    etudiant_id: int,
+    request: Request,
+    csrf: str = Form(""),
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    etudiant = _etudiant(db, etudiant_id)
+    _exiger_csrf(request, csrf, f"/admin/etudiants/{etudiant_id}")
+    poser_abonnement(db, etudiant, admin.id)
+    flash(
+        request,
+        "ok",
+        f"Abonnement mensuel posé : {formater_francs(ABONNEMENT_MENSUEL)}. Aucun débit à chaque repas.",
+    )
     raise Redirection(f"/admin/etudiants/{etudiant_id}")
 
 

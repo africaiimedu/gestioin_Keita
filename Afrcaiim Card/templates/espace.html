@@ -30,8 +30,8 @@
         <dd>{{ etudiant.email or "Non renseigné" }}</dd>
       </div>
       <div>
-        <dt>Compte cantine</dt>
-        <dd class="montant">{{ etudiant.solde_cantine|gnf }}</dd>
+        <dt>Cantine</dt>
+        <dd class="montant">{% if etudiant.abonne_cantine %}Abonné · 600 000 GNF / mois · aucun débit{% else %}Non abonné · paiement à la caisse{% endif %}</dd>
       </div>
       <div>
         <dt>Valable jusqu'au</dt>

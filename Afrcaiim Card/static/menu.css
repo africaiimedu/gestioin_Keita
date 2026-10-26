@@ -45,7 +45,15 @@
   margin-bottom: 0.35rem;
 }
 .hero p, .hero strong, .hero h1 { color: #F4F1EA; overflow-wrap: anywhere; }
-.logo-diima { display: block; height: 64px; width: auto; margin: 0 0 0.45rem; object-fit: contain; }
+.hero-marques {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0 0 0.55rem;
+  flex-wrap: wrap;
+}
+.logo-universite, .logo-diima { display: block; height: 64px; width: auto; object-fit: contain; }
+.hero .logo-universite { height: 52px; }
 .hero .logo-diima { height: 72px; filter: brightness(0) invert(1); }
 .affiche .logo-diima { margin: 0 auto 0.6rem; height: 88px; }
 .enseigne { letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.75rem; margin: 0; }
@@ -64,6 +72,8 @@
   padding: 0.65rem 0;
   margin: 0;
 }
+.chips-jours { z-index: 4; padding-bottom: 0.2rem; }
+.chips-cats { top: 3.35rem; padding-top: 0.35rem; }
 .puce {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -86,6 +96,9 @@
   font-size: 0.92rem;
   line-height: 1.45;
 }
+.engagements p { margin: 0 0 0.55rem; }
+.engagements ul { margin: 0; padding-left: 1.15rem; }
+.engagements li { margin: 0.2rem 0; }
 .grille { display: grid; grid-template-columns: 1fr; gap: 0.9rem; }
 .plat {
   display: flex;

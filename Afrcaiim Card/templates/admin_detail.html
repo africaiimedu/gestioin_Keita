@@ -63,8 +63,14 @@
   </div>
 
   <h2>Cantine</h2>
-  <p>Solde actuel : <strong>{{ solde }}</strong> · prix d'un repas : {{ prix_repas }}</p>
-  <p class="aide">Le QR de la carte ouvre ce solde. La validation débite un repas et envoie le montant à l'e-mail étudiant.</p>
+  <p>{% if etudiant.abonne_cantine %}Abonnement mensuel : <strong>600 000 GNF</strong> · aucun débit à chaque repas.{% else %}Non abonné · les repas se paient à la caisse.{% endif %}</p>
+  <p class="aide">ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM ; 600 000 FG AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU. Poser l'abonnement ne modifie que cette fiche.</p>
+  {% if not etudiant.abonne_cantine %}
+  <form method="post" action="/admin/etudiants/{{ etudiant.id }}/abonnement" class="panneau etroit">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Poser l'abonnement mensuel (600 000 FG)</button>
+  </form>
+  {% endif %}
   <form method="post" action="/admin/etudiants/{{ etudiant.id }}/cantine" class="panneau etroit">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label>Créditer le compte (GNF)

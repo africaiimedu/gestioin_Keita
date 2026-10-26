@@ -176,14 +176,11 @@ def test_sans_solde_encaissement_recus_et_rapport():
             assert (recharge.mode, recharge.montant, recharge.solde_apres) == ("versement", 30000, 30000)
 
             payee, _ = passer_commande(db, etudiant, utilisateur, point, [(plat.id, 1)], "cle-recu-test-00003")
-            assert (payee.statut, payee.mode_paiement, payee.montant) == ("recue", "solde", 10000)
-            recu_solde = db.scalar(select(RecuCantine).where(RecuCantine.commande_id == payee.id))
-            assert (recu_solde.mode, recu_solde.solde_apres) == ("solde", 20000)
-
-            annuler_commande(db, payee, etudiant)
-            db.refresh(recu_solde)
+            assert (payee.statut, payee.mode_paiement) == ("a_payer", "caisse")
             db.refresh(etudiant)
-            assert recu_solde.annule_le is not None
+            assert etudiant.solde_cantine == 30000
+            refuser_commande(db, payee.id, None)
+            db.refresh(etudiant)
             assert etudiant.solde_cantine == 30000
 
             apres = rapport(db, date.today(), date.today())

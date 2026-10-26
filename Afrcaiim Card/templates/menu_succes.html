@@ -17,8 +17,11 @@
     <p class="somme">À payer à la caisse : {{ commande.montant|gnf }}</p>
     <p>Passez au comptoir avec ce numéro. La cuisine prépare dès que le paiement est encaissé.</p>
   {% elif recu %}
-    <p class="somme">Payé {{ commande.montant|gnf }}</p>
-    {% if etudiant %}<p>Il reste <strong>{{ etudiant.solde_cantine|gnf }}</strong> sur votre compte.</p>{% endif %}
+    <p class="somme">{% if commande.mode_paiement == "abonnement" %}Couvert par l'abonnement {{ commande.montant|gnf }}{% else %}Payé {{ commande.montant|gnf }}{% endif %}</p>
+    {% if etudiant and etudiant.abonne_cantine %}<p>Abonnement mensuel 600 000 GNF · aucun débit.</p>{% elif etudiant %}<p>Il reste <strong>{{ etudiant.solde_cantine|gnf }}</strong> sur votre compte.</p>{% endif %}
+  {% elif commande.mode_paiement == "abonnement" %}
+    <p class="somme">{{ commande.montant|gnf }} — abonnement mensuel, aucun débit</p>
+    <p>La cuisine prépare. Quand le repas est prêt, validez : rien n'est débité.</p>
   {% elif commande.mode_paiement == "solde" %}
     <p class="somme">{{ commande.montant|gnf }} — paiement à la confirmation</p>
     <p>La cuisine prépare. Quand le repas est prêt, validez le paiement : votre compte est débité tout de suite.</p>
@@ -26,10 +29,10 @@
     <p class="somme">Payé à la caisse {{ commande.montant|gnf }}</p>
   {% endif %}
 
-  {% if commande.statut == "prete" and commande.mode_paiement == "solde" and not recu %}
+  {% if commande.statut == "prete" and commande.mode_paiement in ("abonnement", "solde") and not recu %}
     <form method="post" action="/menu/commande/{{ commande.id }}/payer" id="form-payer">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="payer" type="submit">Le repas est prêt — valider le paiement</button>
+      <button class="payer" type="submit">{% if commande.mode_paiement == "abonnement" %}Le repas est prêt — valider (aucun débit){% else %}Le repas est prêt — valider le paiement{% endif %}</button>
     </form>
   {% elif commande.statut == "prete" %}
     <p class="resultat resultat-bon">Votre repas est prêt. Présentez {{ commande.numero }} au comptoir.</p>
@@ -41,7 +44,7 @@
   {% if commande.statut != "annulee" %}
     <p class="aide">Présentez ce numéro au comptoir.</p>
   {% endif %}
-  {% if commande.statut == "a_payer" or (commande.statut == "recue" and commande.mode_paiement == "solde" and not recu) %}
+  {% if commande.statut == "a_payer" or (commande.statut == "recue" and commande.mode_paiement in ("solde", "abonnement") and not recu) %}
     <form method="post" action="/menu/commande/{{ commande.id }}/annuler">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="bouton bouton-secondaire" type="submit">Annuler la commande</button>

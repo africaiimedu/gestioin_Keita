@@ -217,21 +217,11 @@ def valider_repas_carte(
     except ValueError as exc:
         flash(request, "erreur", str(exc))
         return RedirectResponse(retour, status_code=303)
-    if resultat["envoye"]:
-        flash(
-            request,
-            "ok",
-            f"Repas validé. Débit de {formater_francs(resultat['montant'])}. "
-            f"E-mail envoyé à {resultat['email']}. Reste {formater_francs(resultat['solde'])}.",
-        )
-    else:
-        flash(
-            request,
-            "ok",
-            f"Repas validé. Débit de {formater_francs(resultat['montant'])}. "
-            f"Reste {formater_francs(resultat['solde'])}. "
-            f"L'e-mail pour {resultat['email']} est prêt, mais le serveur de messagerie n'est pas encore configuré.",
-        )
+    flash(
+        request,
+        "ok",
+        f"Repas validé. Abonnement mensuel : aucun débit. Compte {formater_francs(resultat['solde'])}. Reçu {resultat['recu_numero']}.",
+    )
     return RedirectResponse(f"/cantine/recus/{resultat['recu_id']}", status_code=303)
 
 

@@ -1,19 +1,50 @@
 (function () {
-  var puces = document.querySelectorAll(".puce");
-  puces.forEach(function (puce) {
+  var joursSemaine = { Lundi: 1, Mardi: 1, Mercredi: 1, Jeudi: 1, Vendredi: 1, Samedi: 1 };
+  var barreJours = document.querySelector(".chips-jours");
+  var pucesJour = document.querySelectorAll(".chips-jours .puce");
+  var pucesCat = document.querySelectorAll(".chips-cats .puce");
+  var jourChoisi = barreJours && barreJours.dataset.jour ? barreJours.dataset.jour : "semaine";
+  var catChoisie = "tout";
+
+  function activer(puces, cible) {
+    puces.forEach(function (puce) {
+      var actif = puce === cible;
+      puce.classList.toggle("actif", actif);
+      puce.setAttribute("aria-pressed", actif ? "true" : "false");
+    });
+  }
+
+  function appliquerFiltres() {
+    document.querySelectorAll(".rayon[data-cat]").forEach(function (rayon) {
+      var catOk = catChoisie === "tout" || rayon.dataset.cat === catChoisie;
+      var visibles = 0;
+      rayon.querySelectorAll("article.plat").forEach(function (plat) {
+        var badge = plat.dataset.jour || "";
+        var jourOk = jourChoisi === "semaine" || !joursSemaine[badge] || badge === jourChoisi;
+        plat.hidden = !(catOk && jourOk);
+        if (!plat.hidden) visibles += 1;
+      });
+      rayon.hidden = !catOk || visibles === 0;
+    });
+  }
+
+  pucesJour.forEach(function (puce) {
     puce.addEventListener("click", function () {
-      var filtre = puce.dataset.filtre;
-      puces.forEach(function (autre) {
-        var actif = autre === puce;
-        autre.classList.toggle("actif", actif);
-        autre.setAttribute("aria-pressed", actif ? "true" : "false");
-      });
-      document.querySelectorAll(".rayon[data-cat]").forEach(function (rayon) {
-        rayon.hidden = filtre !== "tout" && rayon.dataset.cat !== filtre;
-      });
+      jourChoisi = puce.dataset.jour || "semaine";
+      activer(pucesJour, puce);
+      appliquerFiltres();
       puce.scrollIntoView({ inline: "nearest", block: "nearest" });
     });
   });
+  pucesCat.forEach(function (puce) {
+    puce.addEventListener("click", function () {
+      catChoisie = puce.dataset.filtre || "tout";
+      activer(pucesCat, puce);
+      appliquerFiltres();
+      puce.scrollIntoView({ inline: "nearest", block: "nearest" });
+    });
+  });
+  appliquerFiltres();
 
   var barre = document.getElementById("ouvrir-panier");
   if (!barre) return;
@@ -33,6 +64,7 @@
     return Object.keys(panier).map(function (id) { return { id: Number(id), qte: panier[id].qte }; });
   }
   var solde = Number(feuille.dataset.solde || 0);
+  var abonne = feuille.dataset.abonne === "1";
   var maximum = Number(feuille.dataset.max || 10);
   var connecte = feuille.dataset.connecte === "1";
   var estEtudiant = feuille.dataset.role === "etudiant";
@@ -46,8 +78,8 @@
   function totalSolde() {
     return Object.keys(panier).reduce(function (somme, id) { return somme + panier[id].prix * panier[id].qte; }, 0);
   }
-  function parSolde() { return connecte && estEtudiant && solde >= totalSolde(); }
-  function prixLigne(id) { return parSolde() ? panier[id].prix : (panier[id].caisse || panier[id].prix); }
+  function parAbonnement() { return connecte && estEtudiant && abonne; }
+  function prixLigne(id) { return parAbonnement() ? panier[id].prix : (panier[id].caisse || panier[id].prix); }
   function total() {
     return Object.keys(panier).reduce(function (somme, id) { return somme + prixLigne(id) * panier[id].qte; }, 0);
   }
@@ -80,11 +112,11 @@
     document.getElementById("confirmation-total").textContent = francs(total());
     var texte;
     if (!connecte) {
-      texte = "Connectez-vous pour valider. Étudiant : le compte sera débité quand le repas sera prêt. Personnel : paiement à la caisse.";
-    } else if (parSolde()) {
-      texte = "La cuisine prépare tout de suite. Vous validerez le paiement (" + francs(total()) + ") sur votre compte quand le repas sera marqué prêt.";
+      texte = "Connectez-vous pour valider. Abonné : aucun débit. Sinon : paiement à la caisse.";
+    } else if (parAbonnement()) {
+      texte = "Abonnement mensuel 600 000 FG : la cuisine prépare tout de suite. Rien ne sera débité à la validation.";
     } else if (estEtudiant) {
-      texte = "Votre solde ne couvre pas cette commande. Passez à la caisse pour payer " + francs(total()) + ".";
+      texte = "Vous n'êtes pas abonné à la cantine. Passez à la caisse pour payer " + francs(total()) + ".";
     } else {
       texte = "Vous n'êtes pas étudiant : passez à la caisse pour payer " + francs(total()) + ". La cuisine reçoit déjà la commande.";
     }
@@ -176,23 +208,24 @@
         : "Ajouter " + boutons[id].dataset.nom);
     });
     var avis = document.getElementById("avis-caisse");
-    var caisse = compte > 0 && !parSolde();
+    var caisse = compte > 0 && !parAbonnement();
     avis.hidden = !caisse;
     if (!connecte) {
       avis.hidden = false;
       avis.textContent = "Vous pouvez composer le plateau sans compte. Pour valider, vous serez invité à vous connecter.";
+    } else if (parAbonnement()) {
+      avis.hidden = false;
+      avis.textContent = "Abonnement mensuel 600 000 FG : aucun débit à chaque validation.";
     } else if (!estEtudiant) {
       avis.hidden = false;
       avis.textContent = "Personnel / professeur : après validation, passez à la caisse pour payer " + francs(total()) + ".";
     } else {
-      avis.hidden = !caisse;
-      avis.textContent = caisse
-        ? "Votre solde (" + francs(solde) + ") ne couvre pas cette commande. Passez à la caisse pour " + francs(total()) + "."
-        : "";
+      avis.hidden = false;
+      avis.textContent = "Non abonné : passez à la caisse pour payer " + francs(total()) + ".";
     }
     document.getElementById("payer-libelle").textContent = !connecte
       ? "Se connecter pour valider"
-      : (caisse || !estEtudiant ? "Valider et payer à la caisse" : "Valider la commande");
+      : (parAbonnement() ? "Valider la commande" : "Valider et payer à la caisse");
     document.getElementById("payer-montant").textContent = francs(total());
     masquerConfirmation();
     document.getElementById("panier-json").value = JSON.stringify(articles());
