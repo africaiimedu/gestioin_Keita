@@ -1,4 +1,4 @@
-"""Menu DiiMa de la cantine. Ne touche ni aux étudiants ni à leurs comptes."""
+"""Menu DiiMa de la cantine, calqué sur la carte PDF. Ne touche ni aux étudiants ni à leurs comptes."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ from app.services.menu_cantine import retirer_plat
 CATEGORIES = (
     ("Petit-déjeuner", "petit-dej"),
     ("Déjeuner · Plat du jour", "plat-jour"),
+    ("Dîner · Plat du jour", "diner"),
     ("Formules économiques", "formules"),
+    ("Boissons & suppléments", "extras"),
 )
 
 PLATS = (
@@ -18,8 +20,9 @@ PLATS = (
     ("petit-dej", "Sandwich au thon", "Sandwich au thon, tous les jours.", 20000, "Tous les jours", "sandwich-thon.jpg", 2),
     ("petit-dej", "Sandwich au poulet", "Sandwich au poulet, tous les jours.", 20000, "Tous les jours", "sandwich-poulet.jpg", 3),
     ("petit-dej", "Sandwich à la viande", "Sandwich à la viande, tous les jours.", 20000, "Tous les jours", "sandwich-viande.jpg", 4),
-    ("petit-dej", "Omelette seule", "Omelette à la carte.", 20000, "À la carte", "omelette-seule.jpg", 5),
-    ("petit-dej", "Riz au lait seul", "Riz au lait à la carte.", 20000, "À la carte", "riz-lait.jpg", 6),
+    ("petit-dej", "Chawarma", "Chawarma, tous les jours.", 20000, "Tous les jours", "chawarma.jpg", 5),
+    ("petit-dej", "Omelette seule", "Omelette à la carte.", 20000, "À la carte", "omelette-seule.jpg", 6),
+    ("petit-dej", "Riz au lait seul", "Riz au lait à la carte.", 10000, "À la carte", "riz-lait.jpg", 7),
     (
         "plat-jour",
         "Riz ou fonio au poulet, sauce tomate et légumes",
@@ -75,6 +78,69 @@ PLATS = (
         6,
     ),
     (
+        "diner",
+        "Pilons de poulet ou poisson braisé, frites ou allocos, salade et attiéké",
+        "Lundi · pilons de poulet ou poisson braisé, frites ou allocos, salade et attiéké.",
+        50000,
+        "Lundi",
+        "diner-lundi.jpg",
+        1,
+    ),
+    (
+        "diner",
+        "Spaghetti à la bolognaise ou aux fruits de mer",
+        "Mardi · spaghetti à la bolognaise ou aux fruits de mer.",
+        40000,
+        "Mardi",
+        "spaghetti-bolognaise.jpg",
+        2,
+    ),
+    (
+        "diner",
+        "Vermicelles à la viande",
+        "Mardi · vermicelles à la viande.",
+        50000,
+        "Mardi",
+        "vermicelles-viande.jpg",
+        3,
+    ),
+    (
+        "diner",
+        "Poisson ou poulet braisé, frites, allocos, salade et attiéké",
+        "Mercredi · poisson ou poulet braisé, frites, allocos, salade et attiéké.",
+        50000,
+        "Mercredi",
+        "diner-mercredi.jpg",
+        4,
+    ),
+    (
+        "diner",
+        "Brochettes de viande, poisson ou de poulet, frites, allocos et salade",
+        "Jeudi · brochettes de viande, poisson ou de poulet, frites, allocos et salade.",
+        50000,
+        "Jeudi",
+        "brochettes-diner.jpg",
+        5,
+    ),
+    (
+        "diner",
+        "Attiéké au poisson ou au poulet",
+        "Vendredi · attiéké au poisson ou au poulet.",
+        50000,
+        "Vendredi",
+        "attieke-diner.jpg",
+        6,
+    ),
+    (
+        "diner",
+        "Fruits de mer accompagnés d'une salade composée",
+        "Samedi · fruits de mer et salade composée.",
+        50000,
+        "Samedi",
+        "fruits-mer.jpg",
+        7,
+    ),
+    (
         "formules",
         "Pain omelette + boisson chaude",
         "Formule petit-déjeuner.",
@@ -91,6 +157,37 @@ PLATS = (
         "Formule",
         "formule-dejeuner.jpg",
         2,
+    ),
+    ("extras", "Eau minérale", "Une bouteille d'eau est recommandée à chaque repas.", 5000, "Boisson", "eau-minerale.jpg", 1),
+    ("extras", "Jus naturel", "Jus naturel.", 10000, "Boisson", "jus-naturel.jpg", 2),
+    ("extras", "Boisson gazeuse", "Boisson gazeuse.", 8000, "Boisson", "boisson-gazeuse.jpg", 3),
+    ("extras", "Portion supplémentaire de riz", "Supplément.", 5000, "Supplément", "supplement-riz.jpg", 4),
+    (
+        "extras",
+        "Frites ou allocos supplémentaires",
+        "Supplément.",
+        10000,
+        "Supplément",
+        "supplement-frites.jpg",
+        5,
+    ),
+    (
+        "extras",
+        "Portion supplémentaire de viande ou poulet",
+        "Supplément.",
+        20000,
+        "Supplément",
+        "supplement-viande.jpg",
+        6,
+    ),
+    (
+        "extras",
+        "Portion supplémentaire de poisson",
+        "Supplément.",
+        20000,
+        "Supplément",
+        "supplement-poisson.jpg",
+        7,
     ),
 )
 
@@ -111,7 +208,13 @@ def appliquer_menu_diima(db, *, retirer_anciens: bool = False) -> None:
     db.flush()
 
     gardes: set[str] = set()
-    visuel = {"petit-dej": "frit", "plat-jour": "bol", "formules": "bol"}
+    visuel = {
+        "petit-dej": "frit",
+        "plat-jour": "bol",
+        "diner": "grill",
+        "formules": "bol",
+        "extras": "verre",
+    }
     for slug, nom, description, prix, badge, fichier, ordre in PLATS:
         gardes.add(nom)
         plat = db.scalar(select(Plat).where(Plat.nom == nom))

@@ -499,7 +499,9 @@ _VISUELS = {
     "boire": "verre",
     "petit-dej": "frit",
     "plat-jour": "bol",
+    "diner": "grill",
     "formules": "bol",
+    "extras": "verre",
 }
 
 

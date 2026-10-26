@@ -246,7 +246,13 @@ def test_page_menu_et_commande():
             assert "Sandwich au thon" in menu.text
             assert "Bonjour Mariam" in menu.text
             assert 'data-filtre="petit-dej"' in menu.text
+            assert 'data-filtre="diner"' in menu.text
+            assert 'data-filtre="extras"' in menu.text
+            assert "Chawarma" in menu.text
+            assert "Eau minérale" in menu.text
+            assert "10.000 GNF" in menu.text
             assert "/static/plats/sandwich-thon.jpg" in menu.text
+            assert "/static/plats/chawarma.jpg" in menu.text
             assert "apercu-recto" not in client.get("/espace").text
             assert "Programme" in client.get("/espace").text
             csrf = menu.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
@@ -337,7 +343,7 @@ def test_etudiant_compte_cuisiniere_menu_qr_stable():
             assert "Ajouter un repas" in edition.text
             assert "Supprimer" in edition.text
             assert "Prix avec solde cantine" not in edition.text
-            assert "/static/plats/thieb.jpg" in edition.text
+            assert "/static/plats/sandwich-thon.jpg" in edition.text
             csrf = edition.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
             ajoute = client.post(
                 "/cantine/menu",
