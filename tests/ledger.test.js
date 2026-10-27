@@ -950,6 +950,12 @@ test("Africaiim Tech : solder la scolarité réduit l'inscription de 25 %, une a
   assert.equal(snapshot.inscriptionDiscount, 500_000);
   assert.equal(snapshot.costume.today, 200_000);
   assert.equal(snapshot.costume.reste, 600_000);
+  const reprint = await domain.receiptForCurrentStudent(db, {
+    ...snapshot, due: 37_000_000, resteAfter: 500_000,
+  }, { studentId: partial.student.id, paymentId: settled.paymentId });
+  assert.equal(reprint.due, 36_500_000);
+  assert.equal(reprint.paidAfter, 36_500_000);
+  assert.equal(reprint.resteAfter, 0);
 
   const alone = await domain.recordCostume(db, agent, partial.student.id, {
     amount: 150_000, paidOn: "2026-10-26", method: "especes", note: "Avance costume",

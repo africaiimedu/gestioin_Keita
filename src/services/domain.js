@@ -1338,9 +1338,8 @@ export async function listCashPayments(db, date = null) {
 }
 
 /**
- * Un reçu imprimé porte l'identité actuelle de l'étudiant (nom, matricule, école, programme), même après un changement.
- * Si l'école ou le programme ont changé, les frais dus et le reste suivent le nouveau tarif ;
- * le montant versé ce jour-là, le numéro et la date du reçu ne changent jamais. Un reçu annulé garde ses chiffres.
+ * Un reçu imprimé porte l'identité actuelle et le solde actuel (remises Tech, solde accordé, barème).
+ * Le montant versé ce jour-là, le numéro et la date du reçu ne changent jamais. Un reçu annulé garde ses chiffres.
  */
 export async function receiptForCurrentStudent(db, snapshot, { studentId, paymentId = null, cancelled = false }) {
   const student = await db.prepare(`${STUDENT_SELECT} WHERE s.id = ?`).get(Number(studentId));
@@ -1353,23 +1352,16 @@ export async function receiptForCurrentStudent(db, snapshot, { studentId, paymen
     level: student.level,
     year: student.year_label,
   };
-  const moved = snapshot.program !== student.program_name || snapshot.level !== student.level;
-  if (!moved || cancelled) return current;
-  const { situation, payments } = await studentSituation(db, student.id);
-  let paidAfter = Number(snapshot.paidAfter || 0);
-  if (paymentId) {
-    const ordered = payments
-      .filter((item) => item.status === "valide")
-      .sort((a, b) => String(a.paidOn).localeCompare(String(b.paidOn)) || a.id - b.id);
-    const index = ordered.findIndex((item) => item.id === Number(paymentId));
-    if (index >= 0) paidAfter = ordered.slice(0, index + 1).reduce((sum, item) => sum + item.amount, 0);
-  }
+  if (cancelled) return current;
+  const { situation, discounts } = await studentSituation(db, student.id);
+  const tech = (discounts || []).find((item) => item.label === TECH_INSCRIPTION_LABEL);
   return {
     ...current,
     due: situation.due,
-    paidAfter,
-    resteAfter: Math.max(0, situation.due - paidAfter),
-    creditAfter: Math.max(0, paidAfter - situation.due),
+    paidAfter: situation.paid,
+    resteAfter: situation.reste,
+    creditAfter: situation.credit,
+    inscriptionDiscount: Number(snapshot.inscriptionDiscount || 0) || (tech ? Number(tech.value) : 0),
   };
 }
 
