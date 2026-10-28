@@ -624,7 +624,7 @@ test("matricule : saisi à l'inscription, unique, modifiable ensuite", async () 
   const nextAbs = await domain.suggestMatricule(db, program.id);
   assert.match(nextAbs, new RegExp(`^UA${year}ABS\\d{4}$`));
   await assert.rejects(() => domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Bachelor", programId: tech.id, level: "bachelor_1" }), /CPI 1, CPI 2, MIAGE/);
-  await assert.rejects(() => domain.createStudent(db, agent, { lastName: "GESTION", firstName: "Cpi", programId: program.id, level: "cpi_1" }), /réservés à Africaiim Tech/);
+  await assert.rejects(() => domain.createStudent(db, agent, { lastName: "GESTION", firstName: "Cpi", programId: program.id, level: "cpi_1" }), /réservés à AFRICAIIM Tech/);
   const first = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Premier", programId: tech.id, level: "cpi_1" });
   assert.equal(first.student.matricule, `UA${year}AT0001`);
   const second = await domain.createStudent(db, agent, { lastName: "TECHNO", firstName: "Second", programId: tech.id, level: "cpi_2" });

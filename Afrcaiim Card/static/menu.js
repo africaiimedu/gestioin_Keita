@@ -68,7 +68,8 @@
       return enTete.offsetHeight || 0;
     }
     function placer() {
-      var haut = hauteurEnTete();
+      var cachee = document.body.classList.contains("menu-barre-cachee");
+      var haut = cachee ? 0 : hauteurEnTete();
       if (filtres) {
         filtres.style.top = haut + "px";
         filtres.style.setProperty("--barre-h", haut + "px");
@@ -80,6 +81,7 @@
       var y = window.scrollY || 0;
       if (Date.now() < pause) {
         dernier = y;
+        placer();
         return;
       }
       var cachee = document.body.classList.contains("menu-barre-cachee");
@@ -88,6 +90,7 @@
       else if (y < dernier - 8) cachee = false;
       document.body.classList.toggle("menu-barre-cachee", cachee);
       dernier = y;
+      placer();
     }, { passive: true });
     document.querySelectorAll(".chips .puce").forEach(function (puce) {
       puce.addEventListener("click", function () { pause = Date.now() + 450; });

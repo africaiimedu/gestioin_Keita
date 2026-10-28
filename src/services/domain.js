@@ -111,7 +111,7 @@ async function addTechInscriptionDiscount(db, user, student, value) {
     student.id,
     TECH_INSCRIPTION_LABEL,
     value,
-    `Africaiim Tech : toute la scolarité est versée, inscription réduite de ${TECH_INSCRIPTION_RATE} %`,
+    `AFRICAIIM Tech : toute la scolarité est versée, inscription réduite de ${TECH_INSCRIPTION_RATE} %`,
     user.id,
   );
 }
@@ -867,7 +867,7 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
   }
   const discounts = [...current.discounts, ...offers.extras];
   if (offers.cash.apply) warnings.push(`Remise de ${formatGnf(CASH_DISCOUNT)} déduite du montant dû`);
-  if (offers.tech.apply) warnings.push(`Africaiim Tech : inscription réduite de 25 % (${formatGnf(offers.tech.value)})`);
+  if (offers.tech.apply) warnings.push(`AFRICAIIM Tech : inscription réduite de 25 % (${formatGnf(offers.tech.value)})`);
   const preview = previewSituation({
     tuition: current.tuition,
     discounts,
@@ -1561,8 +1561,8 @@ export async function createStudent(db, user, input) {
   const program = await db.prepare("SELECT * FROM programs WHERE id = ?").get(Number(input.programId));
   if (!program) throw new HttpError(400, "Filière inconnue");
   const techSchool = String(program.code || "").toUpperCase() === "TECH";
-  if (techSchool && !TECH_LEVELS.has(input.level)) throw new HttpError(400, "Africaiim Tech : choisissez CPI 1, CPI 2, MIAGE 1, MIAGE 2 ou MIAGE 3");
-  if (!techSchool && TECH_LEVELS.has(input.level)) throw new HttpError(400, "Les niveaux CPI et MIAGE sont réservés à Africaiim Tech");
+  if (techSchool && !TECH_LEVELS.has(input.level)) throw new HttpError(400, "AFRICAIIM Tech : choisissez CPI 1, CPI 2, MIAGE 1, MIAGE 2 ou MIAGE 3");
+  if (!techSchool && TECH_LEVELS.has(input.level)) throw new HttpError(400, "Les niveaux CPI et MIAGE sont réservés à AFRICAIIM Tech");
   const paidOn = todayInConakry();
   const created = await transaction(db, async () => {
     const namesakes = await listNamesakes(db, last, first);
@@ -2042,8 +2042,8 @@ export async function catalog(db) {
     levels: [
       { code: "bachelor", label: "Bachelor" },
       { code: "master", label: "Master" },
-      { code: "cpi", label: "CPI (Africaiim Tech)" },
-      { code: "miage", label: "MIAGE (Africaiim Tech)" },
+      { code: "cpi", label: "CPI (AFRICAIIM Tech)" },
+      { code: "miage", label: "MIAGE (AFRICAIIM Tech)" },
     ],
     statuses: Object.entries(STATUS_LABELS).map(([code, label]) => ({ code, label })),
     settings: Object.fromEntries(settings.map((row) => [row.key, row.value])),
@@ -2053,10 +2053,10 @@ export async function catalog(db) {
     cashDiscount: CASH_DISCOUNT,
     techInscriptionRate: TECH_INSCRIPTION_RATE,
     hypotheses: [
-      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.techBachelor)} à Africaiim Tech (CPI et MIAGE), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
-      `À Africaiim Tech, dès que toute la scolarité est versée, l'inscription est réduite de ${TECH_INSCRIPTION_RATE} % automatiquement.`,
+      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.techBachelor)} à AFRICAIIM Tech (CPI et MIAGE), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
+      `À AFRICAIIM Tech, dès que toute la scolarité est versée, l'inscription est réduite de ${TECH_INSCRIPTION_RATE} % automatiquement.`,
       "Répartition de la scolarité : 20 % le 5 octobre, 40 % le 5 décembre, 40 % le 5 mars.",
-      "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. À Africaiim Tech : Cycle Préparatoire Intégré (CPI 1, CPI 2) puis MIAGE 1, 2 et 3. Chaque école se règle dans Tarifs.",
+      "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. À AFRICAIIM Tech : Cycle Préparatoire Intégré (CPI 1, CPI 2) puis MIAGE 1, 2 et 3. Chaque école se règle dans Tarifs.",
       `En Licence, Bachelor, CPI et MIAGE, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,
       "Un étudiant boursier ne paie ni la scolarité ni les frais d'inscription.",
       "Les fiches déjà enregistrées gardent leur barème (Licence 25 000 000, Master 30 000 000, Tech 37 000 000).",

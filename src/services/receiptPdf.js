@@ -411,7 +411,7 @@ export async function renderReceiptPdf({ snapshot, receipt, school, format = "a4
   y += compact ? 32 : 44;
 
   if (snapshot.inscriptionDiscount > 0) {
-    write(doc, `Africaiim Tech : inscription réduite de 25 % (${money(snapshot.inscriptionDiscount)}).`, LEFT, y, 8, "Helvetica", MUTED, WIDTH);
+    write(doc, `AFRICAIIM Tech : inscription réduite de 25 % (${money(snapshot.inscriptionDiscount)}).`, LEFT, y, 8, "Helvetica", MUTED, WIDTH);
     y += 16;
   }
   if (costume) y = drawCostume(doc, y, costume) + 14;

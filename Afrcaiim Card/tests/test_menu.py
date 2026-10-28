@@ -326,8 +326,9 @@ def test_page_menu_et_commande():
             assert recu.status_code == 200
             assert "A-" in recu.text
             suivi = client.get(f"/m/{jeton}")
-            assert "Vos commandes en cours" in suivi.text
+            assert "En cours" in suivi.text
             assert "commandes-cours" in suivi.text
+            assert "Commandes passées" not in suivi.text
             assert "à payer à la caisse une fois le repas prêt" in recu.text
             with SessionLocal() as db:
                 etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
@@ -524,6 +525,9 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
             assert "Niveau : Bachelor 1ère année" in identite.text
             assert "/login?identifiant=" in identite.text
             assert "Connexion à mon compte" in identite.text
+            assert identite.text.index("Connexion à mon compte") < identite.text.index("Identité officielle")
+            assert 'id="touche-retour"' in identite.text
+            assert "← Retour" in identite.text
             assert client.get(f"/c/{jeton}", follow_redirects=False).status_code == 200
             assert client.get(f"/verif/{_MATRICULE}", follow_redirects=False).status_code == 200
 

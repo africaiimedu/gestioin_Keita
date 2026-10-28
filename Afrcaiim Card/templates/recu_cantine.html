@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block titre %}Reçu {{ recu.numero }}{% endblock %}
-{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=8">{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=20">{% endblock %}
 {% block contenu %}
 <article class="ticket-recu{% if recu.annule_le %} ticket-annule{% endif %}">
   <header>
-    <img src="/static/marque.png" alt="Université AFRICAIIM">
-    <p class="enseigne">AfricaIIM Cantine</p>
+    <img class="logo-identite" src="/static/marque-identite.png?v=2" alt="Université AFRICAIIM" width="420" height="155">
+    <p class="enseigne">AFRICAIIM Cantine</p>
     <h1>Reçu {{ recu.numero }}</h1>
     <p>{{ recu.cree_le|datefr }}</p>
   </header>

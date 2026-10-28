@@ -792,7 +792,7 @@ app.get("/v/:token", async (req, res) => {
   res.send(`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Vérification ${escapeHtml(receipt.number)}</title>
     <link rel="stylesheet" href="/styles.css">
-    <main class="verify"><p class="mark">AfricaIIM</p><h1>Vérification de reçu</h1>
+    <main class="verify"><p class="mark">AFRICAIIM</p><h1>Vérification de reçu</h1>
     <p class="state ${receipt.status === "annule" ? "bad" : "ok"}">${state}</p>
     <p>Numéro : <strong>${escapeHtml(receipt.number)}</strong></p>
     <p>Montant : <strong>${escapeHtml(formatGnf(Number(snap.amount || 0) + (snap.due === undefined ? 0 : Number(snap.costume?.today || 0))))}</strong></p>

@@ -77,25 +77,19 @@ def _commandes_affichees(db: Session, *, etudiant_id: int | None = None, utilisa
     elif utilisateur_id:
         filtre.append(CommandeCantine.utilisateur_id == utilisateur_id)
     else:
-        return [], [], {}
+        return [], {}
     en_cours = db.scalars(
         select(CommandeCantine)
         .where(*filtre, CommandeCantine.statut.in_(_EN_COURS))
         .order_by(CommandeCantine.id.desc())
         .limit(8)
     ).all()
-    anciennes = db.scalars(
-        select(CommandeCantine)
-        .where(*filtre, CommandeCantine.statut.in_(("remise", "annulee")))
-        .order_by(CommandeCantine.id.desc())
-        .limit(6)
-    ).all()
     identifiants = [commande.id for commande in en_cours]
     lignes = {}
     if identifiants:
         for ligne in db.scalars(select(LigneCommande).where(LigneCommande.commande_id.in_(identifiants))):
             lignes.setdefault(ligne.commande_id, []).append(ligne)
-    return en_cours, anciennes, lignes
+    return en_cours, lignes
 
 
 def _etudiant_de(db: Session, utilisateur: Utilisateur) -> Etudiant:
@@ -133,12 +127,12 @@ def menu(
     if utilisateur is not None and doit_choisir_mot_de_passe(utilisateur):
         raise Redirection("/compte")
     etudiant = None
-    en_cours, commandes, lignes_commandes = [], [], {}
+    en_cours, lignes_commandes = [], {}
     if utilisateur is not None and utilisateur.role == "etudiant" and utilisateur.etudiant_id:
         etudiant = db.get(Etudiant, utilisateur.etudiant_id)
-        en_cours, commandes, lignes_commandes = _commandes_affichees(db, etudiant_id=etudiant.id)
+        en_cours, lignes_commandes = _commandes_affichees(db, etudiant_id=etudiant.id)
     elif utilisateur is not None:
-        en_cours, commandes, lignes_commandes = _commandes_affichees(db, utilisateur_id=utilisateur.id)
+        en_cours, lignes_commandes = _commandes_affichees(db, utilisateur_id=utilisateur.id)
     return render(
         request,
         "menu.html",
@@ -147,7 +141,6 @@ def menu(
         groupes=catalogue(db),
         etudiant=etudiant,
         en_cours=en_cours,
-        commandes=commandes,
         lignes_commandes=lignes_commandes,
         apercu=False,
         libelles=_LIBELLES,

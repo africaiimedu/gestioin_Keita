@@ -7,7 +7,7 @@
   <title>{% block titre %}Cartes{% endblock %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/carte.css?v=31">
+  <link rel="stylesheet" href="/static/carte.css?v=32">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <script src="/static/mot-de-passe.js?v=2" defer></script>
   <script src="/static/impression-locale.js?v=2" defer></script>
@@ -15,9 +15,12 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header class="barre">
-    <a class="marque" href="/">
-      <img class="logo-barre" src="/static/marque.png" alt="Université AFRICAIIM">
-    </a>
+    <div class="barre-gauche">
+      <button type="button" class="touche-retour" id="touche-retour">← Retour</button>
+      <a class="marque" href="/">
+        <img class="logo-barre" src="/static/marque.png" alt="Université AFRICAIIM">
+      </a>
+    </div>
     {% include "nav.html" %}
   </header>
   <main>
@@ -39,6 +42,16 @@
     {% endif %}
     {% block contenu %}{% endblock %}
   </main>
+  <script>
+  (function () {
+    var bouton = document.getElementById("touche-retour");
+    if (!bouton) return;
+    bouton.addEventListener("click", function () {
+      if (window.history.length > 1) window.history.back();
+      else window.location.href = "/";
+    });
+  })();
+  </script>
   {% if user %}
   <script>
   (function () {

@@ -854,7 +854,7 @@ function schoolCounts(data) {
 
 function shortSchool(name) {
   const short = String(name || "").replace(/^AFRICAIIM\s+/i, "").trim();
-  return !short || short.toLowerCase() === "tech" ? String(name || "").replace(/^AFRICAIIM/i, "Africaiim") : short;
+  return !short || short.toLowerCase() === "tech" ? String(name || "").replace(/^africaiim/i, "AFRICAIIM") : short;
 }
 
 function dashSignature(data) {
@@ -3295,7 +3295,7 @@ function showSettings(screen) {
       <p class="lead">Cliquez un montant pour fixer la 1re, 2e et 3e tranche. Les frais d'inscription (ci-dessous) s'ajoutent encore à la 1re échéance. Les fiches déjà créées suivent le nouveau tarif.</p></div></div>
     <div class="stat-row">
       <div class="stat-tile"><span>Inscription Licence et Bachelor</span><strong>${gnf(state.catalog.registrationFees?.bachelor || 0)}</strong></div>
-      <div class="stat-tile"><span>Inscription Africaiim Tech (CPI et MIAGE)</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
+      <div class="stat-tile"><span>Inscription AFRICAIIM Tech (CPI et MIAGE)</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
       <div class="stat-tile"><span>Inscription Master</span><strong>${gnf(state.catalog.registrationFees?.master || 0)}</strong></div>
       <div class="stat-tile alert"><span>Inscription due en entier le</span><strong>5 octobre</strong></div>
       <div class="stat-tile"><span>Costume (prix unique)</span><strong>${Number(settings.costume_price) ? gnf(Number(settings.costume_price)) : "Non fixé"}</strong></div>

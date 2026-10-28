@@ -32,6 +32,26 @@ h2 { margin: 1.6rem 0 0.6rem; font-size: 1.25rem; }
   color: var(--vert);
   border-bottom: 3px solid var(--or);
 }
+.barre-gauche {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.touche-retour {
+  flex: none;
+  background: #004C22;
+  color: #F4F1EA;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.32rem 0.8rem;
+  min-height: 40px;
+  cursor: pointer;
+}
+.touche-retour:hover { background: #003918; }
 .barre a, .barre button.lien { color: var(--vert); text-decoration: none; }
 .barre nav a.actif {
   background: var(--vert);
@@ -449,8 +469,15 @@ code { font-size: 0.95rem; }
 .signature { margin: 0 0.7rem; padding: 0.25rem 0; border-bottom: 1px solid var(--gris); color: var(--gris); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .verso-num footer { margin-top: auto; background: var(--vert); color: white; font-size: 0.62rem; padding: 0.35rem 0.6rem; }
 
-body.page-verif header.barre { display: none; }
-body.page-verif main { padding: 1.1rem 1rem 2rem; }
+body.page-verif header.barre {
+  justify-content: flex-start;
+  background: #F4F1EA;
+  border-bottom: 0;
+  padding: 0.7rem 1rem 0;
+}
+body.page-verif header.barre .marque,
+body.page-verif header.barre nav { display: none; }
+body.page-verif main { padding: 0.4rem 1rem 2rem; }
 .verif { max-width: 28rem; margin: 2rem auto; text-align: center; }
 .verif .logo-identite {
   width: min(100%, 17.5rem);
@@ -470,17 +497,19 @@ body.page-verif main { padding: 1.1rem 1rem 2rem; }
 .resultat-mauvais { color: #6e2c22; }
 .resultat-presence { font-weight: 700; font-size: 1.2rem; margin-top: 0.8rem; }
 .matricule-verif { margin: 0.2rem 0 0.35rem; letter-spacing: 0.06em; color: var(--gris); }
-.lien-compte-bloc { margin: 0 0 0.9rem; }
+.lien-compte-bloc { margin: 0 0 0.85rem; }
 .verif a.lien-compte {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
   background: #004C22;
   color: #F4F1EA;
   text-decoration: none;
   font-weight: 700;
   border-radius: 999px;
-  padding: 0.55rem 1.15rem;
-  min-height: 44px;
-  line-height: 1.9;
+  padding: 0.7rem 1.15rem;
+  min-height: 48px;
 }
 .cantine {
   margin-top: 1.2rem;
