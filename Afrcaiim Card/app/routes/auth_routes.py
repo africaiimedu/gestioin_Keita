@@ -56,14 +56,16 @@ def accueil(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/login")
-def login_page(request: Request, suivant: str = "", db: Session = Depends(get_db)):
+def login_page(request: Request, suivant: str = "", identifiant: str = "", db: Session = Depends(get_db)):
     utilisateur = utilisateur_courant(request, db)
     if utilisateur is not None:
         raise Redirection(_destination(utilisateur.role, suivant))
+    propre = re.sub(r"[^A-Za-z0-9.@_-]", "", identifiant.strip())[:80]
     return render(
         request,
         "login.html",
         suivant=suivant if _SUIVANT.match(suivant) else "",
+        identifiant=propre,
         creer=request.query_params.get("creer") == "1",
     )
 

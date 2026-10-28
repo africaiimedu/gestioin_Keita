@@ -104,7 +104,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
                 annee_academique=fiche.annee_academique,
                 date_validite=fin_programme or fiche.date_validite,
                 email=fiche.email,
-                niveau=libelle_niveau(corps.get("niveau")),
+                niveau=libelle_niveau(corps.get("niveau"), programme=fiche.filiere),
                 sexe=fiche.sexe or "M",
                 identifiant=compte or None,
                 action="importee",
@@ -122,7 +122,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
                 db.rollback()
                 return JSONResponse({"message": str(exc)}, status_code=409)
         if not rafraichir_fiche(db, existant.matricule):
-            niveau = libelle_niveau(corps.get("niveau"))
+            niveau = libelle_niveau(corps.get("niveau"), programme=existant.filiere or fiche.filiere)
             if niveau:
                 existant.niveau = niveau[:40]
             if not existant.email and (fiche.email or _adresse_du_compte(db, existant)):

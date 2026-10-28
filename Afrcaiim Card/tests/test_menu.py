@@ -88,6 +88,7 @@ def _compte(db, solde: int, statut: str = "active") -> tuple[Etudiant, Utilisate
         nom="Testmenu",
         matricule=_MATRICULE,
         filiere="AFRICAIIM Business School",
+        programme="Bachelor en Management International",
         annee_academique="2026-2027",
         date_validite=date(2027, 8, 31),
         email="test.menu@example.com",
@@ -515,7 +516,9 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
             identite = client.get(f"/id/{jeton}", follow_redirects=False)
             assert identite.status_code == 200
             assert "Étudiant confirmé de l'Université AFRICAIIM" in identite.text
-            assert "Niveau : 1re année" in identite.text
+            assert "Niveau : Bachelor 1ère année" in identite.text
+            assert "/login?identifiant=" in identite.text
+            assert "Connexion à mon compte" in identite.text
             assert client.get(f"/c/{jeton}", follow_redirects=False).status_code == 200
             assert client.get(f"/verif/{_MATRICULE}", follow_redirects=False).status_code == 200
 

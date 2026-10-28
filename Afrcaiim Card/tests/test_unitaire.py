@@ -323,6 +323,16 @@ def test_flash_qr_reconnu_sans_code_de_controle():
     assert _VERIF_CHEMIN.search("/verif/UA26AT0001/" + jeton).group(2) == jeton
 
 
+def test_libelle_niveau_master_et_bachelor():
+    from app.services.ecoles import libelle_niveau
+
+    assert libelle_niveau("master_1") == "Master 1"
+    assert libelle_niveau("bachelor_1") == "Bachelor 1ère année"
+    assert libelle_niveau("1re année", programme="Bachelor en Management International") == "Bachelor 1ère année"
+    assert libelle_niveau("1re année", programme="Master en Finance") == "Master 1"
+    assert libelle_niveau(None, intake_year=2026, duration_years=3, programme="Bachelor en Management International") == "Bachelor 1ère année"
+
+
 def test_mot_de_passe_depart_etudiant():
     from app.services.comptes import mot_de_passe_depart, mots_de_passe_depart
 

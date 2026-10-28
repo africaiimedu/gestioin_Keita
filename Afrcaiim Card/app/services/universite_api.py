@@ -121,6 +121,7 @@ def fiche_depuis_api(brut: dict) -> dict:
         brut.get("year_of_study") or brut.get("study_year") or brut.get("level") or brut.get("academic_level"),
         intake_year=brut.get("intake_year"),
         duration_years=brut.get("duration_years"),
+        programme=programme,
     )
     return {
         "matricule": matricule,

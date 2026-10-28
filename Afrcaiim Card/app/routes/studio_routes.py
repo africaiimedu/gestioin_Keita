@@ -378,7 +378,7 @@ async def ajouter(request: Request, admin: Utilisateur = Depends(exiger_bureau),
             annee_academique=fiche.annee_academique,
             date_validite=validite_connue(fiche.matricule) or fiche.date_validite,
             programme=str(corps.get("programme") or "").strip()[:200],
-            niveau=libelle_niveau(corps.get("niveau")),
+            niveau=libelle_niveau(corps.get("niveau"), programme=str(corps.get("programme") or fiche.filiere)),
             sexe=fiche.sexe,
             acteur_id=admin.id,
         )
@@ -426,7 +426,10 @@ async def modifier(
             date_validite=validite_connue(etudiant.matricule) or fiche.date_validite,
             email=fiche.email,
             programme=str(corps.get("programme", getattr(etudiant, "programme", "") or "")).strip()[:200],
-            niveau=libelle_niveau(corps.get("niveau", getattr(etudiant, "niveau", "") or "")),
+            niveau=libelle_niveau(
+                corps.get("niveau", getattr(etudiant, "niveau", "") or ""),
+                programme=str(corps.get("programme") or getattr(etudiant, "programme", "") or etudiant.filiere),
+            ),
             acteur_id=admin.id,
         )
     except ValueError as exc:

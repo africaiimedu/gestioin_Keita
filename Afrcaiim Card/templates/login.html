@@ -32,8 +32,8 @@
     {% if flash %}<p class="login-alerte login-alerte-{{ flash.type }}">{{ flash.message }}</p>{% endif %}
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="suivant" value="{{ suivant or '' }}">
-    <label>Identifiant
-      <input name="identifiant" autocomplete="username" required maxlength="80" placeholder="UA26ABS0007">
+    <label>Matricule
+      <input name="identifiant" autocomplete="username" required maxlength="80" placeholder="Matricule" value="{{ identifiant or '' }}">
     </label>
     <label>Mot de passe
       <input name="mot_de_passe" type="password" autocomplete="current-password" required maxlength="200">

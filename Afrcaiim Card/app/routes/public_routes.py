@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.deps import PERSONNEL, get_db, utilisateur_courant
 from app.models import BadgePersonnel, Carte, Etudiant, Journal
 from app.services.cantine import decision_repas, prix_repas, valider_repas
+from app.services.ecoles import libelle_niveau
 from app.services.metier import carte_courante, journaliser, maintenant
 from app.services.courrier import formater_francs
 from app.services.limite import autoriser
@@ -112,7 +113,11 @@ def _page_identite(request: Request, db: Session, *, jeton: str, matricule: str 
                 matricule=etudiant.matricule,
                 ecole=etudiant.filiere or "",
                 programme=etudiant.programme or "",
-                niveau=etudiant.niveau or "",
+                niveau=libelle_niveau(
+                    etudiant.niveau,
+                    programme=etudiant.programme or etudiant.filiere,
+                ),
+                lien_compte=f"/login?identifiant={quote(etudiant.matricule, safe='-')}",
                 email=etudiant.email or "",
                 validite=etudiant.date_validite,
                 annee=etudiant.annee_academique or "",
@@ -149,6 +154,7 @@ def _page_identite(request: Request, db: Session, *, jeton: str, matricule: str 
             ecole=personne.fonction or "",
             programme="",
             niveau="",
+            lien_compte="",
             email=personne.email or "",
             validite=personne.date_validite,
             annee=personne.annee_academique or "",

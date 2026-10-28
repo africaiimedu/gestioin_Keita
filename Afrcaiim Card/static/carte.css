@@ -469,7 +469,19 @@ body.page-verif main { padding: 1.1rem 1rem 2rem; }
 .resultat-bon { color: var(--vert); }
 .resultat-mauvais { color: #6e2c22; }
 .resultat-presence { font-weight: 700; font-size: 1.2rem; margin-top: 0.8rem; }
-.matricule-verif { margin: 0.2rem 0 0.8rem; letter-spacing: 0.06em; color: var(--gris); }
+.matricule-verif { margin: 0.2rem 0 0.35rem; letter-spacing: 0.06em; color: var(--gris); }
+.lien-compte-bloc { margin: 0 0 0.9rem; }
+.verif a.lien-compte {
+  display: inline-block;
+  background: #004C22;
+  color: #F4F1EA;
+  text-decoration: none;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.55rem 1.15rem;
+  min-height: 44px;
+  line-height: 1.9;
+}
 .cantine {
   margin-top: 1.2rem;
   padding: 1rem;

@@ -22,6 +22,9 @@
     {% if annee %}<p>{{ annee }}</p>{% endif %}
     <p class="matricule-verif">{{ matricule }}</p>
     {% if validite %}<p class="validite-verif">Valide jusqu'au {{ validite|datefr }}</p>{% endif %}
+    {% if lien_compte %}
+      <p class="lien-compte-bloc"><a class="lien-compte" href="{{ lien_compte }}">Connexion à mon compte</a></p>
+    {% endif %}
     {% if statut == "active" %}
       <p class="resultat resultat-bon">{% if personnel %}Membre du personnel confirmé de l'Université AFRICAIIM.{% else %}Étudiant confirmé de l'Université AFRICAIIM.{% endif %}</p>
       {% if pointe %}
