@@ -67,6 +67,35 @@ _LIBELLES = {
     "remise": "Remise",
     "annulee": "Annulée",
 }
+_EN_COURS = ("a_payer", "recue", "preparation", "prete")
+
+
+def _commandes_affichees(db: Session, *, etudiant_id: int | None = None, utilisateur_id: int | None = None):
+    filtre = []
+    if etudiant_id:
+        filtre.append(CommandeCantine.etudiant_id == etudiant_id)
+    elif utilisateur_id:
+        filtre.append(CommandeCantine.utilisateur_id == utilisateur_id)
+    else:
+        return [], [], {}
+    en_cours = db.scalars(
+        select(CommandeCantine)
+        .where(*filtre, CommandeCantine.statut.in_(_EN_COURS))
+        .order_by(CommandeCantine.id.desc())
+        .limit(8)
+    ).all()
+    anciennes = db.scalars(
+        select(CommandeCantine)
+        .where(*filtre, CommandeCantine.statut.in_(("remise", "annulee")))
+        .order_by(CommandeCantine.id.desc())
+        .limit(6)
+    ).all()
+    identifiants = [commande.id for commande in en_cours]
+    lignes = {}
+    if identifiants:
+        for ligne in db.scalars(select(LigneCommande).where(LigneCommande.commande_id.in_(identifiants))):
+            lignes.setdefault(ligne.commande_id, []).append(ligne)
+    return en_cours, anciennes, lignes
 
 
 def _etudiant_de(db: Session, utilisateur: Utilisateur) -> Etudiant:
@@ -104,22 +133,12 @@ def menu(
     if utilisateur is not None and doit_choisir_mot_de_passe(utilisateur):
         raise Redirection("/compte")
     etudiant = None
-    commandes = []
+    en_cours, commandes, lignes_commandes = [], [], {}
     if utilisateur is not None and utilisateur.role == "etudiant" and utilisateur.etudiant_id:
         etudiant = db.get(Etudiant, utilisateur.etudiant_id)
-        commandes = db.scalars(
-            select(CommandeCantine)
-            .where(CommandeCantine.etudiant_id == etudiant.id)
-            .order_by(CommandeCantine.id.desc())
-            .limit(8)
-        ).all()
+        en_cours, commandes, lignes_commandes = _commandes_affichees(db, etudiant_id=etudiant.id)
     elif utilisateur is not None:
-        commandes = db.scalars(
-            select(CommandeCantine)
-            .where(CommandeCantine.utilisateur_id == utilisateur.id)
-            .order_by(CommandeCantine.id.desc())
-            .limit(8)
-        ).all()
+        en_cours, commandes, lignes_commandes = _commandes_affichees(db, utilisateur_id=utilisateur.id)
     return render(
         request,
         "menu.html",
@@ -127,7 +146,9 @@ def menu(
         point=point,
         groupes=catalogue(db),
         etudiant=etudiant,
+        en_cours=en_cours,
         commandes=commandes,
+        lignes_commandes=lignes_commandes,
         apercu=False,
         libelles=_LIBELLES,
         role=utilisateur.role if utilisateur else "",

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=17">
+<link rel="stylesheet" href="/static/menu.css?v=18">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
@@ -15,6 +15,37 @@
       <p class="solde">Non abonné · paiement à la caisse · <a href="/menu/recus">Mes reçus</a></p>
     {% endif %}
   </section>
+
+  {% if en_cours %}
+  <section class="commandes-cours" aria-label="Commandes en cours">
+    <header class="cours-entete">
+      <p class="cours-kicker">Suivi</p>
+      <h2>Vos commandes en cours</h2>
+      <p class="cours-aide">La cuisine s’en occupe. Touchez une carte pour le détail.</p>
+    </header>
+    <div class="cours-liste">
+      {% for commande in en_cours %}
+      <a class="cours-carte statut-{{ commande.statut }}" href="/menu/commande/{{ commande.id }}">
+        <div class="cours-haut">
+          <strong class="cours-num">{{ commande.numero }}</strong>
+          <span class="cours-etat">{{ libelles[commande.statut] }}</span>
+        </div>
+        <ol class="cours-etapes" aria-hidden="true">
+          <li class="{% if commande.statut in ['a_payer', 'recue', 'preparation', 'prete'] %}fait{% endif %}{% if commande.statut in ['a_payer', 'recue'] %} actuel{% endif %}">Reçue</li>
+          <li class="{% if commande.statut in ['preparation', 'prete'] %}fait{% endif %}{% if commande.statut == 'preparation' %} actuel{% endif %}">Cuisine</li>
+          <li class="{% if commande.statut == 'prete' %}fait actuel{% endif %}">Prête</li>
+        </ol>
+        <ul class="cours-plats">
+          {% for ligne in lignes_commandes.get(commande.id, []) %}
+            <li>{{ ligne.quantite }} × {{ ligne.nom }}</li>
+          {% endfor %}
+        </ul>
+        <p class="cours-total"><span>Total</span><strong>{{ commande.montant|gnf }}</strong></p>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 
   <div class="menu-haut" id="menu-haut">
     <div class="filtres-carte">
@@ -55,7 +86,7 @@
               {% if plat.badge %}<span class="badge">{{ plat.badge }}</span>{% endif %}
               <h3>{{ plat.nom }}</h3>
               <p>{{ plat.description }}</p>
-              <p class="meta">{{ plat.temps_min }} min{% if plat.stock is not none %} · {{ plat.stock }} restant{{ "s" if plat.stock > 1 else "" }}{% endif %}</p>
+              {% if plat.stock is not none %}<p class="meta">{{ plat.stock }} restant{{ "s" if plat.stock > 1 else "" }}</p>{% endif %}
               <div class="ligne-prix">
                 <span class="prix-double">
                   <strong>{{ plat.prix|gnf }}</strong>
@@ -76,7 +107,7 @@
 
   {% if commandes %}
     <section class="rayon historique">
-      <h2>Vos commandes</h2>
+      <h2>Commandes passées</h2>
       <ul class="passees">
         {% for commande in commandes %}
           <li><a href="/menu/commande/{{ commande.id }}">{{ commande.numero }} · {{ libelles[commande.statut] }} · {{ commande.montant|gnf }}</a></li>

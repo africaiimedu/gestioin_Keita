@@ -147,6 +147,107 @@ body.menu-barre-cachee .menu-haut {
 .engagements p, .engagements ul { margin: 0; padding: 0 0.8rem 0.7rem; }
 .engagements ul { padding-left: 1.7rem; }
 .engagements li { margin: 0.15rem 0; }
+.commandes-cours { margin: 0.35rem 0 0.75rem; }
+.cours-entete { margin: 0 0 0.55rem; }
+.cours-kicker {
+  margin: 0;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #FEAB00;
+}
+.cours-entete h2 { margin: 0.1rem 0 0.15rem; font-size: 1.18rem; color: #004C22; }
+.cours-aide { margin: 0; font-size: 0.86rem; color: #6b675f; }
+.cours-liste {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 0.15rem 0.1rem 0.55rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.cours-liste::-webkit-scrollbar { display: none; }
+.cours-carte {
+  flex: 0 0 min(88%, 20rem);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: linear-gradient(165deg, #ffffff 0%, #f6f1e6 100%);
+  border: 1px solid #e4ddd0;
+  border-left: 5px solid #004C22;
+  border-radius: 18px;
+  padding: 0.9rem 1rem 0.85rem;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 12px 28px rgba(26, 26, 26, 0.08);
+  min-width: 0;
+}
+.cours-liste:has(.cours-carte:only-child) .cours-carte { flex-basis: 100%; }
+.cours-carte.statut-preparation { border-left-color: #1b7a4a; }
+.cours-carte.statut-prete {
+  border-left-color: #FEAB00;
+  background: linear-gradient(165deg, #fff8e4 0%, #fff 100%);
+}
+.cours-carte.statut-a_payer { border-left-color: #b85c2a; }
+.cours-haut { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; }
+.cours-num { font-size: 1.05rem; letter-spacing: 0.04em; color: #004C22; }
+.cours-etat {
+  flex: none;
+  background: #004C22;
+  color: #F4F1EA;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.28rem 0.65rem;
+}
+.statut-prete .cours-etat { background: #FEAB00; color: #1A1A1A; }
+.statut-a_payer .cours-etat { background: #b85c2a; }
+.cours-etapes {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #b5aea2;
+  text-align: center;
+}
+.cours-etapes li {
+  position: relative;
+  padding-top: 0.7rem;
+}
+.cours-etapes li::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 4px;
+  border-radius: 99px;
+  background: #e4ddd0;
+}
+.cours-etapes li.fait { color: #004C22; }
+.cours-etapes li.fait::before { background: #004C22; }
+.cours-etapes li.actuel { color: #FEAB00; }
+.cours-etapes li.actuel::before { background: #FEAB00; }
+.cours-plats { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; color: #3d3d3d; }
+.cours-plats li { padding: 0.12rem 0; overflow-wrap: anywhere; }
+.cours-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0.15rem 0 0;
+  padding-top: 0.45rem;
+  border-top: 1px dashed #e4ddd0;
+  font-size: 0.82rem;
+  color: #6b675f;
+}
+.cours-total strong { color: #004C22; font-size: 1.02rem; }
 .grille { display: grid; grid-template-columns: 1fr; gap: 0.9rem; }
 .plat {
   display: flex;

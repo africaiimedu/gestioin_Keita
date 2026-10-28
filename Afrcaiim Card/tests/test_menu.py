@@ -294,6 +294,8 @@ def test_page_menu_et_commande():
             assert "600 000 FG" in menu.text
             assert "Allergènes à signaler" in menu.text
             assert "Eau minérale" in menu.text
+            assert "15 min" not in menu.text
+            assert "25 min" not in menu.text
             assert "10.000 GNF" in menu.text
             assert 'data-src="/static/plats/sandwich-thon.jpg"' in menu.text
             assert 'data-src="/static/plats/chawarma.jpg"' in menu.text
@@ -323,6 +325,9 @@ def test_page_menu_et_commande():
             recu = client.get(commande.headers["location"])
             assert recu.status_code == 200
             assert "A-" in recu.text
+            suivi = client.get(f"/m/{jeton}")
+            assert "Vos commandes en cours" in suivi.text
+            assert "commandes-cours" in suivi.text
             assert "à payer à la caisse une fois le repas prêt" in recu.text
             with SessionLocal() as db:
                 etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == _MATRICULE))
