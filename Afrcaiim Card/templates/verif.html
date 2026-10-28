@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% block titre %}Vérification{% endblock %}
+{% block titre %}Identité Université AFRICAIIM{% endblock %}
 {% block contenu %}
 <section class="verif">
   <img class="logo-page" src="/static/marque.png" alt="Université AFRICAIIM">
-  <h1>Vérification de carte</h1>
+  <p class="surtitre-verif">Université AFRICAIIM</p>
+  <h1>Identité officielle</h1>
 
   {% if mode == "scan" %}
     <p class="resultat">Flashez le QR code au dos de la carte. Aucun code n'est à saisir : le scan suffit.</p>
@@ -16,7 +17,9 @@
     <p class="nom-verif">{{ nom }}</p>
     <p class="pastille pastille-{{ statut }} grand">{{ statut|statutfr }}</p>
     {% if ecole %}<p>{{ ecole }}{% if programme %} · {{ programme }}{% endif %}</p>{% endif %}
+    {% if annee %}<p>{{ annee }}</p>{% endif %}
     <p class="matricule-verif">{{ matricule }}</p>
+    {% if validite %}<p class="validite-verif">Valide jusqu'au {{ validite|datefr }}</p>{% endif %}
     {% if statut == "active" %}
       <p class="resultat resultat-bon">{% if personnel %}Membre du personnel confirmé de l'Université AFRICAIIM.{% else %}Étudiant confirmé de l'Université AFRICAIIM.{% endif %}</p>
       {% if pointe %}

@@ -9,8 +9,7 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.deps import PERSONNEL, Redirection, get_db, utilisateur_courant
-from app.services.comptes import doit_choisir_mot_de_passe
+from app.deps import PERSONNEL, get_db, utilisateur_courant
 from app.models import BadgePersonnel, Carte, Journal
 from app.services.cantine import decision_repas, prix_repas, valider_repas
 from app.services.metier import journaliser, maintenant
@@ -84,15 +83,7 @@ def verifier(
     db: Session = Depends(get_db),
 ):
     agent = utilisateur_courant(request, db)
-    if agent is not None and agent.role not in PERSONNEL:
-        if doit_choisir_mot_de_passe(agent):
-            raise Redirection("/compte")
-        raise Redirection("/menu")
-    if agent is None:
-        if t:
-            raise Redirection(f"/login?suivant={quote(f'/verif/{matricule}?t={t}', safe='')}")
-        raise Redirection("/menu")
-
+    staff = agent is not None and agent.role in PERSONNEL
     adresse = request.client.host if request.client else "0"
     if not autoriser(f"verif:{adresse}", 60, 60):
         return _sans_cache(render(request, "verif.html", mode="limite"))
@@ -110,7 +101,7 @@ def verifier(
         prix = prix_repas()
         solde = int(etudiant.solde_cantine or 0)
         decision = decision_repas(solde, prix, etudiant.email or "", statut == "active")
-        pointe = _pointer_presence(db, agent, carte, statut)
+        pointe = _pointer_presence(db, agent, carte, statut) if staff else False
         return _sans_cache(
             render(
                 request,
@@ -123,13 +114,15 @@ def verifier(
                 ecole=etudiant.filiere or "",
                 programme=etudiant.programme or "",
                 email=etudiant.email or "",
+                validite=etudiant.date_validite,
+                annee=etudiant.annee_academique or "",
                 solde=formater_francs(solde),
                 prix=formater_francs(prix),
                 peut=decision.ok,
                 raison=decision.message,
-                agent=agent is not None,
-                autorise=agent is not None and (agent.role == "admin" or bool(agent.peut_valider_qr)),
-                role=agent.role if agent else "",
+                agent=staff,
+                autorise=staff and (agent.role == "admin" or bool(agent.peut_valider_qr)),
+                role=agent.role if staff else "",
                 suivant=f"/verif/{quote(etudiant.matricule)}?t={quote(carte.jeton)}",
                 personnel=False,
                 pointe=pointe,
@@ -143,7 +136,7 @@ def verifier(
     if not _meme_matricule(matricule, personne.numero):
         return _sans_cache(render(request, "verif.html", mode="invalide"))
     statut = statut_effectif(badge.statut, badge.date_validite)
-    pointe = _peut_pointer(agent) and statut == "active"
+    pointe = staff and _peut_pointer(agent) and statut == "active"
     return _sans_cache(
         render(
             request,
@@ -156,13 +149,15 @@ def verifier(
             ecole=personne.fonction or "",
             programme="",
             email=personne.email or "",
+            validite=personne.date_validite,
+            annee=personne.annee_academique or "",
             solde="",
             prix="",
             peut=False,
             raison=f"Badge personnel · {personne.fonction}",
-            agent=agent is not None,
+            agent=staff,
             autorise=False,
-            role=agent.role if agent else "",
+            role=agent.role if staff else "",
             suivant=f"/verif/{quote(personne.numero)}?t={quote(badge.jeton)}",
             personnel=True,
             pointe=pointe,

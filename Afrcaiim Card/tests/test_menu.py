@@ -507,13 +507,16 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
                 )
 
             anonyme = client.get(verif, follow_redirects=False)
-            assert anonyme.status_code == 303
-            assert anonyme.headers["location"] == f"/login?suivant={quote(verif, safe='')}"
+            assert anonyme.status_code == 200
+            assert "Étudiant confirmé de l'Université AFRICAIIM" in anonyme.text
+            assert "Valider le repas" not in anonyme.text
+            assert "Présence validée" not in anonyme.text
 
             entre = connecter(_IDENTIFIANT, "/portail/cartes" + verif)
             assert entre.headers["location"] == verif
             etudiant_scan = client.get(verif, follow_redirects=False)
-            assert etudiant_scan.headers["location"] == "/menu"
+            assert etudiant_scan.status_code == 200
+            assert "Étudiant confirmé de l'Université AFRICAIIM" in etudiant_scan.text
             assert client.get("/menu", follow_redirects=False).headers["location"] == f"/m/{point_jeton}"
             assert client.get(f"/scan?code={code_controle(jeton)}", follow_redirects=False).headers["location"] == "/menu"
 
