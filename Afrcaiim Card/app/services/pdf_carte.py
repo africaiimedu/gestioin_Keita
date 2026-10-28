@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import math
+from pathlib import Path
 from urllib.parse import quote
 
 import qrcode
@@ -493,9 +494,33 @@ def _nouveau_canvas(taille, recto_verso: bool = True):
     return c, tampon
 
 
+_MODELES_VIVANTS = {"modele.json", "modele_personnel.json"}
+
+
+def _chemins_modele(fichier: str) -> tuple[Path, Path]:
+    nom = Path(fichier).name
+    if nom not in _MODELES_VIVANTS:
+        nom = "modele.json"
+    return ROOT / "data" / nom, ROOT / "config" / nom
+
+
+def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
+    """Le modèle modifié dans l'atelier vit dans data/, hors Git, pour survivre aux mises à jour."""
+    vivant, usine = _chemins_modele(fichier)
+    vivant.parent.mkdir(parents=True, exist_ok=True)
+    if not vivant.is_file() and usine.is_file():
+        vivant.write_bytes(usine.read_bytes())
+    return vivant if vivant.is_file() else usine
+
+
 def charger_modele(fichier: str = "modele.json") -> dict:
-    with open(ROOT / "config" / fichier, encoding="utf-8") as flux:
+    with open(assurer_modele_vivant(fichier), encoding="utf-8") as flux:
         return json.load(flux)
+
+
+def ecrire_modele(data: dict, fichier: str = "modele.json") -> None:
+    chemin = assurer_modele_vivant(fichier)
+    chemin.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def charger_modele_personnel() -> dict:

@@ -10,3 +10,5 @@ data/courriers/*
 !data/courriers/.gitkeep
 data/designs/*
 !data/designs/.gitkeep
+data/modele.json
+data/modele_personnel.json

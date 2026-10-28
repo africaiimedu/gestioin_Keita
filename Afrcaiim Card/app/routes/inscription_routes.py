@@ -16,8 +16,8 @@ from app.models import Etudiant, Utilisateur
 from app.services.import_etudiants import _MATRICULE, controler_fiche
 from app.services.comptes import ADRESSE, aligner_compte, assurer_compte_etudiant
 from app.services.cantine import crediter, prix_repas
-from app.services.metier import creer_etudiant, journaliser, modifier_etudiant, supprimer_etudiant
-from app.services.universite_api import validite_connue
+from app.services.metier import creer_etudiant, journaliser, supprimer_etudiant
+from app.services.universite_api import rafraichir_fiche, validite_connue
 
 router = APIRouter()
 
@@ -110,6 +110,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
             )
         except ValueError as exc:
             return JSONResponse({"message": str(exc)}, status_code=409)
+        rafraichir_fiche(db, etudiant.matricule)
     else:
         if compte:
             try:
@@ -118,18 +119,10 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
             except ValueError as exc:
                 db.rollback()
                 return JSONResponse({"message": str(exc)}, status_code=409)
-        modifier_etudiant(
-            db,
-            existant,
-            prenom=fiche.prenom,
-            nom=fiche.nom,
-            filiere=fiche.filiere,
-            annee_academique=fiche.annee_academique,
-            date_validite=fin_programme or existant.date_validite,
-            email=fiche.email or existant.email or _adresse_du_compte(db, existant),
-            sexe=fiche.sexe,
-            acteur_id=None,
-        )
+        if not rafraichir_fiche(db, existant.matricule):
+            if not existant.email and (fiche.email or _adresse_du_compte(db, existant)):
+                existant.email = fiche.email or _adresse_du_compte(db, existant)
+                db.commit()
         etudiant = existant
     return {
         "matricule": etudiant.matricule,

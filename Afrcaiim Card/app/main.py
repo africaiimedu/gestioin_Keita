@@ -1,5 +1,7 @@
 """Application des cartes étudiantes AFRICAIIM."""
 
+import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -30,11 +32,36 @@ _PAGE_404 = """<!DOCTYPE html>
 </body></html>"""
 
 
+_ARRET_SYNCHRO = threading.Event()
+_journal = logging.getLogger(__name__)
+
+
+def _boucle_universite() -> None:
+    """Rappel l'API Université toutes les dix minutes, sans attendre un clic atelier."""
+    from app.database import SessionLocal
+    from app.services.universite_api import api_configuree, completer_photos, synchro_etudiants
+
+    delai = 8
+    while not _ARRET_SYNCHRO.wait(delai):
+        delai = 600
+        if not api_configuree():
+            continue
+        try:
+            with SessionLocal() as db:
+                bilan = synchro_etudiants(db, retirer=False)
+            completer_photos(bilan.pop("photos_a_prendre", []) or [], None)
+        except Exception as exc:
+            _journal.warning("Synchro Université automatique : %s", exc)
+
+
 @asynccontextmanager
 async def duree_de_vie(_app: FastAPI):
     verifier_base()
     initialiser()
+    _ARRET_SYNCHRO.clear()
+    threading.Thread(target=_boucle_universite, name="synchro-universite", daemon=True).start()
     yield
+    _ARRET_SYNCHRO.set()
 
 
 app = FastAPI(title="AFRICAIIM Cartes", docs_url=None, redoc_url=None, openapi_url=None, lifespan=duree_de_vie)

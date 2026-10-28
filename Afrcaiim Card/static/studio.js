@@ -1033,13 +1033,11 @@ document.getElementById("synchro-universite")?.addEventListener("click", async (
       return;
     }
     if (Array.isArray(corps.etudiants)) {
-      etudiants = corps.etudiants;
       recherche = "";
       const champ = document.getElementById("recherche");
       if (champ) champ.value = "";
       index = 0;
-      dessinerGrille();
-      dessinerCarte();
+      appliquerEtudiants(corps.etudiants);
     }
     message(corps.message || "Base atelier alignée sur l'API Université.");
   } catch (erreur) {
@@ -1295,6 +1293,21 @@ poserRegles();
 document.getElementById("toile").addEventListener("scroll", dessinerRegles);
 document.getElementById("toile").addEventListener("pointermove", suivreRegles);
 window.addEventListener("resize", dessinerRegles);
+function appliquerEtudiants(liste) {
+  if (!Array.isArray(liste)) return;
+  const actuel = courant();
+  const matricule = actuel && actuel.matricule;
+  etudiants = liste;
+  if (matricule) {
+    const i = vue().findIndex((e) => e.matricule === matricule);
+    if (i >= 0) index = i;
+  } else {
+    index = Math.min(index, Math.max(0, vue().length - 1));
+  }
+  dessinerGrille();
+  dessinerCarte();
+}
+
 fetch(CFG.apiAtelier)
   .then((r) => r.json())
   .then((data) => {

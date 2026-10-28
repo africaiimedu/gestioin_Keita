@@ -25,6 +25,10 @@ def verifier_base() -> None:
 def initialiser() -> None:
     Base.metadata.create_all(bind=engine)
     _colonnes_cantine()
+    from app.services.pdf_carte import assurer_modele_vivant
+
+    assurer_modele_vivant("modele.json")
+    assurer_modele_vivant("modele_personnel.json")
     with SessionLocal() as db:
         _assurer_admin(db)
         _assurer_cuisiniere(db)

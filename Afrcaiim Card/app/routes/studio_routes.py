@@ -25,12 +25,12 @@ from app.services.metier import (
     modifier_etudiant,
     modifier_personnel,
 )
-from app.services.pdf_carte import code_controle, url_affichee
+from app.services.pdf_carte import charger_modele, code_controle, ecrire_modele, url_affichee
 from app.services.statut import statut_effectif
 from app.services.universite_api import (
     _matricule_cle,
     api_configuree,
-    appliquer_validites,
+    appliquer_fiches,
     completer_photos,
     synchro_etudiants,
     validite_connue,
@@ -39,9 +39,7 @@ from app.ui import csrf_valide
 
 router = APIRouter(prefix="/admin/api")
 
-_MODELE = ROOT / "config" / "modele.json"
 _ORIGINE = ROOT / "config" / "modele_origine.json"
-_MODELE_PERSONNEL = ROOT / "config" / "modele_personnel.json"
 _ORIGINE_PERSONNEL = ROOT / "config" / "modele_personnel_origine.json"
 _TYPES = {"image", "photo", "qr", "codebarres", "rect", "cercle", "ligne", "piste", "champ", "texte", "guilloche", "rosette", "micro"}
 _CHAMPS = {
@@ -186,14 +184,21 @@ def _ligne_personnel(personne: Personnel, db: Session) -> dict:
 
 
 @router.get("/atelier")
-def atelier(admin: Utilisateur = Depends(exiger_bureau), db: Session = Depends(get_db)):
-    appliquer_validites(db)
+def atelier(
+    background: BackgroundTasks,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    bilan = appliquer_fiches(db, acteur_id=admin.id)
+    photos = bilan.get("photos_a_prendre") or []
+    if photos:
+        background.add_task(completer_photos, photos, admin.id)
     etudiants = db.scalars(
         select(Etudiant).options(selectinload(Etudiant.cartes)).order_by(Etudiant.nom, Etudiant.prenom)
     ).all()
     return {
         "etudiants": [_ligne(e) for e in etudiants],
-        "modele": _lire(_MODELE),
+        "modele": charger_modele(),
         "synchro_universite": api_configuree(),
     }
 
@@ -221,8 +226,11 @@ async def atelier_synchro_universite(
     comptes = None
     if isinstance(bruts_comptes, list):
         comptes = {_matricule_cle(str(valeur)) for valeur in bruts_comptes if _matricule_cle(str(valeur))}
+    retirer = True
+    if isinstance(corps, dict) and "retirer" in corps:
+        retirer = bool(corps.get("retirer"))
     try:
-        bilan = synchro_etudiants(db, acteur_id=admin.id, matricules_comptes=comptes)
+        bilan = synchro_etudiants(db, acteur_id=admin.id, matricules_comptes=comptes, retirer=retirer)
     except RuntimeError as exc:
         return JSONResponse({"message": str(exc)}, status_code=502)
     photos = bilan.pop("photos_a_prendre", [])
@@ -234,7 +242,7 @@ async def atelier_synchro_universite(
     return {
         **bilan,
         "etudiants": [_ligne(e) for e in etudiants],
-        "modele": _lire(_MODELE),
+        "modele": charger_modele(),
     }
 
 
@@ -243,7 +251,7 @@ def atelier_personnel_api(admin: Utilisateur = Depends(exiger_bureau), db: Sessi
     personnes = db.scalars(select(Personnel).order_by(Personnel.nom, Personnel.prenom)).all()
     return {
         "etudiants": [_ligne_personnel(p, db) for p in personnes],
-        "modele": _lire(_MODELE_PERSONNEL),
+        "modele": charger_modele("modele_personnel.json"),
     }
 
 
@@ -255,7 +263,7 @@ async def enregistrer_modele(request: Request, admin: Utilisateur = Depends(exig
         propre = _valider_modele(await request.json())
     except (ValueError, TypeError, KeyError) as exc:
         return JSONResponse({"message": str(exc)}, status_code=400)
-    _MODELE.write_text(json.dumps(propre, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    ecrire_modele(propre)
     return {"ok": True}
 
 
@@ -264,7 +272,7 @@ async def restaurer_modele(request: Request, admin: Utilisateur = Depends(exiger
     if not _verifier_csrf(request):
         return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
     origine = _lire(_ORIGINE)
-    _MODELE.write_text(json.dumps(origine, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    ecrire_modele(origine)
     return origine
 
 
@@ -278,7 +286,7 @@ async def enregistrer_modele_personnel(request: Request, admin: Utilisateur = De
         return JSONResponse({"message": str(exc)}, status_code=400)
     # Jamais lié à l'atelier étudiants : badges personnel uniquement en portrait.
     propre["orientation"] = "portrait"
-    _MODELE_PERSONNEL.write_text(json.dumps(propre, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    ecrire_modele(propre, "modele_personnel.json")
     return {"ok": True}
 
 
@@ -287,7 +295,7 @@ async def restaurer_modele_personnel(request: Request, admin: Utilisateur = Depe
     if not _verifier_csrf(request):
         return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
     origine = _lire(_ORIGINE_PERSONNEL)
-    _MODELE_PERSONNEL.write_text(json.dumps(origine, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    ecrire_modele(origine, "modele_personnel.json")
     return origine
 
 

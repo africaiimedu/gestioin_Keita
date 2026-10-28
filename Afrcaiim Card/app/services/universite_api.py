@@ -187,27 +187,33 @@ def _matricule_cle(valeur: str) -> str:
     return re.sub(r"\s+", "", str(valeur or "")).upper()
 
 
-_cache_validites: dict[str, Any] = {"jusqua": 0.0, "table": {}}
+_cache_api: dict[str, Any] = {"jusqua": 0.0, "bruts": []}
 
 
 def vider_cache_validites() -> None:
-    _cache_validites["jusqua"] = 0.0
-    _cache_validites["table"] = {}
+    _cache_api["jusqua"] = 0.0
+    _cache_api["bruts"] = []
+
+
+def bruts_universite(*, forcer: bool = False) -> list[dict]:
+    """Liste Université, gardée dix minutes pour ne pas rappeler l'API à chaque carte."""
+    maintenant = time.monotonic()
+    if not forcer and maintenant < float(_cache_api["jusqua"]) and _cache_api["bruts"]:
+        return list(_cache_api["bruts"])
+    if not api_configuree():
+        return list(_cache_api["bruts"] or [])
+    bruts = lister_etudiants()
+    _cache_api["bruts"] = bruts
+    _cache_api["jusqua"] = maintenant + 600
+    return list(bruts)
 
 
 def validites_programmes() -> dict[str, date]:
     """Matricule → fin de programme (31/08), lu dans l'API et gardé dix minutes."""
-    maintenant = time.monotonic()
-    if maintenant < float(_cache_validites["jusqua"]):
-        return _cache_validites["table"]
-    if not api_configuree():
-        return {}
     try:
-        bruts = lister_etudiants()
+        bruts = bruts_universite()
     except Exception as exc:
         journal.warning("Durées de programme indisponibles : %s", exc)
-        _cache_validites["jusqua"] = maintenant + 60
-        _cache_validites["table"] = {}
         return {}
     table: dict[str, date] = {}
     for brut in bruts:
@@ -217,10 +223,6 @@ def validites_programmes() -> dict[str, date]:
         numero = _matricule_cle(str(brut.get("student_number") or ""))
         if numero and fin:
             table[numero] = fin
-    if not table:
-        return {}
-    _cache_validites["jusqua"] = maintenant + 600
-    _cache_validites["table"] = table
     return table
 
 
@@ -335,11 +337,67 @@ def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tu
     return fiche.matricule, raw["photo_url"], existant is None
 
 
+def appliquer_fiches(
+    db: Session,
+    *,
+    acteur_id: int | None = None,
+    forcer: bool = False,
+) -> dict:
+    """Aligne nom, école, programme, e-mail et validité sur l'API, sans retirer personne."""
+    if not api_configuree():
+        return {"ok": False, "crees": 0, "maj": 0, "photos_a_prendre": []}
+    try:
+        bruts = bruts_universite(forcer=forcer)
+    except Exception as exc:
+        journal.warning("Synchro Université automatique impossible : %s", exc)
+        return {"ok": False, "crees": 0, "maj": 0, "photos_a_prendre": [], "message": str(exc)}
+    crees = maj = 0
+    photos_a_prendre: list[dict[str, str]] = []
+    for brut in bruts:
+        if not _compte_inscrit(brut):
+            continue
+        try:
+            matricule, photo, cree = _enregistrer_fiche_api(db, brut, acteur_id)
+            if cree:
+                crees += 1
+            else:
+                maj += 1
+            if photo:
+                photos_a_prendre.append({"matricule": matricule, "url": photo})
+        except Exception as exc:
+            journal.warning("Fiche Université ignorée : %s", exc)
+    return {"ok": True, "crees": crees, "maj": maj, "photos_a_prendre": photos_a_prendre}
+
+
+def rafraichir_fiche(db: Session, matricule: str, acteur_id: int | None = None) -> bool:
+    """Recouvre une fiche locale avec l'API si elle est déjà en cache, sans nouvel appel."""
+    cible = _matricule_cle(matricule)
+    if not cible:
+        return False
+    try:
+        bruts = bruts_universite(forcer=False)
+    except Exception:
+        return False
+    for brut in bruts:
+        if _matricule_cle(str((brut or {}).get("student_number") or "")) != cible:
+            continue
+        if not _compte_inscrit(brut):
+            return False
+        try:
+            _enregistrer_fiche_api(db, brut, acteur_id)
+            return True
+        except Exception as exc:
+            journal.warning("Fiche Université non posée pour %s : %s", matricule, exc)
+            return False
+    return False
+
+
 def synchro_etudiants(
     db: Session,
     *,
     acteur_id: int | None = None,
     matricules_comptes: set[str] | None = None,
+    retirer: bool = True,
 ) -> dict:
     """Aligne l'atelier sur l'API, limité aux comptes étudiants quand la liste est fournie."""
     if not api_configuree():
@@ -354,7 +412,7 @@ def synchro_etudiants(
     photos_a_prendre: list[dict[str, str]] = []
 
     try:
-        bruts = lister_etudiants()
+        bruts = bruts_universite(forcer=True)
     except httpx.HTTPError as exc:
         raise RuntimeError(f"API Université injoignable : {exc}") from exc
     if not bruts:
@@ -406,15 +464,16 @@ def synchro_etudiants(
             + (f" {erreurs[0]}" if erreurs else "")
         )
 
-    locaux = list(db.scalars(select(Etudiant)).all())
-    for local in locaux:
-        if _matricule_cle(local.matricule) in matricules_api:
-            continue
-        try:
-            supprimer_etudiant(db, local)
-            retires += 1
-        except Exception as exc:
-            erreurs.append(f"{local.matricule} : retrait impossible ({exc})")
+    if retirer:
+        locaux = list(db.scalars(select(Etudiant)).all())
+        for local in locaux:
+            if _matricule_cle(local.matricule) in matricules_api:
+                continue
+            try:
+                supprimer_etudiant(db, local)
+                retires += 1
+            except Exception as exc:
+                erreurs.append(f"{local.matricule} : retrait impossible ({exc})")
 
     return {
         "ok": True,
