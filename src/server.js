@@ -147,7 +147,7 @@ attachCardPortal(app, loadUser, {
   ensureStudentCard: async (matricule) => {
     const cle = String(matricule || "").replace(/\s+/g, "").toUpperCase();
     const row = await db.prepare(`
-      SELECT s.matricule, s.last_name, s.first_name, s.email, s.account_email, p.name AS program_name
+      SELECT s.matricule, s.last_name, s.first_name, s.email, s.account_email, s.level, p.name AS program_name
       FROM students s
       JOIN programs p ON p.id = s.program_id
       WHERE replace(upper(s.matricule), ' ', '') = ? AND s.status != 'archive'

@@ -10,6 +10,7 @@ export function isCardPortal(req) {
     || req.path.startsWith("/static/")
     || req.path.startsWith("/fonts/")
     || req.path.startsWith("/photo/")
+    || req.path.startsWith("/c/")
     || req.path.startsWith(`${PREFIX}/`)
     || req.path === PREFIX;
 }
@@ -73,10 +74,11 @@ function portalRole(user) {
 }
 
 function portalAllowed(user, tail) {
+  if (tail.startsWith("/id/") || tail.startsWith("/verif") || tail.startsWith("/photo")) return true;
   if (!user) return false;
   if (tail.startsWith("/m/") || tail === "/menu" || tail.startsWith("/menu/") || tail.startsWith("/messages")) return true;
   if (tail.startsWith("/cantine")) return can(user, "kitchen.manage");
-  if (tail.startsWith("/verif") || tail.startsWith("/scan")) return can(user, "kitchen.manage") || can(user, "cards.manage");
+  if (tail.startsWith("/scan")) return can(user, "kitchen.manage") || can(user, "cards.manage");
   if (tail.startsWith("/login")) return can(user, "cards.manage") || can(user, "kitchen.manage");
   return can(user, "cards.manage");
 }
@@ -219,6 +221,14 @@ async function interceptMatricule(req, res, user, pathOnly, renameMatricule) {
 }
 
 export function attachCardPortal(app, resolveUser = () => null, { renameMatricule = null, ensureStudentCard = null } = {}) {
+  app.get("/c/:jeton", (req, res) => {
+    const jeton = String(req.params.jeton || "").replace(/[^A-Za-z0-9_-]/g, "");
+    if (jeton.length < 16) {
+      res.status(404).type("text").send("QR inconnu");
+      return;
+    }
+    res.redirect(302, `${PREFIX}/id/${encodeURIComponent(jeton)}`);
+  });
   app.use("/static", (req, res) => forward(req, res, req.originalUrl, true));
   app.use("/fonts", (req, res) => forward(req, res, req.originalUrl, false));
   app.use("/photo", (req, res) => forward(req, res, req.originalUrl, false));

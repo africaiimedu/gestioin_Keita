@@ -1,14 +1,13 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=15">
+<link rel="stylesheet" href="/static/menu.css?v=17">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
   <section class="hero">
-    <img class="logo-universite" src="/static/marque-blanc.png" alt="Université AFRICAIIM" width="200" height="52">
-    <p class="enseigne">Cantine scolaire · Université AFRICAIIM</p>
-    <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Carte des menus{% endif %}</h1>
+    <img class="logo-universite" src="/static/marque-blanc.png" alt="Université AFRICAIIM" width="160" height="42">
+    <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Cantine AFRICAIIM{% endif %}</h1>
     <p class="ouvert" id="menu-jour">{% if jour_actuel == "semaine" %}Fermé le dimanche · carte de la semaine{% else %}Menu du {{ jour_actuel|lower }} · déjeuner et dîner{% endif %}</p>
     {% if etudiant and etudiant.abonne_cantine %}
       <p class="solde">Abonnement mensuel <strong>600 000 GNF</strong> · aucun débit · <a href="/menu/recus">Mes reçus</a></p>
@@ -18,21 +17,24 @@
   </section>
 
   <div class="menu-haut" id="menu-haut">
+    <div class="filtres-carte">
     <div class="chips chips-jours" role="toolbar" aria-label="Jour du menu" data-jour="{{ jour_actuel }}">
-      <button type="button" class="puce{% if jour_actuel == 'semaine' %} actif{% endif %}" data-jour="semaine" aria-pressed="{{ 'true' if jour_actuel == 'semaine' else 'false' }}">Toute la semaine</button>
+      <button type="button" class="puce{% if jour_actuel == 'semaine' %} actif{% endif %}" data-jour="semaine" aria-pressed="{{ 'true' if jour_actuel == 'semaine' else 'false' }}" aria-label="Toute la semaine">Tous</button>
       {% for jour in jours %}
-        <button type="button" class="puce{% if jour == jour_actuel %} actif{% endif %}" data-jour="{{ jour }}" aria-pressed="{{ 'true' if jour == jour_actuel else 'false' }}">{{ jour }}</button>
+        <button type="button" class="puce{% if jour == jour_actuel %} actif{% endif %}" data-jour="{{ jour }}" aria-pressed="{{ 'true' if jour == jour_actuel else 'false' }}" aria-label="{{ jour }}">{{ jour[:3] }}</button>
       {% endfor %}
     </div>
     <div class="chips chips-cats" role="toolbar" aria-label="Type de plat">
       <button type="button" class="puce actif" data-filtre="tout" aria-pressed="true">Tout</button>
       {% for groupe in groupes %}
-        <button type="button" class="puce" data-filtre="{{ groupe.categorie.slug }}" aria-pressed="false">{{ groupe.categorie.nom }}</button>
+        <button type="button" class="puce" data-filtre="{{ groupe.categorie.slug }}" aria-pressed="false" title="{{ groupe.categorie.nom }}">{{ groupe.categorie.nom | replace(' · Plat du jour', '') | replace('Petit-déjeuner', 'Petit-déj') | replace('Formules économiques', 'Formules') | replace('Boissons & suppléments', 'Boissons') }}</button>
       {% endfor %}
+    </div>
     </div>
   </div>
 
-  <section class="engagements">
+  <details class="engagements">
+    <summary>Abonnement 600 000 FG · plat du jour + eau</summary>
     <p>ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM ; 600 000 FG AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU</p>
     <p>Une bouteille d’eau est recommandée à chaque repas.</p>
     <ul>
@@ -40,7 +42,7 @@
       <li>Allergènes à signaler ; règles d’hygiène à respecter.</li>
       <li>Fruits et légumes de saison privilégiés.</li>
     </ul>
-  </section>
+  </details>
 
   {% for groupe in groupes %}
     <section class="rayon" data-cat="{{ groupe.categorie.slug }}">
@@ -134,5 +136,5 @@
       </div>
     </form>
   </section>
-<script src="/static/menu.js?v=12"></script>
+<script src="/static/menu.js?v=13"></script>
 {% endblock %}

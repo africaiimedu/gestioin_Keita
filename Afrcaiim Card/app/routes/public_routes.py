@@ -10,9 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.deps import PERSONNEL, get_db, utilisateur_courant
-from app.models import BadgePersonnel, Carte, Journal
+from app.models import BadgePersonnel, Carte, Etudiant, Journal
 from app.services.cantine import decision_repas, prix_repas, valider_repas
-from app.services.metier import journaliser, maintenant
+from app.services.metier import carte_courante, journaliser, maintenant
 from app.services.courrier import formater_francs
 from app.services.limite import autoriser
 from app.services.photos import lire_photo, portrait_initiales
@@ -75,28 +75,27 @@ def _pointer_presence(db: Session, agent, carte: Carte | None, statut: str) -> b
     return True
 
 
-@router.get("/verif/{matricule}")
-def verifier(
-    matricule: str,
-    request: Request,
-    t: str = "",
-    db: Session = Depends(get_db),
-):
+def _page_identite(request: Request, db: Session, *, jeton: str, matricule: str = ""):
     agent = utilisateur_courant(request, db)
     staff = agent is not None and agent.role in PERSONNEL
     adresse = request.client.host if request.client else "0"
     if not autoriser(f"verif:{adresse}", 60, 60):
         return _sans_cache(render(request, "verif.html", mode="limite"))
-
+    t = str(jeton or "").strip()
+    if not t and matricule:
+        etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == matricule.strip().upper()))
+        if etudiant is None:
+            etudiant = db.scalar(select(Etudiant).where(Etudiant.matricule == matricule.strip()))
+        carte = carte_courante(db, etudiant.id) if etudiant else None
+        t = carte.jeton if carte else ""
     if not t:
         return _sans_cache(render(request, "verif.html", mode="scan"))
 
-    # Seul le jeton secret compte : une carte imprimée avant un changement de matricule reste lisible.
     carte = db.scalar(select(Carte).where(Carte.jeton == t))
     if carte is not None:
         statut = statut_effectif(carte.statut, carte.date_validite)
         etudiant = carte.etudiant
-        if not _meme_matricule(matricule, etudiant.matricule):
+        if matricule and not _meme_matricule(matricule, etudiant.matricule):
             return _sans_cache(render(request, "verif.html", mode="invalide"))
         prix = prix_repas()
         solde = int(etudiant.solde_cantine or 0)
@@ -113,6 +112,7 @@ def verifier(
                 matricule=etudiant.matricule,
                 ecole=etudiant.filiere or "",
                 programme=etudiant.programme or "",
+                niveau=etudiant.niveau or "",
                 email=etudiant.email or "",
                 validite=etudiant.date_validite,
                 annee=etudiant.annee_academique or "",
@@ -123,7 +123,7 @@ def verifier(
                 agent=staff,
                 autorise=staff and (agent.role == "admin" or bool(agent.peut_valider_qr)),
                 role=agent.role if staff else "",
-                suivant=f"/verif/{quote(etudiant.matricule)}?t={quote(carte.jeton)}",
+                suivant=f"/id/{quote(carte.jeton, safe='_-')}",
                 personnel=False,
                 pointe=pointe,
             )
@@ -133,7 +133,7 @@ def verifier(
     if badge is None:
         return _sans_cache(render(request, "verif.html", mode="invalide"))
     personne = badge.personnel
-    if not _meme_matricule(matricule, personne.numero):
+    if matricule and not _meme_matricule(matricule, personne.numero):
         return _sans_cache(render(request, "verif.html", mode="invalide"))
     statut = statut_effectif(badge.statut, badge.date_validite)
     pointe = staff and _peut_pointer(agent) and statut == "active"
@@ -148,6 +148,7 @@ def verifier(
             matricule=personne.numero,
             ecole=personne.fonction or "",
             programme="",
+            niveau="",
             email=personne.email or "",
             validite=personne.date_validite,
             annee=personne.annee_academique or "",
@@ -158,11 +159,33 @@ def verifier(
             agent=staff,
             autorise=False,
             role=agent.role if staff else "",
-            suivant=f"/verif/{quote(personne.numero)}?t={quote(badge.jeton)}",
+            suivant=f"/id/{quote(badge.jeton, safe='_-')}",
             personnel=True,
             pointe=pointe,
         )
     )
+
+
+@router.get("/id/{jeton}")
+@router.get("/c/{jeton}")
+def identite_qr(jeton: str, request: Request, db: Session = Depends(get_db)):
+    """Flash téléphone : une adresse sans « ?t= », lisible par n'importe quel appareil."""
+    return _page_identite(request, db, jeton=jeton)
+
+
+@router.get("/verif/{matricule}/{jeton}")
+def verifier_chemin(matricule: str, jeton: str, request: Request, db: Session = Depends(get_db)):
+    return _page_identite(request, db, jeton=jeton, matricule=matricule)
+
+
+@router.get("/verif/{matricule}")
+def verifier(
+    matricule: str,
+    request: Request,
+    t: str = "",
+    db: Session = Depends(get_db),
+):
+    return _page_identite(request, db, jeton=t, matricule=matricule)
 
 
 @router.post("/verif/{matricule}/repas")

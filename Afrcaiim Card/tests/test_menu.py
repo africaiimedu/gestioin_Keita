@@ -91,6 +91,7 @@ def _compte(db, solde: int, statut: str = "active") -> tuple[Etudiant, Utilisate
         annee_academique="2026-2027",
         date_validite=date(2027, 8, 31),
         email="test.menu@example.com",
+        niveau="1re année",
         solde_cantine=solde,
         abonne_cantine=False,
         cree_le=maintenant(),
@@ -511,6 +512,12 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
             assert "Étudiant confirmé de l'Université AFRICAIIM" in anonyme.text
             assert "Valider le repas" not in anonyme.text
             assert "Présence validée" not in anonyme.text
+            identite = client.get(f"/id/{jeton}", follow_redirects=False)
+            assert identite.status_code == 200
+            assert "Étudiant confirmé de l'Université AFRICAIIM" in identite.text
+            assert "Niveau : 1re année" in identite.text
+            assert client.get(f"/c/{jeton}", follow_redirects=False).status_code == 200
+            assert client.get(f"/verif/{_MATRICULE}", follow_redirects=False).status_code == 200
 
             entre = connecter(_IDENTIFIANT, "/portail/cartes" + verif)
             assert entre.headers["location"] == verif
@@ -529,8 +536,8 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
             assert "Valider cette carte" not in page.text
 
             code = code_controle(jeton)
-            vers_carte = f"/verif/{quote(_MATRICULE)}?t={quote(jeton)}"
-            for saisie in (code, code.replace("-", "").lower(), f"  {code}  ", verif, f"https://scolarite.example/portail/cartes{verif}"):
+            vers_carte = f"/id/{quote(jeton, safe='_-')}"
+            for saisie in (code, code.replace("-", "").lower(), f"  {code}  ", verif, f"https://scolarite.example/portail/cartes{verif}", f"/id/{jeton}"):
                 assert client.get(f"/scan?code={quote(saisie)}", follow_redirects=False).headers["location"] == vers_carte
             inconnu = client.get("/scan?code=0000-0000", follow_redirects=False)
             assert inconnu.headers["location"] == "/cantine"

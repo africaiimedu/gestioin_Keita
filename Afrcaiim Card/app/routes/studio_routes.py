@@ -25,6 +25,7 @@ from app.services.metier import (
     modifier_etudiant,
     modifier_personnel,
 )
+from app.services.ecoles import libelle_niveau
 from app.services.pdf_carte import charger_modele, code_controle, ecrire_modele, url_affichee
 from app.services.statut import statut_effectif
 from app.services.universite_api import (
@@ -43,7 +44,7 @@ _ORIGINE = ROOT / "config" / "modele_origine.json"
 _ORIGINE_PERSONNEL = ROOT / "config" / "modele_personnel_origine.json"
 _TYPES = {"image", "photo", "qr", "codebarres", "rect", "cercle", "ligne", "piste", "champ", "texte", "guilloche", "rosette", "micro"}
 _CHAMPS = {
-    "nom", "prenom", "matricule", "filiere", "fonction", "ecole", "programme", "email",
+    "nom", "prenom", "matricule", "filiere", "fonction", "ecole", "programme", "niveau", "email",
     "annee_academique", "date_validite", "url", "edition", "controle", "qualite", "sceau",
 }
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -146,6 +147,7 @@ def _ligne(etudiant: Etudiant) -> dict:
         "matricule": etudiant.matricule,
         "filiere": etudiant.filiere,
         "programme": getattr(etudiant, "programme", None) or "",
+        "niveau": getattr(etudiant, "niveau", None) or "",
         "annee_academique": etudiant.annee_academique,
         "date_validite": etudiant.date_validite.isoformat(),
         "photo": bool(etudiant.photo_chemin),
@@ -376,6 +378,7 @@ async def ajouter(request: Request, admin: Utilisateur = Depends(exiger_bureau),
             annee_academique=fiche.annee_academique,
             date_validite=validite_connue(fiche.matricule) or fiche.date_validite,
             programme=str(corps.get("programme") or "").strip()[:200],
+            niveau=libelle_niveau(corps.get("niveau")),
             sexe=fiche.sexe,
             acteur_id=admin.id,
         )
@@ -423,6 +426,7 @@ async def modifier(
             date_validite=validite_connue(etudiant.matricule) or fiche.date_validite,
             email=fiche.email,
             programme=str(corps.get("programme", getattr(etudiant, "programme", "") or "")).strip()[:200],
+            niveau=libelle_niveau(corps.get("niveau", getattr(etudiant, "niveau", "") or "")),
             acteur_id=admin.id,
         )
     except ValueError as exc:

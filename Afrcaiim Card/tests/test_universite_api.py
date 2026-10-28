@@ -45,6 +45,7 @@ def test_fiche_depuis_api_mapping_et_duree():
     assert fiche["email"] == "aichadeen.camara@etu.univ-africaiim.com"
     assert fiche["annee"] == "2026-2027"
     assert fiche["duree_ans"] == 3
+    assert fiche["niveau"] == "1re année"
     assert fiche["date_validite"] == date(2029, 8, 31)
     assert date_validite_api(2026, 1) == date(2027, 8, 31)
 

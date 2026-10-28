@@ -16,7 +16,8 @@ export function ficheCarte(student) {
   const compte = String(student.account_email || "").trim().toLowerCase();
   let email = compte || String(student.email || "").trim().toLowerCase();
   if (email && !EMAIL.test(email)) email = "";
-  return { ok: true, payload: { prenom, nom, matricule, ecole, email, ...(compte ? { compte } : {}) } };
+  const niveau = String(student.level || "").trim();
+  return { ok: true, payload: { prenom, nom, matricule, ecole, email, ...(niveau ? { niveau } : {}), ...(compte ? { compte } : {}) } };
 }
 
 export async function pushStudentToCard(student, { previous = null } = {}) {
@@ -33,7 +34,7 @@ export async function pushStudentToCard(student, { previous = null } = {}) {
 
 export async function syncStudentsToCard(db) {
   const rows = await db.prepare(`
-    SELECT s.matricule, s.last_name, s.first_name, s.email, s.account_email, p.name AS program_name
+    SELECT s.matricule, s.last_name, s.first_name, s.email, s.account_email, s.level, p.name AS program_name
     FROM students s
     JOIN programs p ON p.id = s.program_id
     WHERE s.status != 'archive'

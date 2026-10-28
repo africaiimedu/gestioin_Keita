@@ -40,33 +40,53 @@
 .hero {
   background: #004C22;
   color: #F4F1EA;
-  border-radius: 22px;
-  padding: 1.15rem 1.1rem 1rem;
-  margin-bottom: 0.35rem;
+  border-radius: 16px;
+  padding: 0.7rem 0.85rem 0.65rem;
+  margin-bottom: 0.25rem;
 }
 .hero p, .hero strong, .hero h1 { color: #F4F1EA; overflow-wrap: anywhere; }
 .logo-universite, .logo-diima { display: block; height: 64px; width: auto; object-fit: contain; }
-.hero .logo-universite { height: 52px; width: auto; margin: 0 0 0.55rem; }
+.hero .logo-universite { height: 34px; width: auto; margin: 0 0 0.3rem; }
 .affiche .logo-diima { margin: 0 auto 0.6rem; height: 88px; }
-.enseigne { letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.75rem; margin: 0; }
+.enseigne { letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.68rem; margin: 0; }
 .hero .enseigne, .hero .ouvert { color: #FEAB00; }
-.hero h1 { margin: 0.15rem 0; font-size: clamp(1.45rem, 6vw, 1.9rem); line-height: 1.15; }
-.ouvert { margin: 0; }
-.hero .solde { margin: 0.55rem 0 0; font-size: 1.05rem; font-weight: 600; color: #F4F1EA; }
+.hero h1 { margin: 0.05rem 0; font-size: clamp(1.15rem, 5vw, 1.45rem); line-height: 1.15; }
+.ouvert { margin: 0; font-size: 0.82rem; }
+.hero .solde { margin: 0.35rem 0 0; font-size: 0.88rem; font-weight: 600; color: #F4F1EA; }
 .menu-haut {
   position: sticky;
   top: 0;
   z-index: 12;
   background: #F4F1EA;
-  padding: 0.15rem 0 0.45rem;
+  padding: 0.15rem 0 0.3rem;
   transition: transform 0.22s ease;
+}
+.filtres-carte {
+  background: #fff;
+  border: 1px solid #e7e1d6;
+  border-radius: 14px;
+  padding: 0.4rem 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  box-shadow: 0 6px 16px rgba(26, 26, 26, 0.05);
 }
 body:has(.salle) header.barre {
   position: sticky;
   top: 0;
   z-index: 20;
+  padding: 0.35rem 0.7rem;
   transition: transform 0.22s ease;
 }
+body:has(.salle) .logo-barre { height: 34px; }
+body:has(.salle) header.barre nav {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  scrollbar-width: none;
+}
+body:has(.salle) header.barre nav::-webkit-scrollbar { display: none; }
 body.menu-barre-cachee header.barre {
   transform: translateY(-100%);
 }
@@ -75,38 +95,58 @@ body.menu-barre-cachee .menu-haut {
 }
 .chips {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  background: #F4F1EA;
-  padding: 0.4rem 0 0.2rem;
+  flex-wrap: nowrap;
+  gap: 0.32rem;
+  background: transparent;
+  padding: 0;
   margin: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
-.chips-cats { padding-top: 0.25rem; }
+.chips::-webkit-scrollbar { display: none; }
 .puce {
   flex: 0 0 auto;
   white-space: nowrap;
-  background: #fff;
+  background: #F4F1EA;
   color: #004C22;
   border: 1px solid #d9d3c6;
   border-radius: 999px;
-  padding: 0.55rem 0.95rem;
-  min-height: 44px;
-  font: 700 0.95rem/1 inherit;
+  padding: 0.28rem 0.62rem;
+  min-height: 30px;
+  font: 700 0.75rem/1 inherit;
 }
 .puce.actif { background: #004C22; color: #F4F1EA; border-color: #004C22; }
-.rayon h2 { font-size: 1.2rem; margin: 0.35rem 0 0.7rem; }
+.rayon h2 { font-size: 1.05rem; margin: 0.45rem 0 0.55rem; }
 .engagements {
-  margin: 0.4rem 0 1.1rem;
-  padding: 0.85rem 1rem;
+  margin: 0.15rem 0 0.7rem;
+  padding: 0;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 12px;
   color: #4a463e;
-  font-size: 0.92rem;
-  line-height: 1.45;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  border: 1px solid #e7e1d6;
 }
-.engagements p { margin: 0 0 0.55rem; }
-.engagements ul { margin: 0; padding-left: 1.15rem; }
-.engagements li { margin: 0.2rem 0; }
+.engagements summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.5rem 0.8rem;
+  font-weight: 700;
+  color: #004C22;
+}
+.engagements summary::-webkit-details-marker { display: none; }
+.engagements summary::after {
+  content: "▸";
+  float: right;
+  color: #8a8478;
+  font-weight: 400;
+}
+.engagements[open] summary::after { content: "▾"; }
+.engagements p, .engagements ul { margin: 0; padding: 0 0.8rem 0.7rem; }
+.engagements ul { padding-left: 1.7rem; }
+.engagements li { margin: 0.15rem 0; }
 .grille { display: grid; grid-template-columns: 1fr; gap: 0.9rem; }
 .plat {
   display: flex;

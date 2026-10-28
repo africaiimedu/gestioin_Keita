@@ -17,6 +17,7 @@ from app.services.import_etudiants import _MATRICULE, controler_fiche
 from app.services.comptes import ADRESSE, aligner_compte, assurer_compte_etudiant
 from app.services.cantine import crediter, prix_repas
 from app.services.metier import creer_etudiant, journaliser, supprimer_etudiant
+from app.services.ecoles import libelle_niveau
 from app.services.universite_api import rafraichir_fiche, validite_connue
 
 router = APIRouter()
@@ -103,6 +104,7 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
                 annee_academique=fiche.annee_academique,
                 date_validite=fin_programme or fiche.date_validite,
                 email=fiche.email,
+                niveau=libelle_niveau(corps.get("niveau")),
                 sexe=fiche.sexe or "M",
                 identifiant=compte or None,
                 action="importee",
@@ -120,9 +122,12 @@ async def inscrire(request: Request, db: Session = Depends(get_db)):
                 db.rollback()
                 return JSONResponse({"message": str(exc)}, status_code=409)
         if not rafraichir_fiche(db, existant.matricule):
+            niveau = libelle_niveau(corps.get("niveau"))
+            if niveau:
+                existant.niveau = niveau[:40]
             if not existant.email and (fiche.email or _adresse_du_compte(db, existant)):
                 existant.email = fiche.email or _adresse_du_compte(db, existant)
-                db.commit()
+            db.commit()
         etudiant = existant
     return {
         "matricule": etudiant.matricule,

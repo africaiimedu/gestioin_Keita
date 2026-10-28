@@ -91,7 +91,8 @@ def _nom_police(obj: dict) -> str:
 
 
 def url_qr(base: str, matricule: str, jeton: str) -> str:
-    return f"{base.rstrip('/')}/verif/{quote(matricule)}?t={jeton}"
+    """Adresse sans paramètre : beaucoup de téléphones ignorent « ?t= » au flash."""
+    return f"{base.rstrip('/')}/id/{quote(str(jeton), safe='_-')}"
 
 
 def url_affichee(base: str, matricule: str) -> str:
@@ -574,6 +575,7 @@ def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
         "fonction": fonction,
         "ecole": fonction if personnel else (getattr(etu, "filiere", None) or "").strip(),
         "programme": "" if personnel else (getattr(etu, "programme", None) or "").strip(),
+        "niveau": "" if personnel else (getattr(etu, "niveau", None) or "").strip(),
         "email": getattr(etu, "email", None) or "",
         "annee_academique": etu.annee_academique,
         "date_validite": etu.date_validite.strftime("%d/%m/%Y"),

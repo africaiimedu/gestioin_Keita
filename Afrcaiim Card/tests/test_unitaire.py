@@ -303,19 +303,24 @@ def test_pdf_carte_a_la_taille_cr80():
     assert "CARTE D'ÉTUDIANT" in texte.replace("\n", "")
     prefs = lecteur.trailer["/Root"]["/ViewerPreferences"]
     assert "DuplexFlipLongEdge" in str(prefs["/Duplex"])
-    assert "t=jeton-test" in url_qr("https://africaiim.com", etudiant.matricule, "jeton-test")
+    assert url_qr("https://africaiim.com/portail/cartes", etudiant.matricule, "jeton-test").endswith("/id/jeton-test")
+    assert "?" not in url_qr("https://africaiim.com/portail/cartes", etudiant.matricule, "jeton-test")
 
 
 def test_flash_qr_reconnu_sans_code_de_controle():
     from app.routes.securite_routes import _VERIF_LIEN
 
     jeton = "jeton-secret-de-vingt-car"
+    from app.routes.securite_routes import _ID_LIEN, _VERIF_CHEMIN
+
     lien = f"https://scolarite.univ-africaiim.com/portail/cartes/verif/UA26AT0001?t={jeton}"
     match = _VERIF_LIEN.search(lien)
     assert match is not None
     assert match.group(1) == "UA26AT0001"
     assert match.group(2) == jeton
     assert _VERIF_LIEN.search("/verif/AIIM-1?t=" + jeton)
+    assert _ID_LIEN.search("https://scolarite.univ-africaiim.com/portail/cartes/id/" + jeton).group(1) == jeton
+    assert _VERIF_CHEMIN.search("/verif/UA26AT0001/" + jeton).group(2) == jeton
 
 
 def test_mot_de_passe_depart_etudiant():

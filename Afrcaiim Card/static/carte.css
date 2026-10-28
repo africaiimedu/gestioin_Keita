@@ -449,7 +449,17 @@ code { font-size: 0.95rem; }
 .signature { margin: 0 0.7rem; padding: 0.25rem 0; border-bottom: 1px solid var(--gris); color: var(--gris); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .verso-num footer { margin-top: auto; background: var(--vert); color: white; font-size: 0.62rem; padding: 0.35rem 0.6rem; }
 
+body.page-verif header.barre { display: none; }
+body.page-verif main { padding: 1.1rem 1rem 2rem; }
 .verif { max-width: 28rem; margin: 2rem auto; text-align: center; }
+.verif .logo-identite {
+  width: min(100%, 17.5rem);
+  height: auto;
+  display: block;
+  margin: 0 auto 0.85rem;
+  background: transparent;
+}
+.verif .niveau-verif { font-weight: 700; color: #004C22; margin: 0.15rem 0; }
 .verif .portrait { margin: 1rem auto; width: 7.2rem; height: 9.2rem; object-fit: cover; border-radius: 0.6rem; border: 3px solid var(--vert); }
 .surtitre-verif { margin: 0; letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.78rem; color: var(--vert); font-weight: 700; }
 .verif h1 { margin: 0.2rem 0 1rem; font-size: 1.45rem; }

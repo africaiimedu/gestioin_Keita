@@ -23,6 +23,11 @@ _VERIF_LIEN = re.compile(
     r"/verif/([A-Za-z0-9-]{3,40})\?(?:[^#]*&)?t=([A-Za-z0-9_\-]{20,120})",
     re.I,
 )
+_ID_LIEN = re.compile(r"/id/([A-Za-z0-9_\-]{16,120})", re.I)
+_VERIF_CHEMIN = re.compile(
+    r"/verif/([A-Za-z0-9-]{3,40})/([A-Za-z0-9_\-]{16,120})",
+    re.I,
+)
 # Douchette réglée en QWERTY sur un poste AZERTY : les chiffres arrivent comme les symboles
 # de la même touche (PC et Mac) et le A devient Q.
 _AZERTY = str.maketrans({
@@ -49,7 +54,7 @@ def carte_par_code(db: Session, saisie: str) -> Carte | None:
 
 
 def _vers_verification(carte: Carte) -> str:
-    return f"/verif/{quote(carte.etudiant.matricule)}?t={quote(carte.jeton)}"
+    return f"/id/{quote(carte.jeton, safe='_-')}"
 
 
 def cible_depuis_scan(db: Session, saisie: str) -> str | None:
@@ -57,6 +62,19 @@ def cible_depuis_scan(db: Session, saisie: str) -> str | None:
     texte = (saisie or "").strip()[:400]
     if not texte:
         return None
+    identifiant = _ID_LIEN.search(texte) or _VERIF_CHEMIN.search(texte.replace("&amp;", "&"))
+    if identifiant:
+        jeton = identifiant.group(identifiant.lastindex)
+        carte = db.scalar(select(Carte).options(selectinload(Carte.etudiant)).where(Carte.jeton == jeton))
+        if carte is not None:
+            return _vers_verification(carte)
+        badge = db.scalar(
+            select(BadgePersonnel)
+            .options(selectinload(BadgePersonnel.personnel))
+            .where(BadgePersonnel.jeton == jeton)
+        )
+        if badge is not None:
+            return f"/id/{quote(badge.jeton, safe='_-')}"
     match = _VERIF_LIEN.search(texte.replace("&amp;", "&"))
     if match:
         jeton = match.group(2)
@@ -70,7 +88,7 @@ def cible_depuis_scan(db: Session, saisie: str) -> str | None:
         )
         if badge is None:
             return None
-        return f"/verif/{quote(badge.personnel.numero)}?t={quote(badge.jeton)}"
+        return f"/id/{quote(badge.jeton, safe='_-')}"
     carte = carte_par_code(db, texte)
     return _vers_verification(carte) if carte is not None else None
 

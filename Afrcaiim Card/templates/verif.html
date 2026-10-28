@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block titre %}Identité Université AFRICAIIM{% endblock %}
+{% block body_class %}page-verif{% endblock %}
 {% block contenu %}
 <section class="verif">
-  <img class="logo-page" src="/static/marque.png" alt="Université AFRICAIIM">
-  <p class="surtitre-verif">Université AFRICAIIM</p>
+  <img class="logo-identite" src="/static/marque-identite.png" alt="Université AFRICAIIM" width="420" height="168">
   <h1>Identité officielle</h1>
 
   {% if mode == "scan" %}
@@ -16,7 +16,9 @@
     <img class="portrait" src="/photo/{{ jeton }}" alt="Photo de la carte">
     <p class="nom-verif">{{ nom }}</p>
     <p class="pastille pastille-{{ statut }} grand">{{ statut|statutfr }}</p>
-    {% if ecole %}<p>{{ ecole }}{% if programme %} · {{ programme }}{% endif %}</p>{% endif %}
+    {% if ecole %}<p>{{ ecole }}</p>{% endif %}
+    {% if niveau %}<p class="niveau-verif">Niveau : {{ niveau }}</p>{% endif %}
+    {% if programme %}<p>{{ programme }}</p>{% endif %}
     {% if annee %}<p>{{ annee }}</p>{% endif %}
     <p class="matricule-verif">{{ matricule }}</p>
     {% if validite %}<p class="validite-verif">Valide jusqu'au {{ validite|datefr }}</p>{% endif %}

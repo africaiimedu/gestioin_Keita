@@ -23,6 +23,7 @@ class Etudiant(Base):
     matricule: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     filiere: Mapped[str] = mapped_column(String(150))
     programme: Mapped[str] = mapped_column(String(200), default="")
+    niveau: Mapped[str] = mapped_column(String(40), default="")
     sexe: Mapped[str] = mapped_column(String(1), default="M")
     annee_academique: Mapped[str] = mapped_column(String(9))
     date_validite: Mapped[date] = mapped_column(Date)

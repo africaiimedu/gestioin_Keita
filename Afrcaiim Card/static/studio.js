@@ -57,6 +57,7 @@ const CHAMPS = CFG.personnel
       ["filiere", "École"],
       ["ecole", "École"],
       ["programme", "Programme"],
+      ["niveau", "Niveau"],
       ["email", "E-mail étudiant"],
       ["annee_academique", "Année"],
       ["date_validite", "Validité"],

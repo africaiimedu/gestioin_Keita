@@ -22,6 +22,7 @@ from app.config import env
 from app.models import Etudiant
 from app.services.import_etudiants import controler_fiche
 from app.services.comptes import assurer_compte_etudiant
+from app.services.ecoles import libelle_niveau
 from app.services.metier import carte_courante, creer_etudiant, modifier_etudiant, remplacer_photo, supprimer_etudiant
 from app.services.photos import normaliser_photo
 
@@ -116,6 +117,11 @@ def fiche_depuis_api(brut: dict) -> dict:
     photo_url = str(brut.get("photo_url") or "").strip()
     programme = str(brut.get("programme") or "").strip()
     duree = _entier(brut.get("duration_years"), 1) or 1
+    niveau = libelle_niveau(
+        brut.get("year_of_study") or brut.get("study_year") or brut.get("level") or brut.get("academic_level"),
+        intake_year=brut.get("intake_year"),
+        duration_years=brut.get("duration_years"),
+    )
     return {
         "matricule": matricule,
         "prenom": prenom,
@@ -126,6 +132,7 @@ def fiche_depuis_api(brut: dict) -> dict:
         "date_validite": validite,
         "duree_ans": duree,
         "programme": programme,
+        "niveau": niveau,
         "photo_url": photo_url,
         "statut": str(brut.get("status") or "").strip().lower(),
     }
@@ -313,6 +320,7 @@ def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tu
             date_validite=fiche.date_validite,
             email=fiche.email,
             programme=raw["programme"],
+            niveau=raw["niveau"],
             sexe="M",
             jpeg=None,
             acteur_id=acteur_id,
@@ -330,6 +338,7 @@ def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tu
             date_validite=fiche.date_validite,
             email=fiche.email,
             programme=raw["programme"],
+            niveau=raw["niveau"],
             sexe=existant.sexe or "M",
             acteur_id=acteur_id,
         )
