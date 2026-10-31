@@ -80,7 +80,49 @@ export async function applyIdentity(db) {
     await replacePlaceholder("school_web", "www.universite-africaiim.com");
 
     await ensureOfferSchedules(db);
+    await applyBachelorFixedInstallments(db);
   });
+}
+
+const BACHELOR_TRANCHES_MARK = "bareme_bachelor_tranches_fixes";
+
+/** Bachelor hors Tech : 4/10/10, 5/10/10, 6/10/10. Tech reste à 20 % / 40 % / 40 %. Une seule fois. */
+export async function applyBachelorFixedInstallments(db) {
+  if ((await db.prepare("SELECT value FROM settings WHERE key = ?").get(BACHELOR_TRANCHES_MARK))?.value === "1") return;
+  const year = await db.prepare("SELECT id FROM academic_years WHERE active = 1").get();
+  if (!year) return;
+  const programs = await db.prepare("SELECT id, code FROM programs WHERE UPPER(code) <> 'TECH'").all();
+  for (const program of programs) {
+    const plans = offerPlans(program.code);
+    for (const level of ["bachelor", "bachelor_1", "bachelor_2", "bachelor_3"]) {
+      const plan = plans[level];
+      if (!plan) continue;
+      const current = await db.prepare(`
+        SELECT id, tuition_amount, registration_amount, installment_1, installment_2, installment_3, registration_included
+        FROM fee_schedules WHERE program_id = ? AND academic_year_id = ? AND level = ?
+      `).get(program.id, year.id, level);
+      if (!current) continue;
+      if (
+        current.tuition_amount === plan.tuition
+        && current.registration_amount === plan.parts[0]
+        && current.installment_1 === plan.parts[1]
+        && current.installment_2 === plan.parts[2]
+        && current.installment_3 === plan.parts[3]
+      ) continue;
+      await db.prepare(`
+        INSERT INTO fee_schedule_history(fee_schedule_id, snapshot_json, changed_by) VALUES(?, ?, NULL)
+      `).run(current.id, JSON.stringify(current));
+      await db.prepare(`
+        UPDATE fee_schedules
+        SET tuition_amount = ?, registration_amount = ?, installment_1 = ?, installment_2 = ?, installment_3 = ?
+        WHERE id = ?
+      `).run(plan.tuition, plan.parts[0], plan.parts[1], plan.parts[2], plan.parts[3], current.id);
+    }
+  }
+  await db.prepare(`
+    INSERT INTO settings(key, value) VALUES(?, '1')
+    ON CONFLICT(key) DO UPDATE SET value = '1'
+  `).run(BACHELOR_TRANCHES_MARK);
 }
 
 export async function ensureOfferSchedules(db) {

@@ -2055,7 +2055,7 @@ export async function catalog(db) {
     hypotheses: [
       `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.techBachelor)} à AFRICAIIM Tech (CPI et MIAGE), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
       `À AFRICAIIM Tech, dès que toute la scolarité est versée, l'inscription est réduite de ${TECH_INSCRIPTION_RATE} % automatiquement.`,
-      "Répartition de la scolarité : 20 % le 5 octobre, 40 % le 5 décembre, 40 % le 5 mars.",
+      "Bachelor hors AFRICAIIM Tech : 1re année 4 000 000 + inscription, puis 10 000 000 et 10 000 000 ; 2e année 5 000 000 + inscription, puis 10 000 000 et 10 000 000 ; 3e année 6 000 000 + inscription, puis 10 000 000 et 10 000 000. AFRICAIIM Tech garde 20 % / 40 % / 40 %.",
       "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. À AFRICAIIM Tech : Cycle Préparatoire Intégré (CPI 1, CPI 2) puis MIAGE 1, 2 et 3. Chaque école se règle dans Tarifs.",
       `En Licence, Bachelor, CPI et MIAGE, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,
       "Un étudiant boursier ne paie ni la scolarité ni les frais d'inscription.",

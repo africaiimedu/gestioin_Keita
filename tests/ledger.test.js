@@ -302,10 +302,27 @@ test("bachelor, masters, remise de 1.200.000 au choix et boursier", async () => 
       [24_000_000, 25_000_000, 26_000_000, 27_000_000, 28_000_000],
       code,
     );
+    assert.deepEqual(
+      ["bachelor_1", "bachelor_2", "bachelor_3"].map((level) => {
+        const row = grid.find((item) => item.code === code && item.level === level);
+        return [row.registration_amount, row.installment_1, row.installment_2];
+      }),
+      [
+        [4_000_000, 10_000_000, 10_000_000],
+        [5_000_000, 10_000_000, 10_000_000],
+        [6_000_000, 10_000_000, 10_000_000],
+      ],
+      `${code} tranches`,
+    );
   }
   assert.deepEqual(
     ["bachelor_1", "bachelor_2", "bachelor_3", "master_1", "master_2"].map((level) => tuitionOf("TECH", level)),
     [35_000_000, 35_000_000, 35_000_000, 45_000_000, 45_000_000],
+  );
+  const techBachelor = grid.find((row) => row.code === "TECH" && row.level === "bachelor_1");
+  assert.deepEqual(
+    [techBachelor.registration_amount, techBachelor.installment_1, techBachelor.installment_2],
+    [7_000_000, 14_000_000, 14_000_000],
   );
   const techYears = await db.prepare(`
     SELECT f.level, f.tuition_amount FROM fee_schedules f JOIN programs p ON p.id = f.program_id

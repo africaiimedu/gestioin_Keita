@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { computeSituation, feesDue, fitPlanToDue, officialInstallments, recoveryRate } from "../src/finance/money.js";
+import { bachelorSchoolingParts, computeSituation, feesDue, fitPlanToDue, officialInstallments, recoveryRate } from "../src/finance/money.js";
 import { hotp } from "../src/auth/totp.js";
 import { can } from "../src/auth/passwords.js";
 
@@ -70,6 +70,16 @@ test("cas réels du fichier : soldé, partiel, tech, master, aucun paiement", ()
   });
   assert.equal(retard.status, "en_retard");
   assert.equal(retard.overdueAmount, 5_000_000);
+});
+
+test("tranches Bachelor hors Tech : 4 / 10 / 10, 5 / 10 / 10, 6 / 10 / 10", () => {
+  assert.deepEqual(bachelorSchoolingParts("bachelor_1"), [4_000_000, 10_000_000, 10_000_000, 0]);
+  assert.deepEqual(bachelorSchoolingParts("bachelor_2"), [5_000_000, 10_000_000, 10_000_000, 0]);
+  assert.deepEqual(bachelorSchoolingParts("bachelor_3"), [6_000_000, 10_000_000, 10_000_000, 0]);
+  for (const level of ["bachelor_1", "bachelor_2", "bachelor_3"]) {
+    const parts = bachelorSchoolingParts(level);
+    assert.equal(parts.reduce((sum, amount) => sum + amount, 0), { bachelor_1: 24_000_000, bachelor_2: 25_000_000, bachelor_3: 26_000_000 }[level]);
+  }
 });
 
 test("répartition officielle 20 % / 40 % / 40 %, en francs entiers", () => {

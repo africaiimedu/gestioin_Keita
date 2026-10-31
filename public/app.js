@@ -3292,7 +3292,7 @@ function showSettings(screen) {
             </tbody>
           </table>` : "";
   screen.innerHTML = `<div class="top"><div><p class="mark">Scolarité</p><h1>Tarifs des programmes</h1>
-      <p class="lead">Cliquez un montant pour fixer la 1re, 2e et 3e tranche. Les frais d'inscription (ci-dessous) s'ajoutent encore à la 1re échéance. Les fiches déjà créées suivent le nouveau tarif.</p></div></div>
+      <p class="lead">Cliquez un montant pour fixer la 1re, 2e et 3e tranche. Les frais d'inscription (ci-dessous) s'ajoutent encore à la 1re échéance. Bachelor 1 : 4 000 000 + inscription, puis 10 000 000 et 10 000 000. Bachelor 2 : 5 000 000 + inscription. Bachelor 3 : 6 000 000 + inscription. AFRICAIIM Tech reste à 20 % / 40 % / 40 %. Les fiches déjà créées suivent le nouveau tarif.</p></div></div>
     <div class="stat-row">
       <div class="stat-tile"><span>Inscription Licence et Bachelor</span><strong>${gnf(state.catalog.registrationFees?.bachelor || 0)}</strong></div>
       <div class="stat-tile"><span>Inscription AFRICAIIM Tech (CPI et MIAGE)</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
@@ -3316,7 +3316,7 @@ function showSettings(screen) {
         ${feeTable(["Bachelor", 3, "Master", 2], yearHeads, offerLevels, state.catalog.programs.filter((program) => !isTech(program)))}
         ${feeTable(["Cycle Préparatoire Intégré", 2, "MIAGE", 3], techHeads, techLevels, state.catalog.programs.filter(isTech))}
       </div>
-      <p class="muted fee-hint">Cliquez un total pour modifier les trois tranches (ou répartir automatiquement 20 % / 40 % / 40 %).</p>
+      <p class="muted fee-hint">Cliquez un total pour modifier les trois tranches. Le 20 % / 40 % / 40 % automatique reste pour AFRICAIIM Tech.</p>
     </article>
     <details class="card settings-card">
       <summary>Établissement</summary>

@@ -78,7 +78,7 @@ export const PROGRAMS = [
   { code: "CARRIERE", name: "AFRICAIIM Carrières Bancaires" },
 ];
 
-import { officialInstallments } from "../finance/index.js";
+import { bachelorSchoolingParts, officialInstallments } from "../finance/index.js";
 
 /** Le droit d'inscription est la première échéance, déjà comprise dans les frais annuels. */
 function partsOf(tuition) {
@@ -119,8 +119,12 @@ const TECH_TUITION = {
 };
 
 export function offerPlans(programCode) {
-  const grid = String(programCode || "").toUpperCase() === "TECH" ? TECH_TUITION : OFFER_TUITION;
-  return Object.fromEntries(Object.entries(grid).map(([level, tuition]) => [level, { tuition, parts: partsOf(tuition) }]));
+  const tech = String(programCode || "").toUpperCase() === "TECH";
+  const grid = tech ? TECH_TUITION : OFFER_TUITION;
+  return Object.fromEntries(Object.entries(grid).map(([level, tuition]) => {
+    const fixes = !tech ? bachelorSchoolingParts(level) : null;
+    return [level, { tuition, parts: fixes || partsOf(tuition) }];
+  }));
 }
 
 export const DUE_DATES = {

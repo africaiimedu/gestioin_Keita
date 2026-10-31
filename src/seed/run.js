@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { hashPassword } from "../auth/passwords.js";
 import { newTotpSecret } from "../auth/totp.js";
 import { transaction } from "../db/index.js";
-import { ensureOfferSchedules } from "./migrate.js";
+import { applyBachelorFixedInstallments, ensureOfferSchedules } from "./migrate.js";
 import { DUE_DATES, FEE_PLANS, LEGACY_ROWS, PROGRAMS, feeOf, levelOf } from "./legacy.js";
 import { ANOMALY_LABELS, interpretLegacyRow } from "./interpret.js";
 
@@ -72,6 +72,7 @@ export async function seedAll(db) {
     }
 
     await ensureOfferSchedules(db);
+    await applyBachelorFixedInstallments(db);
 
     for (const [code, due] of Object.entries(DUE_DATES)) {
       await db.prepare("INSERT INTO installment_due_dates(academic_year_id, code, due_on) VALUES(?, ?, ?)").run(yearId, code, due);

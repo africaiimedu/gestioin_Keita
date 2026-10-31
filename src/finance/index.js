@@ -16,6 +16,8 @@ export {
   computeSituation,
   previewSituation,
   officialInstallments,
+  BACHELOR_SCHOOLING_PARTS,
+  bachelorSchoolingParts,
   REGISTRATION_FEES,
   registrationFee,
 } from "./money.js";

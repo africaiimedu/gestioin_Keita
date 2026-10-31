@@ -77,7 +77,24 @@ export function registrationFee(level, programCode = "") {
 }
 
 /**
- * Découpe officielle : 20 % à l'inscription, 40 % en décembre, 40 % en mars.
+ * Scolarité Bachelor hors AFRICAIIM Tech : montants fixes, l'inscription s'ajoute à la 1re échéance.
+ * Bachelor 1 : 4 + 10 + 10 millions. Bachelor 2 : 5 + 10 + 10. Bachelor 3 : 6 + 10 + 10.
+ */
+export const BACHELOR_SCHOOLING_PARTS = {
+  bachelor: [4_000_000, 10_000_000, 10_000_000, 0],
+  bachelor_1: [4_000_000, 10_000_000, 10_000_000, 0],
+  bachelor_2: [5_000_000, 10_000_000, 10_000_000, 0],
+  bachelor_3: [6_000_000, 10_000_000, 10_000_000, 0],
+};
+
+export function bachelorSchoolingParts(level) {
+  const parts = BACHELOR_SCHOOLING_PARTS[String(level || "")];
+  if (!parts) return null;
+  return [...parts];
+}
+
+/**
+ * Découpe AFRICAIIM Tech (et totaux saisis à la main) : 20 % en octobre, 40 % en décembre, 40 % en mars.
  * Tout est en francs entiers. Le dernier versement absorbe l'arrondi
  * pour que la somme soit exactement égale aux frais annuels.
  */
