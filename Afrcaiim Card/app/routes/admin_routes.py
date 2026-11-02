@@ -14,11 +14,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import ROOT, base_url
 from app.services import cups, relais
-from app.services.cantine import ABONNEMENT_MENSUEL, crediter, poser_abonnement, prix_repas, regler_prix
+from app.routes.menu_routes import _page_recu, _pdf_recu
+from app.services.cantine import crediter, poser_abonnement, prix_repas, regler_prix
 from app.services.comptes import adresse_compte, assurer_compte_etudiant
 from app.services.courrier import formater_francs
 from app.deps import Redirection, exiger_admin, exiger_bureau, get_db
-from app.models import Etudiant, Journal, MouvementCantine, Personnel, Utilisateur
+from app.models import Etudiant, Journal, MouvementCantine, Personnel, RecuCantine, Utilisateur
 from app.services.import_etudiants import analyser_lignes, controler_fiche, lire_tableau
 from app.services.metier import (
     badge_courant,
@@ -447,18 +448,56 @@ def abonner_cantine(
     etudiant_id: int,
     request: Request,
     csrf: str = Form(""),
+    mois: str = Form("1"),
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
     etudiant = _etudiant(db, etudiant_id)
     _exiger_csrf(request, csrf, f"/admin/etudiants/{etudiant_id}")
-    poser_abonnement(db, etudiant, admin.id)
+    try:
+        recu = poser_abonnement(db, etudiant, admin.id, mois)
+    except ValueError as exc:
+        flash(request, "erreur", str(exc))
+        raise Redirection(f"/admin/etudiants/{etudiant_id}") from exc
     flash(
         request,
         "ok",
-        f"Abonnement mensuel posé : {formater_francs(ABONNEMENT_MENSUEL)}. Aucun débit à chaque repas.",
+        f"Abonnement posé : {formater_francs(recu.montant)}. Imprimez le reçu.",
     )
-    raise Redirection(f"/admin/etudiants/{etudiant_id}")
+    raise Redirection(f"/admin/recus-cantine/{recu.id}")
+
+
+@router.get("/recus-cantine/{recu_id}")
+def recu_cantine_bureau(
+    recu_id: int,
+    request: Request,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None:
+        flash(request, "erreur", "Reçu introuvable.")
+        raise Redirection("/admin")
+    return _page_recu(
+        request,
+        db,
+        admin,
+        recu_vu,
+        f"/admin/etudiants/{recu_vu.etudiant_id}" if recu_vu.etudiant_id else "/admin",
+        f"/admin/recus-cantine/{recu_vu.id}.pdf",
+    )
+
+
+@router.get("/recus-cantine/{recu_id}.pdf")
+def recu_cantine_bureau_pdf(
+    recu_id: int,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None:
+        raise Redirection("/admin")
+    return _pdf_recu(db, recu_vu)
 
 
 @router.post("/cantine/prix")

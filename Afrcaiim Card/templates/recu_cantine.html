@@ -35,7 +35,8 @@
   <p class="ticket-pied">Merci. Gardez ce reçu.</p>
 </article>
 <p class="actions ticket-actions">
-  <button type="button" class="bouton" onclick="window.print()">Imprimer le reçu</button>
+  <a class="bouton" href="{{ recu_pdf }}">Télécharger le PDF</a>
+  <button type="button" class="bouton bouton-secondaire" onclick="window.print()">Imprimer le reçu</button>
   <a class="bouton bouton-secondaire" href="{{ retour }}">Retour</a>
 </p>
 {% endblock %}

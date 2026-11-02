@@ -1010,7 +1010,7 @@ document.getElementById("recharger").onclick = () => {
   }
   document.getElementById("recharge-qui").textContent = `${etu.prenom} ${etu.nom} · ${etu.matricule}`;
   document.getElementById("recharge-solde").textContent = etu.abonne_cantine
-    ? "Abonné · 600 000 GNF / mois · aucun débit"
+    ? `Abonné${etu.abonnement_mois ? ` · ${etu.abonnement_mois} mois` : ""} · 600 000 GNF / mois${etu.abonnement_fin ? ` · jusqu'au ${etu.abonnement_fin.split("-").reverse().join("/")}` : ""} · aucun débit`
     : `Non abonné · compte actuel : ${francs(etu.solde_cantine)}`;
   document.getElementById("recharge").showModal();
 };
@@ -1050,10 +1050,11 @@ document.getElementById("synchro-universite")?.addEventListener("click", async (
 document.getElementById("poser-abonnement")?.addEventListener("click", async () => {
   const etu = courant();
   if (!etu) return;
+  const mois = document.getElementById("abonnement-mois")?.value || "1";
   const reponse = await fetch(`/admin/api/etudiants/${etu.id}/abonnement`, {
     method: "POST",
     headers: entetes(),
-    body: "{}",
+    body: JSON.stringify({ mois }),
   });
   const corps = await reponse.json();
   if (!reponse.ok) {
@@ -1062,7 +1063,8 @@ document.getElementById("poser-abonnement")?.addEventListener("click", async () 
   }
   Object.assign(etu, corps);
   document.getElementById("recharge").close();
-  message(`${etu.matricule} : abonnement mensuel 600 000 FG, aucun débit à chaque repas.`);
+  message(`${etu.matricule} : abonnement ${mois} mois, reçu ${corps.recu_id ? "ouvert" : "émis"}.`);
+  if (corps.recu_url) window.open(corps.recu_url, "_blank", "noopener");
   dessinerGrille();
   dessinerCarte();
 });

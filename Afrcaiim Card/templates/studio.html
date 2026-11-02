@@ -142,10 +142,17 @@
       <label>Montant à ajouter (GNF)
         <input name="montant" inputmode="numeric" required placeholder="50000">
       </label>
-      <p class="aide-photo">Abonnement mensuel : 600 000 FG, plat du jour et une bouteille d'eau. Rien n'est débité à chaque validation. Les non-abonnés paient à la caisse.</p>
+      <p class="aide-photo">Abonnement : 600 000 FG par mois, de 1 à 12 mois, plat du jour et une bouteille d'eau. Rien n'est débité à chaque repas. Les non-abonnés paient à la caisse.</p>
+      <label>Durée de l'abonnement
+        <select id="abonnement-mois" name="mois">
+          {% for n in range(1, abonnement_mois_max + 1) %}
+            <option value="{{ n }}" {% if n == 1 %}selected{% endif %}>{{ n }} mois — {{ (n * abonnement_mensuel)|gnf }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <div class="actions-dialogue">
         <button type="submit" value="ok">Ajouter au compte</button>
-        <button type="button" id="poser-abonnement">Poser l'abonnement 600 000 FG</button>
+        <button type="button" id="poser-abonnement">Poser l'abonnement et ouvrir le reçu</button>
         <button type="button" id="fermer-recharge">Annuler</button>
       </div>
     </form>
@@ -223,6 +230,6 @@
   } | tojson }}</script>
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
   <script src="/static/rendu-carte.js?v=36"></script>
-  <script src="/static/studio.js?v=37"></script>
+  <script src="/static/studio.js?v=38"></script>
 </body>
 </html>

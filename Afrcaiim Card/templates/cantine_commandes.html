@@ -33,7 +33,7 @@
             </form>
           </div>
         {% else %}
-          <p class="mode-paye">{% if commande.recu_id %}{% if commande.mode_paiement == "caisse" %}Payée à la caisse{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% else %}Payée sur le compte cantine{% endif %}{% elif commande.mode_paiement == "abonnement" %}Abonnement mensuel, aucun débit{% elif commande.mode_paiement == "solde" %}Paiement à la confirmation du client{% else %}Cuisine d'abord, caisse ensuite{% endif %} · {{ commande.montant|gnf }}{% if commande.recu_id %} · <a href="/cantine/recus/{{ commande.recu_id }}">reçu</a>{% endif %}</p>
+          <p class="mode-paye">{% if commande.recu_id %}{% if commande.mode_paiement == "caisse" %}Payée à la caisse{% elif commande.mode_paiement == "abonnement" %}Abonnement cantine, aucun débit{% else %}Payée sur le compte cantine{% endif %}{% elif commande.mode_paiement == "abonnement" %}Abonnement cantine, aucun débit{% elif commande.mode_paiement == "solde" %}Paiement à la confirmation du client{% else %}Cuisine d'abord, caisse ensuite{% endif %} · {{ commande.montant|gnf }}{% if commande.recu_id %} · <a href="/cantine/recus/{{ commande.recu_id }}">reçu</a>{% endif %}</p>
           <form method="post" action="/cantine/commandes/{{ commande.id }}">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button class="bouton" type="submit">

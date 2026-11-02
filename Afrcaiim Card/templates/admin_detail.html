@@ -63,12 +63,19 @@
   </div>
 
   <h2>Cantine</h2>
-  <p>{% if etudiant.abonne_cantine %}Abonnement mensuel : <strong>600 000 GNF</strong> · aucun débit à chaque repas.{% else %}Non abonné · les repas se paient à la caisse.{% endif %}</p>
-  <p class="aide">ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM ; 600 000 FG AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU. Poser l'abonnement ne modifie que cette fiche.</p>
-  {% if not etudiant.abonne_cantine %}
+  <p>{{ libelle_abonnement(etudiant) }}</p>
+  <p class="aide">600 000 FG par mois, de 1 à 12 mois : plat du jour et une bouteille d'eau. L'abonné n'est pas débité à chaque repas. Poser l'abonnement ne modifie que cette fiche, puis ouvre le reçu à imprimer.</p>
+  {% if not est_abonne(etudiant) %}
   <form method="post" action="/admin/etudiants/{{ etudiant.id }}/abonnement" class="panneau etroit">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button type="submit">Poser l'abonnement mensuel (600 000 FG)</button>
+    <label>Durée
+      <select name="mois">
+        {% for n in range(1, abonnement_mois_max + 1) %}
+          <option value="{{ n }}" {% if n == 1 %}selected{% endif %}>{{ n }} mois — {{ (n * abonnement_mensuel)|gnf }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Poser l'abonnement et ouvrir le reçu</button>
   </form>
   {% endif %}
   <form method="post" action="/admin/etudiants/{{ etudiant.id }}/cantine" class="panneau etroit">

@@ -55,7 +55,9 @@ from app.services.menu_cantine import (
     refuser_commande,
     retirer_plat,
 )
+from app.services.cantine import est_abonne
 from app.services.pdf_affiche_cantine import pdf_affiche_cantine
+from app.services.pdf_recu_cantine import pdf_recu_cantine
 from app.services.recus import MODES, NATURES, lister, rapport
 from app.ui import csrf_valide, flash, render
 
@@ -189,8 +191,8 @@ def commander(
     except RefusCommande as exc:
         flash(request, "erreur", str(exc))
         raise Redirection(retour) from exc
-    if etudiant is not None and getattr(etudiant, "abonne_cantine", False):
-        flash(request, "ok", "Commande envoyée à la cuisine. Abonnement mensuel : aucun débit.")
+    if etudiant is not None and est_abonne(etudiant):
+        flash(request, "ok", "Commande envoyée à la cuisine. Abonnement cantine : aucun débit.")
     else:
         flash(request, "ok", "Commande envoyée à la cuisine. Attendez le message « prêt » avant de passer à la caisse.")
     raise Redirection(f"/menu/commande/{commande.id}")
@@ -301,7 +303,7 @@ def payer_quand_pret(
         flash(request, "erreur", str(exc))
         raise Redirection(f"/menu/commande/{commande_id}") from exc
     if recu_emis.mode == "abonnement":
-        flash(request, "ok", f"Repas confirmé. Rien n'a été débité (abonnement mensuel). Reçu {recu_emis.numero}.")
+        flash(request, "ok", f"Repas confirmé. Rien n'a été débité (abonnement). Reçu {recu_emis.numero}.")
     else:
         flash(request, "ok", f"Paiement validé. Compte débité. Reçu {recu_emis.numero}.")
     raise Redirection(f"/menu/commande/{commande_id}")
@@ -339,10 +341,23 @@ def mon_recu(
     recu_vu = db.get(RecuCantine, recu_id)
     if recu_vu is None or recu_vu.etudiant_id != etudiant.id:
         raise Redirection("/menu/recus")
-    return _page_recu(request, db, utilisateur, recu_vu, "/menu/recus")
+    return _page_recu(request, db, utilisateur, recu_vu, "/menu/recus", f"/menu/recus/{recu_vu.id}.pdf")
 
 
-def _page_recu(request: Request, db: Session, utilisateur: Utilisateur, recu_vu: RecuCantine, retour: str):
+@router.get("/menu/recus/{recu_id}.pdf")
+def mon_recu_pdf(
+    recu_id: int,
+    utilisateur: Utilisateur = Depends(exiger_etudiant),
+    db: Session = Depends(get_db),
+):
+    etudiant = _etudiant_de(db, utilisateur)
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None or recu_vu.etudiant_id != etudiant.id:
+        raise Redirection("/menu/recus")
+    return _pdf_recu(db, recu_vu)
+
+
+def _page_recu(request: Request, db: Session, utilisateur: Utilisateur, recu_vu: RecuCantine, retour: str, recu_pdf: str):
     agent = db.get(Utilisateur, recu_vu.agent_id) if recu_vu.agent_id else None
     commande = db.get(CommandeCantine, recu_vu.commande_id) if recu_vu.commande_id else None
     lignes = [morceau.strip() for morceau in (recu_vu.details or "").split(" ; ") if morceau.strip()]
@@ -357,6 +372,17 @@ def _page_recu(request: Request, db: Session, utilisateur: Utilisateur, recu_vu:
         natures=NATURES,
         modes=MODES,
         retour=retour,
+        recu_pdf=recu_pdf,
+    )
+
+
+def _pdf_recu(db: Session, recu_vu: RecuCantine):
+    agent = db.get(Utilisateur, recu_vu.agent_id) if recu_vu.agent_id else None
+    pdf = pdf_recu_cantine(recu_vu, agent)
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{recu_vu.numero}.pdf"'},
     )
 
 
@@ -525,7 +551,26 @@ def cuisine_recu(
     recu_vu = db.get(RecuCantine, recu_id)
     if recu_vu is None:
         raise Redirection("/cantine/recus")
-    return _page_recu(request, db, cuisiniere, recu_vu, f"/cantine/recus?jour={recu_vu.cree_le.date().isoformat()}")
+    return _page_recu(
+        request,
+        db,
+        cuisiniere,
+        recu_vu,
+        f"/cantine/recus?jour={recu_vu.cree_le.date().isoformat()}",
+        f"/cantine/recus/{recu_vu.id}.pdf",
+    )
+
+
+@router.get("/cantine/recus/{recu_id}.pdf")
+def cuisine_recu_pdf(
+    recu_id: int,
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None:
+        raise Redirection("/cantine/recus")
+    return _pdf_recu(db, recu_vu)
 
 
 @router.get("/cantine/rapport")

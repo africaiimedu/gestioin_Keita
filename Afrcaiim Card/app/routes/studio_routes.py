@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import ROOT, base_url
 from app.deps import exiger_bureau, get_db
 from app.models import Etudiant, Personnel, Utilisateur
-from app.services.cantine import crediter, poser_abonnement
+from app.services.cantine import crediter, est_abonne, poser_abonnement
 from app.services.designs import asset_valide, enregistrer_design, lister_designs, supprimer_design, url_design
 from app.services.import_etudiants import controler_fiche
 from app.services.metier import (
@@ -156,7 +156,9 @@ def _ligne(etudiant: Etudiant) -> dict:
         "email": etudiant.email or "",
         "sexe": etudiant.sexe if etudiant.sexe in {"M", "F"} else "M",
         "solde_cantine": int(etudiant.solde_cantine or 0),
-        "abonne_cantine": bool(getattr(etudiant, "abonne_cantine", False)),
+        "abonne_cantine": est_abonne(etudiant),
+        "abonnement_mois": int(getattr(etudiant, "abonnement_mois", 0) or 0),
+        "abonnement_fin": etudiant.abonnement_fin.isoformat() if getattr(etudiant, "abonnement_fin", None) else "",
         "url": url_affichee(base_url(), etudiant.matricule),
         "controle": code_controle(carte.jeton) if carte else "",
     }
@@ -478,11 +480,21 @@ async def abonner(
     etudiant = db.get(Etudiant, etudiant_id)
     if etudiant is None:
         return JSONResponse({"message": "Étudiant introuvable."}, status_code=404)
-    poser_abonnement(db, etudiant, admin.id)
+    try:
+        corps = await request.json()
+    except Exception:
+        corps = {}
+    try:
+        recu = poser_abonnement(db, etudiant, admin.id, (corps or {}).get("mois", 1))
+    except ValueError as exc:
+        return JSONResponse({"message": str(exc)}, status_code=400)
     etudiant = db.scalar(
         select(Etudiant).options(selectinload(Etudiant.cartes)).where(Etudiant.id == etudiant_id)
     )
-    return _ligne(etudiant)
+    ligne = _ligne(etudiant)
+    ligne["recu_id"] = recu.id
+    ligne["recu_url"] = f"/admin/recus-cantine/{recu.id}"
+    return ligne
 
 
 @router.get("/designs")

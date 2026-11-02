@@ -9,8 +9,8 @@
     <img class="logo-universite" src="/static/marque-blanc.png" alt="Université AFRICAIIM" width="160" height="42">
     <h1>{% if etudiant %}Bonjour {{ etudiant.prenom }}{% else %}Cantine AFRICAIIM{% endif %}</h1>
     <p class="ouvert" id="menu-jour">{% if jour_actuel == "semaine" %}Fermé le dimanche · carte de la semaine{% else %}Menu du {{ jour_actuel|lower }} · déjeuner et dîner{% endif %}</p>
-    {% if etudiant and etudiant.abonne_cantine %}
-      <p class="solde">Abonnement mensuel <strong>600 000 GNF</strong> · aucun débit · <a href="/menu/recus">Mes reçus</a></p>
+    {% if etudiant and est_abonne(etudiant) %}
+      <p class="solde">{{ libelle_abonnement(etudiant) }} · <a href="/menu/recus">Mes reçus</a></p>
     {% elif etudiant %}
       <p class="solde">Non abonné · paiement à la caisse · <a href="/menu/recus">Mes reçus</a></p>
     {% endif %}
@@ -51,8 +51,8 @@
   {% endif %}
 
   <details class="engagements">
-    <summary>Abonnement 600 000 FG · plat du jour + eau</summary>
-    <p>ABONNEMENT MENSUEL POUR LES ELEVES D’AFRICAIIM ; 600 000 FG AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU</p>
+    <summary>Abonnement 600 000 FG / mois · plat du jour + eau</summary>
+    <p>ABONNEMENT POUR LES ELEVES D’AFRICAIIM ; 600 000 FG PAR MOIS, 1 À 12 MOIS, AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU</p>
     <p>Une bouteille d’eau est recommandée à chaque repas.</p>
     <ul>
       <li>Portions adaptées aux besoins des étudiants.</li>
@@ -114,7 +114,7 @@
       <button type="button" class="payer" id="choix-valider">Ajouter au panier</button>
     </div>
   </section>
-  <section class="feuille" id="feuille" hidden aria-label="Panier" data-solde="{{ etudiant.solde_cantine if etudiant else 0 }}" data-abonne="{{ 1 if etudiant and etudiant.abonne_cantine else 0 }}" data-max="{{ qte_max }}" data-connecte="{{ 1 if user else 0 }}" data-role="{{ role }}" data-login="/login?suivant=/m/{{ point.jeton }}">
+  <section class="feuille" id="feuille" hidden aria-label="Panier" data-solde="{{ etudiant.solde_cantine if etudiant else 0 }}" data-abonne="{{ 1 if etudiant and est_abonne(etudiant) else 0 }}" data-max="{{ qte_max }}" data-connecte="{{ 1 if user else 0 }}" data-role="{{ role }}" data-login="/login?suivant=/m/{{ point.jeton }}">
     <header>
       <h2>Votre panier</h2>
       <button type="button" id="fermer-panier" aria-label="Fermer">×</button>

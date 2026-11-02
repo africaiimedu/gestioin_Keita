@@ -23,6 +23,7 @@ from app.models import (
     maintenant,
 )
 from app.security import hash_mot_de_passe
+from app.services.cantine import est_abonne
 from app.services.courrier import expedier_debit, formater_francs
 from app.services.metier import carte_courante, journaliser
 from app.services.recus import MODES, MODES_CAISSE, annuler_recus_commande, details_lignes, emettre_recu
@@ -190,7 +191,7 @@ def passer_commande(
         raise
     total_solde = sum(prix * qte for _, prix, _, qte, _ in prepares)
     total_caisse = sum(prix * qte for _, _, prix, qte, _ in prepares)
-    abonne = bool(verrouille is not None and getattr(verrouille, "abonne_cantine", False))
+    abonne = bool(verrouille is not None and est_abonne(verrouille))
     total = total_solde if abonne else total_caisse
     for plat, _, _, qte, _ in prepares:
         if plat.stock is not None:
@@ -230,7 +231,7 @@ def passer_commande(
             )
         )
     suite = (
-        f"{formater_francs(total)} · abonnement mensuel, aucun débit"
+        f"{formater_francs(total)} · abonnement cantine, aucun débit"
         if abonne
         else f"{formater_francs(total)} · cuisine d'abord, caisse quand le repas est prêt"
     )
@@ -286,7 +287,7 @@ def confirmer_paiement_solde(db, commande: CommandeCantine, utilisateur: Utilisa
             utilisateur_id=utilisateur.id,
             etudiant_id=verrouille.id,
             carte_id=carte.id if carte else None,
-            details=f"{commande.numero} · abonnement mensuel, aucun débit · reste {formater_francs(verrouille.solde_cantine)}",
+            details=f"{commande.numero} · abonnement cantine, aucun débit · reste {formater_francs(verrouille.solde_cantine)}",
         )
         db.commit()
         return recu
@@ -509,7 +510,7 @@ def _alerter_pret(db, commande: CommandeCantine) -> None:
     if commande.mode_paiement == "abonnement":
         corps = (
             f"Votre commande {commande.numero} est prête ({formater_francs(commande.montant)}). "
-            "Validez ici : rien n'est débité, l'abonnement mensuel couvre le repas."
+            "Validez ici : rien n'est débité, l'abonnement couvre le repas."
         )
     elif commande.mode_paiement == "solde":
         corps = (

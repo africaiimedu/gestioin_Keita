@@ -21,11 +21,11 @@ NATURES = {
     "commande": "Commande cantine",
     "repas": "Repas validé à la carte",
     "recharge": "Recharge du compte cantine",
-    "abonnement": "Abonnement mensuel cantine",
+    "abonnement": "Abonnement cantine",
 }
 MODES = {
     "solde": "Compte cantine",
-    "abonnement": "Abonnement mensuel",
+    "abonnement": "Abonnement cantine",
     "especes": "Espèces",
     "orange_money": "Orange Money",
     "versement": "Versement au bureau",

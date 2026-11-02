@@ -248,5 +248,36 @@ def test_sans_solde_encaissement_recus_et_rapport():
             assert bilan.status_code == 200 and "Reçu (argent entré)" in bilan.text and _PLAT in bilan.text
             menu = client.get("/cantine/menu")
             assert "sans solde" in menu.text
+            assert "Télécharger le PDF" in client.get(f"/cantine/recus/{recu_id}").text
+    finally:
+        _nettoyer()
+
+
+def test_abonnement_plusieurs_mois_recu():
+    from app.services.cantine import ajouter_mois, montant_abonnement, poser_abonnement, est_abonne
+    from app.services.pdf_recu_cantine import pdf_recu_cantine
+
+    assert montant_abonnement(3) == 1_800_000
+    _nettoyer()
+    try:
+        with SessionLocal() as db:
+            _assurer_menu(db)
+            etudiant, utilisateur = _etudiant(db, _MATRICULES[0], _IDENTIFIANTS[0], 5000)
+            recu = poser_abonnement(db, etudiant, utilisateur.id, 3)
+            db.refresh(etudiant)
+            assert recu.montant == 1_800_000
+            assert recu.nature == "abonnement"
+            assert "3 mois" in recu.details
+            assert etudiant.solde_cantine == 5000
+            assert est_abonne(etudiant)
+            assert etudiant.abonnement_mois == 3
+            assert etudiant.abonnement_fin == ajouter_mois(date.today(), 3)
+            try:
+                poser_abonnement(db, etudiant, utilisateur.id, 1)
+                raise AssertionError("un second abonnement a été accepté")
+            except ValueError:
+                pass
+            pdf = pdf_recu_cantine(recu)
+            assert pdf[:4] == b"%PDF"
     finally:
         _nettoyer()

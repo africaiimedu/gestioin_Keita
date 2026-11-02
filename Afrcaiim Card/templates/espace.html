@@ -31,7 +31,7 @@
       </div>
       <div>
         <dt>Cantine</dt>
-        <dd class="montant">{% if etudiant.abonne_cantine %}Abonné · 600 000 GNF / mois · aucun débit{% else %}Non abonné · paiement à la caisse{% endif %}</dd>
+        <dd class="montant">{{ libelle_abonnement(etudiant) }}</dd>
       </div>
       <div>
         <dt>Valable jusqu'au</dt>

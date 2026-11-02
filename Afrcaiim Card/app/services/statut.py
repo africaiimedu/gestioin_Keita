@@ -26,6 +26,7 @@ LIBELLES_ACTION = {
     "matricule_modifie": "Matricule modifié",
     "compte_etudiant": "Compte étudiant",
     "credit_cantine": "Compte cantine crédité",
+    "abonnement_cantine": "Abonnement cantine",
     "debit_cantine": "Repas débité",
     "commande_cantine": "Commande cantine",
     "annulation_cantine": "Commande cantine annulée",

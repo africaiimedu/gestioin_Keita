@@ -31,6 +31,8 @@ class Etudiant(Base):
     email: Mapped[str] = mapped_column(String(120), default="")
     solde_cantine: Mapped[int] = mapped_column(Integer, default=0)
     abonne_cantine: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    abonnement_mois: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    abonnement_fin: Mapped[date | None] = mapped_column(Date, nullable=True)
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
 
     cartes: Mapped[list[Carte]] = relationship(back_populates="etudiant")

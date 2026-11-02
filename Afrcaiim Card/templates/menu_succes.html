@@ -22,9 +22,9 @@
     {% endif %}
   {% elif recu %}
     <p class="somme">{% if commande.mode_paiement == "abonnement" %}Couvert par l'abonnement {{ commande.montant|gnf }}{% else %}Payé {{ commande.montant|gnf }}{% endif %}</p>
-    {% if etudiant and etudiant.abonne_cantine %}<p>Abonnement mensuel 600 000 GNF · aucun débit.</p>{% elif etudiant %}<p>Il reste <strong>{{ etudiant.solde_cantine|gnf }}</strong> sur votre compte.</p>{% endif %}
+    {% if etudiant and est_abonne(etudiant) %}<p>{{ libelle_abonnement(etudiant) }}.</p>{% elif etudiant %}<p>Il reste <strong>{{ etudiant.solde_cantine|gnf }}</strong> sur votre compte.</p>{% endif %}
   {% elif commande.mode_paiement == "abonnement" %}
-    <p class="somme">{{ commande.montant|gnf }} — abonnement mensuel, aucun débit</p>
+    <p class="somme">{{ commande.montant|gnf }} — abonnement cantine, aucun débit</p>
     <p>La cuisine prépare. Quand le repas est prêt, validez : rien n'est débité.</p>
   {% elif commande.mode_paiement == "solde" %}
     <p class="somme">{{ commande.montant|gnf }} — paiement à la confirmation</p>

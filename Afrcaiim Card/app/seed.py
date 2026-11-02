@@ -80,6 +80,32 @@ def _colonnes_cantine() -> None:
         connexion.execute(
             text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS abonne_cantine BOOLEAN NOT NULL DEFAULT FALSE")
         )
+        connexion.execute(
+            text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS abonnement_mois INTEGER NOT NULL DEFAULT 0")
+        )
+        connexion.execute(text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS abonnement_fin DATE"))
+        connexion.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS taches_cartes ("
+                "nom VARCHAR(80) PRIMARY KEY, "
+                "faite_le TIMESTAMPTZ NOT NULL)"
+            )
+        )
+        pose = connexion.execute(
+            text(
+                "INSERT INTO taches_cartes (nom, faite_le) "
+                "VALUES ('raz_abonnements_cantine', NOW()) "
+                "ON CONFLICT (nom) DO NOTHING "
+                "RETURNING nom"
+            )
+        ).fetchone()
+        if pose is not None:
+            connexion.execute(
+                text(
+                    "UPDATE etudiants SET abonne_cantine = FALSE, "
+                    "abonnement_mois = 0, abonnement_fin = NULL"
+                )
+            )
 
 
 def _assurer_cantine_exemple(db) -> None:
