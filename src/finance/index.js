@@ -19,6 +19,7 @@ export {
   BACHELOR_SCHOOLING_PARTS,
   bachelorSchoolingParts,
   REGISTRATION_FEES,
+  enrollmentKindOf,
   registrationFee,
 } from "./money.js";
 export { integerToWords, amountInWords } from "./words.js";

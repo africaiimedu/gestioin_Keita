@@ -981,4 +981,16 @@ test("Africaiim Tech : solder la scolarité réduit l'inscription de 25 %, une a
   assert.equal(costumeReceipt.costume.today, 150_000);
   assert.equal(costumeReceipt.costume.reste, 450_000);
 });
+
+test("réinscription : 500 000 GNF d'inscription, le reste du barème inchangé", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const created = await domain.createStudent(db, agent, {
+    lastName: "CAMARA", firstName: "Reinscrite", programId: program.id, level: "bachelor_1",
+    phone: "620000001", enrollmentKind: "reinscription", paymentAmount: 0,
+  });
+  assert.equal(created.student.enrollment_kind, "reinscription");
+  assert.equal(created.situation.plan.find((item) => item.code === "inscription").amount, 4_000_000 + 500_000);
+  assert.equal(created.situation.due, 24_000_000 + 500_000);
+  assert.equal(created.situation.paid, 0);
+});
 });

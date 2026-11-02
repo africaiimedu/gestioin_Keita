@@ -1191,6 +1191,12 @@ async function showStudents(screen) {
           <p><label>Niveau</label><select name="level" required><option value="bachelor">Bachelor</option><option value="master">Master</option></select></p></div>
         <p id="year-row"><label id="year-label">Année de bachelor</label><select name="studyYear" required></select></p>
         <p class="muted" id="fee-hint"></p>
+        <p><label>Inscription ou réinscription</label>
+          <select name="enrollmentKind" required>
+            <option value="inscription">Inscription (nouvelle)</option>
+            <option value="reinscription">Réinscription (500 000 GNF)</option>
+          </select>
+        </p>
         <label class="check"><input type="checkbox" name="scholarship"> Boursier — aucun frais de scolarité</label>
         ${discountField()}
         <div class="duo" id="payment-fields"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
@@ -1220,7 +1226,8 @@ async function showStudents(screen) {
       return fee ? fee.tuition_amount : 0;
     };
     const registrationOf = () => {
-      const fees = state.catalog.registrationFees || { bachelor: 0, master: 0 };
+      const fees = state.catalog.registrationFees || { bachelor: 0, master: 0, reenrollment: 500000 };
+      if (form.enrollmentKind.value === "reinscription") return fees.reenrollment || 500000;
       if (form.studyYear.value.startsWith("master")) return fees.master;
       return techSchool() ? (fees.techBachelor ?? fees.bachelor) : fees.bachelor;
     };
@@ -1251,7 +1258,7 @@ async function showStudents(screen) {
         : "";
       document.querySelector("#fee-hint").textContent = scholar
         ? "Boursier : les frais de scolarité sont à 0 GNF."
-        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + inscription ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : (withDiscount ? ` Avec la remise : ${gnf(cashOf(tuition) - techCut)} à payer.` : " Sans remise.")}${techNote}`;
+        : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + ${form.enrollmentKind.value === "reinscription" ? "réinscription" : "inscription"} ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : (withDiscount ? ` Avec la remise : ${gnf(cashOf(tuition) - techCut)} à payer.` : " Sans remise.")}${techNote}`;
       document.querySelector("#payment-fields").hidden = scholar;
       const amount = form.paymentAmount;
       amount.required = !scholar;
@@ -1261,6 +1268,7 @@ async function showStudents(screen) {
     form.level.addEventListener("change", syncFee);
     form.studyYear.addEventListener("change", syncFee);
     form.programId.addEventListener("change", syncFee);
+    form.enrollmentKind.addEventListener("change", syncFee);
     form.scholarship.addEventListener("change", syncFee);
     form.cashDiscount.addEventListener("change", syncFee);
     form.paymentAmount.addEventListener("input", (event) => {
@@ -1329,6 +1337,7 @@ async function showStudents(screen) {
           phone: form.phone.value.trim(),
           programId: Number(form.programId.value),
           level,
+          enrollmentKind: form.enrollmentKind.value,
           scholarship: form.scholarship.checked,
           cashDiscount: discountChosen(form),
           paymentAmount: form.scholarship.checked ? 0 : form.paymentAmount.value.replace(/\D/g, ""),
@@ -1366,7 +1375,7 @@ async function showStudent(screen, id) {
   const student = data.student;
   const situation = data.situation;
   screen.innerHTML = `<div class="top"><div><p class="mark">${esc(student.matricule)}</p><h1>${esc(student.name)}</h1>
-      <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)}</p>
+      <p>${esc(student.program)} · ${esc(levelLabel(student.level))} · ${esc(student.year)} · ${student.enrollmentKind === "reinscription" ? "Réinscription 500 000 GNF" : "Inscription"}</p>
       ${student.accountEmail ? `<p class="muted">Compte étudiant : ${esc(student.accountEmail)}</p>` : ""}
       <p class="muted">Téléphone : ${esc(student.phone || "non renseigné")}</p></div>
       <div class="row-actions">
@@ -1697,8 +1706,10 @@ function openProgramChange(student, situation, onDone) {
       box.textContent = "Aucun tarif pour ce programme dans cette école.";
       return;
     }
-    const fees = state.catalog.registrationFees || { bachelor: 0, master: 0 };
-    const registration = form.level.value.startsWith("master") ? fees.master : (techSchool() ? (fees.techBachelor ?? fees.bachelor) : fees.bachelor);
+    const fees = state.catalog.registrationFees || { bachelor: 0, master: 0, reenrollment: 500000 };
+    const registration = student.enrollmentKind === "reinscription"
+      ? (fees.reenrollment || 500000)
+      : (form.level.value.startsWith("master") ? fees.master : (techSchool() ? (fees.techBachelor ?? fees.bachelor) : fees.bachelor));
     const total = fee.tuition_amount + registration;
     const over = situation.paid - total;
     box.textContent = `Nouveaux frais annuels : ${gnf(total)} (scolarité ${gnf(fee.tuition_amount)} + inscription ${gnf(registration)}), avant remise ou bourse. Frais dus actuellement : ${gnf(situation.due)}. Déjà versé : ${gnf(situation.paid)}.${over > 0 ? ` Le déjà versé dépasse les nouveaux frais de ${gnf(over)} : ce sera un trop-perçu.` : ""}${form.level.value.startsWith("master") ? " Pas de remise de paiement comptant en Master : si elle était appliquée, elle sera retirée." : ""}`;
@@ -3297,6 +3308,7 @@ function showSettings(screen) {
       <div class="stat-tile"><span>Inscription Licence et Bachelor</span><strong>${gnf(state.catalog.registrationFees?.bachelor || 0)}</strong></div>
       <div class="stat-tile"><span>Inscription AFRICAIIM Tech (CPI et MIAGE)</span><strong>${gnf(state.catalog.registrationFees?.techBachelor || 0)}</strong></div>
       <div class="stat-tile"><span>Inscription Master</span><strong>${gnf(state.catalog.registrationFees?.master || 0)}</strong></div>
+      <div class="stat-tile"><span>Réinscription (toutes écoles)</span><strong>${gnf(state.catalog.registrationFees?.reenrollment || 500000)}</strong></div>
       <div class="stat-tile alert"><span>Inscription due en entier le</span><strong>5 octobre</strong></div>
       <div class="stat-tile"><span>Costume (prix unique)</span><strong>${Number(settings.costume_price) ? gnf(Number(settings.costume_price)) : "Non fixé"}</strong></div>
     </div>

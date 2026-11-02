@@ -18,6 +18,7 @@ import {
   previewSituation,
   recoveryRate,
   REGISTRATION_FEES,
+  enrollmentKindOf,
   registrationFee,
 } from "../finance/index.js";
 import { HttpError } from "../httpError.js";
@@ -53,7 +54,7 @@ function isTechStudent(student) {
 
 export function techInscriptionDiscountFor(student) {
   if (!isTechStudent(student)) return 0;
-  return percentOf(registrationFee(student.level, student.program_code), TECH_INSCRIPTION_RATE);
+  return percentOf(registrationFee(student.level, student.program_code, student.enrollment_kind), TECH_INSCRIPTION_RATE);
 }
 
 /** La remise n'est jamais déduite d'office : l'agent choisit « Remise : oui » ou « non » à l'encaissement. */
@@ -73,7 +74,7 @@ function techInscriptionOffer(current, amount) {
   const none = { apply: false, value };
   if (!value || hasCustomFee(current.student) || isScholar(current.discounts)) return none;
   if (current.discounts.some((item) => item.label === TECH_INSCRIPTION_LABEL)) return none;
-  const registration = registrationFee(current.student.level, current.student.program_code);
+  const registration = registrationFee(current.student.level, current.student.program_code, current.student.enrollment_kind);
   const schooling = Math.max(0, current.tuition - registration);
   if (schooling <= 0 || current.situation.paid + amount < schooling) return none;
   return { apply: true, value };
@@ -465,10 +466,11 @@ function planFrom(student, ledger) {
     tranche_2: fee.installment_2,
     tranche_3: fee.installment_3,
   };
-  const registration = registrationFee(student.level, student.program_code);
+  const kind = enrollmentKindOf(student.enrollment_kind);
+  const registration = registrationFee(student.level, student.program_code, kind);
   const installments = INSTALLMENTS.map((code) => ({
     code,
-    label: INSTALLMENT_LABELS[code],
+    label: code === "inscription" && kind === "reinscription" ? "Réinscription — 5 octobre" : INSTALLMENT_LABELS[code],
     amount: (overrideMap.has(code) ? overrideMap.get(code).amount : base[code]) + (code === "inscription" ? registration : 0),
     dueOn: overrideMap.get(code)?.due_on || dues.get(code),
   })).filter((item) => item.amount > 0);
@@ -993,6 +995,7 @@ function publicStudent(student) {
     createdAt: student.created_at,
     customFee: hasCustomFee(student) ? Number(student.custom_fee) : null,
     customFeeReason: hasCustomFee(student) ? student.custom_fee_reason : null,
+    enrollmentKind: enrollmentKindOf(student.enrollment_kind),
   };
 }
 
@@ -1563,19 +1566,20 @@ export async function createStudent(db, user, input) {
   const techSchool = String(program.code || "").toUpperCase() === "TECH";
   if (techSchool && !TECH_LEVELS.has(input.level)) throw new HttpError(400, "AFRICAIIM Tech : choisissez CPI 1, CPI 2, MIAGE 1, MIAGE 2 ou MIAGE 3");
   if (!techSchool && TECH_LEVELS.has(input.level)) throw new HttpError(400, "Les niveaux CPI et MIAGE sont réservés à AFRICAIIM Tech");
+  const enrollmentKind = enrollmentKindOf(input.enrollmentKind || input.enrollment_kind);
   const paidOn = todayInConakry();
   const created = await transaction(db, async () => {
     const namesakes = await listNamesakes(db, last, first);
     const matricule = typedMatricule || await nextMatricule(db, year.label, program);
     await refuseTakenMatricule(db, matricule);
     const result = await db.prepare(`
-      INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source, costume_quantity)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie', ?) RETURNING id
-    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, phone, clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1);
+      INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source, costume_quantity, enrollment_kind)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie', ?, ?) RETURNING id
+    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, phone, clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1, enrollmentKind);
     const studentId = result.lastInsertRowid;
     await assignAccountEmail(db, { id: studentId, first_name: first, last_name: last });
     await audit(db, user.id, "etudiant.creer", "students", studentId, null, {
-      matricule, last, first, level: input.level, scholarship,
+      matricule, last, first, level: input.level, scholarship, enrollmentKind,
       namesakes: namesakes.map((row) => row.matricule),
     });
     if (scholarship) {
@@ -1592,13 +1596,13 @@ export async function createStudent(db, user, input) {
         paidOn,
         method: input.method,
         idempotencyKey: `inscription:${studentId}`,
-        note: "Versement du jour à l'inscription",
+        note: enrollmentKind === "reinscription" ? "Versement du jour à la réinscription" : "Versement du jour à l'inscription",
         costumeAmount,
         costumeQuantity,
         cashDiscount,
       }, paidOn);
     } else if (costumeAmount > 0) {
-      await recordCostume(db, user, studentId, { amount: costumeAmount, quantity: costumeQuantity, paidOn, method: input.method, note: "Versé à l'inscription" }, paidOn);
+      await recordCostume(db, user, studentId, { amount: costumeAmount, quantity: costumeQuantity, paidOn, method: input.method, note: enrollmentKind === "reinscription" ? "Versé à la réinscription" : "Versé à l'inscription" }, paidOn);
     }
     const current = await studentSituation(db, studentId, paidOn);
     await refreshCard(db, current.student, current.situation);
@@ -2053,7 +2057,7 @@ export async function catalog(db) {
     cashDiscount: CASH_DISCOUNT,
     techInscriptionRate: TECH_INSCRIPTION_RATE,
     hypotheses: [
-      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.techBachelor)} à AFRICAIIM Tech (CPI et MIAGE), ${formatGnf(REGISTRATION_FEES.master)} en Master. Ils sont dus en entier au premier versement, le 5 octobre, pour tous les étudiants, y compris ceux déjà enregistrés.`,
+      `Les frais d'inscription s'ajoutent à la scolarité : ${formatGnf(REGISTRATION_FEES.bachelor)} en Licence et Bachelor, ${formatGnf(REGISTRATION_FEES.techBachelor)} à AFRICAIIM Tech (CPI et MIAGE), ${formatGnf(REGISTRATION_FEES.master)} en Master. Une réinscription est de ${formatGnf(REGISTRATION_FEES.reenrollment)}, au choix à la création de la fiche. Ils sont dus en entier au premier versement, le 5 octobre.`,
       `À AFRICAIIM Tech, dès que toute la scolarité est versée, l'inscription est réduite de ${TECH_INSCRIPTION_RATE} % automatiquement.`,
       "Bachelor hors AFRICAIIM Tech : 1re année 4 000 000 + inscription, puis 10 000 000 et 10 000 000 ; 2e année 5 000 000 + inscription, puis 10 000 000 et 10 000 000 ; 3e année 6 000 000 + inscription, puis 10 000 000 et 10 000 000. AFRICAIIM Tech garde 20 % / 40 % / 40 %.",
       "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. À AFRICAIIM Tech : Cycle Préparatoire Intégré (CPI 1, CPI 2) puis MIAGE 1, 2 et 3. Chaque école se règle dans Tarifs.",
@@ -2063,6 +2067,59 @@ export async function catalog(db) {
       "L'admin de la scolarité peut modifier ces montants. Les paiements déjà enregistrés ne changent pas.",
     ],
   };
+}
+
+/** Rugui Sow : réinscription 500 000 GNF et costume, pas une nouvelle inscription. Une seule fois. */
+export async function correctRuguiSowReenrollment(db) {
+  const mark = "corrige_rugui_sow_reinscription";
+  if ((await db.prepare("SELECT value FROM settings WHERE key = ?").get(mark))?.value === "1") return;
+  const matches = await db.prepare(`
+    SELECT s.id, s.matricule, s.first_name, s.last_name
+    FROM students s
+    WHERE upper(trim(s.last_name)) = 'SOW'
+      AND (lower(s.first_name) LIKE '%rugui%' OR lower(s.first_name) LIKE '%ruguy%')
+    ORDER BY s.id
+  `).all();
+  if (matches.length !== 1) return;
+  const student = matches[0];
+  const admin = await db.prepare(`
+    SELECT u.id, r.code AS role FROM users u JOIN roles r ON r.id = u.role_id
+    WHERE u.active = 1 AND r.code IN ('super_admin', 'admin')
+    ORDER BY CASE r.code WHEN 'super_admin' THEN 0 ELSE 1 END, u.id LIMIT 1
+  `).get();
+  if (!admin) return;
+  await db.prepare("UPDATE students SET enrollment_kind = 'reinscription' WHERE id = ?").run(student.id);
+  const pays = await db.prepare(`
+    SELECT id, amount FROM payments WHERE student_id = ? AND status = 'valide' ORDER BY id
+  `).all(student.id);
+  const costumes = await db.prepare(`
+    SELECT id, amount FROM costume_payments WHERE student_id = ? AND status = 'valide'
+  `).all(student.id);
+  const costumePrice = Number((await db.prepare("SELECT value FROM settings WHERE key = 'costume_price'").get())?.value || 0);
+  try {
+    if (pays.length === 1 && Number(pays[0].amount) === REGISTRATION_FEES.bachelor) {
+      await correctPayment(db, admin, pays[0].id, {
+        amount: REGISTRATION_FEES.reenrollment,
+        reason: "Rugui Sow : réinscription 500 000 GNF, pas une nouvelle inscription",
+        idempotencyKey: `corrige-rugui-sow-${student.id}-reinscription`,
+      });
+    } else if (
+      pays.length === 1
+      && costumes.length > 0
+      && costumePrice > 0
+      && Number(pays[0].amount) === costumePrice
+    ) {
+      await cancelPayment(db, admin, pays[0].id, "Rugui Sow : le costume a déjà été enregistré à part, ce versement de scolarité est retiré");
+    }
+  } catch {
+    /* La fiche est déjà en réinscription ; le versement se corrige ensuite à la main si besoin. */
+  }
+  const after = await studentSituation(db, student.id);
+  await refreshCard(db, after.student, after.situation);
+  await audit(db, admin.id, "etudiant.reinscription", "students", student.id, { matricule: student.matricule }, { enrollmentKind: "reinscription" });
+  await db.prepare(`
+    INSERT INTO settings(key, value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'
+  `).run(mark);
 }
 
 export { publicStudent, METHODS, INSTALLMENTS };

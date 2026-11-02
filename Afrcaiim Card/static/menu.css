@@ -47,7 +47,13 @@
 .hero p, .hero strong, .hero h1 { color: #F4F1EA; overflow-wrap: anywhere; }
 .logo-universite, .logo-diima { display: block; height: 64px; width: auto; object-fit: contain; }
 .hero .logo-universite { height: 34px; width: auto; margin: 0 0 0.3rem; }
-.affiche .logo-diima { margin: 0 auto 0.6rem; height: 88px; }
+.affiche .logo-identite {
+  display: block;
+  margin: 0 auto 0.6rem;
+  width: min(280px, 78vw);
+  height: auto;
+  background: transparent;
+}
 .enseigne { letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.68rem; margin: 0; }
 .hero .enseigne, .hero .ouvert { color: #FEAB00; }
 .hero h1 { margin: 0.05rem 0; font-size: clamp(1.15rem, 5vw, 1.45rem); line-height: 1.15; }
@@ -296,7 +302,6 @@ body.menu-barre-cachee .menu-haut {
 .recu li span { min-width: 0; overflow-wrap: anywhere; }
 .somme { font-size: 1.2rem; font-weight: 700; }
 .affiche img.qr { width: min(280px, 80vw); height: auto; }
-.affiche img:first-child { width: min(180px, 70vw); height: auto; }
 .cuisine .ticket { background: #fff; border-left: 6px solid #FEAB00; border-radius: 12px; padding: 0.8rem 1rem; margin: 0.7rem 0; }
 .cuisine .ticket header { display: flex; justify-content: space-between; gap: 0.5rem; }
 .epuisement { list-style: none; padding: 0; }

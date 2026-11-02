@@ -65,10 +65,23 @@ export function formatGnf(amount) {
  * Frais d'inscription, en plus de la scolarité, payés avec la première échéance.
  * Ils entrent dans les frais annuels : la remise pour paiement en une fois et la bourse s'y appliquent.
  */
-export const REGISTRATION_FEES = { bachelor: 1_000_000, master: 3_000_000, techBachelor: 2_000_000 };
+export const REGISTRATION_FEES = {
+  bachelor: 1_000_000,
+  master: 3_000_000,
+  techBachelor: 2_000_000,
+  reenrollment: 500_000,
+};
 
-/** Africaiim Tech (code TECH) : 2.000.000 d'inscription en CPI 1, 2 et MIAGE 1, 2, 3 (et ses anciennes fiches Bachelor) ; le reste suit le tarif commun. */
-export function registrationFee(level, programCode = "") {
+export function enrollmentKindOf(value) {
+  const kind = String(value || "inscription").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[-_\s]/g, "");
+  return kind === "reinscription" ? "reinscription" : "inscription";
+}
+
+/** Africaiim Tech (code TECH) : 2.000.000 d'inscription en CPI 1, 2 et MIAGE 1, 2, 3 (et ses anciennes fiches Bachelor) ; le reste suit le tarif commun. Réinscription : 500.000 pour toutes les écoles. */
+export function registrationFee(level, programCode = "", kind = "inscription") {
+  if (enrollmentKindOf(kind) === "reinscription") return REGISTRATION_FEES.reenrollment;
   const code = String(level || "");
   if (code.startsWith("cpi_") || code.startsWith("miage_")) return REGISTRATION_FEES.techBachelor;
   if (code.startsWith("master")) return REGISTRATION_FEES.master;

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { hashPassword } from "../auth/passwords.js";
 import { PROGRAMS, offerPlans } from "./legacy.js";
 import { transaction } from "../db/index.js";
+import { correctRuguiSowReenrollment } from "../services/domain.js";
 
 const SUPER_ADMIN_EMAIL = "jtoupou@univ-africaiim.com";
 
@@ -82,6 +83,7 @@ export async function applyIdentity(db) {
     await ensureOfferSchedules(db);
     await applyBachelorFixedInstallments(db);
   });
+  await correctRuguiSowReenrollment(db);
 }
 
 const BACHELOR_TRANCHES_MARK = "bareme_bachelor_tranches_fixes";

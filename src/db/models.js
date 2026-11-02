@@ -80,6 +80,7 @@ const tables = () => ({
     costume_quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     custom_fee: { type: DataTypes.BIGINT, allowNull: true },
     custom_fee_reason: text(),
+    enrollment_kind: { type: DataTypes.TEXT, allowNull: false, defaultValue: "inscription" },
     created_at: stamp(),
   }],
   Discount: ["discounts", {

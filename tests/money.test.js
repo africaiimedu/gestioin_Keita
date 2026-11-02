@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bachelorSchoolingParts, computeSituation, feesDue, fitPlanToDue, officialInstallments, recoveryRate } from "../src/finance/money.js";
+import { bachelorSchoolingParts, computeSituation, enrollmentKindOf, feesDue, fitPlanToDue, officialInstallments, recoveryRate, registrationFee, REGISTRATION_FEES } from "../src/finance/money.js";
 import { hotp } from "../src/auth/totp.js";
 import { can } from "../src/auth/passwords.js";
 
@@ -70,6 +70,16 @@ test("cas réels du fichier : soldé, partiel, tech, master, aucun paiement", ()
   });
   assert.equal(retard.status, "en_retard");
   assert.equal(retard.overdueAmount, 5_000_000);
+});
+
+test("réinscription : 500 000 GNF pour toutes les écoles", () => {
+  assert.equal(enrollmentKindOf("Réinscription"), "reinscription");
+  assert.equal(REGISTRATION_FEES.reenrollment, 500_000);
+  assert.equal(registrationFee("bachelor_1", "ABS", "reinscription"), 500_000);
+  assert.equal(registrationFee("master_1", "ABS", "reinscription"), 500_000);
+  assert.equal(registrationFee("cpi_1", "TECH", "reinscription"), 500_000);
+  assert.equal(registrationFee("bachelor_1", "ABS", "inscription"), 1_000_000);
+  assert.equal(registrationFee("cpi_1", "TECH"), 2_000_000);
 });
 
 test("tranches Bachelor hors Tech : 4 / 10 / 10, 5 / 10 / 10, 6 / 10 / 10", () => {
