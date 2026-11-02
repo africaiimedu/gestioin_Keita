@@ -302,6 +302,7 @@ body.menu-barre-cachee .menu-haut {
 .recu li span { min-width: 0; overflow-wrap: anywhere; }
 .somme { font-size: 1.2rem; font-weight: 700; }
 .affiche img.qr { width: min(280px, 80vw); height: auto; }
+.affiche .actions { justify-content: center; margin-top: 1rem; }
 .cuisine .ticket { background: #fff; border-left: 6px solid #FEAB00; border-radius: 12px; padding: 0.8rem 1rem; margin: 0.7rem 0; }
 .cuisine .ticket header { display: flex; justify-content: space-between; gap: 0.5rem; }
 .epuisement { list-style: none; padding: 0; }

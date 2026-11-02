@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Affiche cantine{% endblock %}
-{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=21">{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=22">{% endblock %}
 {% block contenu %}
 <section class="affiche">
   <img class="logo-identite" src="/static/marque-identite.png?v=3" alt="Université AFRICAIIM" width="420" height="158">
@@ -9,6 +9,9 @@
   <img class="qr" src="/cantine/qr.png" alt="QR code du menu">
   <p>{{ point.nom }}</p>
   <p class="aide">Ce QR code est définitif. Quand les repas changent, le même code affiche le nouveau menu. Le paiement se fait avec le compte de la carte.</p>
-  <button class="bouton" type="button" onclick="window.print()">Imprimer cette affiche</button>
+  <p class="actions">
+    <a class="bouton" href="/cantine/affiche.pdf">Télécharger le PDF</a>
+    <button class="bouton bouton-secondaire" type="button" onclick="window.print()">Imprimer cette affiche</button>
+  </p>
 </section>
 {% endblock %}

@@ -55,6 +55,7 @@ from app.services.menu_cantine import (
     refuser_commande,
     retirer_plat,
 )
+from app.services.pdf_affiche_cantine import pdf_affiche_cantine
 from app.services.recus import MODES, NATURES, lister, rapport
 from app.ui import csrf_valide, flash, render
 
@@ -713,6 +714,22 @@ def affiche(
         flash(request, "erreur", "Aucune cantine n'est ouverte.")
         raise Redirection("/cantine")
     return render(request, "cantine_affiche.html", user=cuisiniere, point=point, url=f"{base_url()}/m/{point.jeton}")
+
+
+@router.get("/cantine/affiche.pdf")
+def affiche_pdf(
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    point = db.scalar(select(PointCantine).where(PointCantine.actif.is_(True)).order_by(PointCantine.id))
+    if point is None:
+        return Response(status_code=404)
+    pdf = pdf_affiche_cantine(f"{base_url()}/m/{point.jeton}", point.nom)
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="affiche-qr-cantine.pdf"'},
+    )
 
 
 @router.get("/cantine/qr.png")

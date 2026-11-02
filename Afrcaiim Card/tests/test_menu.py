@@ -638,3 +638,47 @@ def test_matricule_modifiable_depuis_la_fiche_carte():
                 db.execute(delete(Utilisateur).where(Utilisateur.id == uid))
                 db.commit()
         _nettoyer()
+
+
+def test_pdf_affiche_qr_cantine():
+    import io
+
+    from pypdf import PdfReader
+
+    from app.services.pdf_affiche_cantine import pdf_affiche_cantine
+
+    pdf = pdf_affiche_cantine("https://exemple.test/m/jeton-affiche", "Cantine principale")
+    assert pdf[:4] == b"%PDF"
+    texte = PdfReader(io.BytesIO(pdf)).pages[0].extract_text() or ""
+    assert "Scanne pour commander" in texte
+    assert "Cantine principale" in texte
+
+    _nettoyer()
+    try:
+        with TestClient(app) as client:
+            with SessionLocal() as db:
+                _assurer_menu(db)
+                db.add(
+                    Utilisateur(
+                        identifiant=_CUISINIERE,
+                        mot_de_passe_hash=hash_mot_de_passe(_MOT),
+                        role="cuisiniere",
+                        actif=True,
+                        peut_valider_qr=True,
+                        doit_changer_mot_de_passe=False,
+                        cree_le=maintenant(),
+                    )
+                )
+                db.commit()
+            refuse = client.get("/cantine/affiche.pdf", follow_redirects=False)
+            assert refuse.status_code in (303, 401, 403)
+            _entrer(client, _CUISINIERE)
+            page = client.get("/cantine/affiche")
+            assert page.status_code == 200
+            assert "/cantine/affiche.pdf" in page.text
+            fichier = client.get("/cantine/affiche.pdf")
+            assert fichier.status_code == 200
+            assert fichier.content[:4] == b"%PDF"
+            assert "affiche-qr-cantine.pdf" in fichier.headers.get("content-disposition", "")
+    finally:
+        _nettoyer()
