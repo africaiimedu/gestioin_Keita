@@ -23,6 +23,15 @@
     {% if niveau %}<p class="niveau-verif">Niveau : {{ niveau }}</p>{% endif %}
     {% if programme %}<p>{{ programme }}</p>{% endif %}
     {% if annee %}<p>{{ annee }}</p>{% endif %}
+    {% if not personnel %}
+      {% if abonnement and abonnement_fin %}
+        <p class="cantine-verif">Abonnement cantine jusqu'au {{ abonnement_fin|datefr }}</p>
+      {% elif abonnement %}
+        <p class="cantine-verif">Abonnement cantine en cours</p>
+      {% else %}
+        <p class="cantine-verif">Cantine : non abonné</p>
+      {% endif %}
+    {% endif %}
     <p class="matricule-verif">{{ matricule }}</p>
     {% if validite %}<p class="validite-verif">Valide jusqu'au {{ validite|datefr }}</p>{% endif %}
     {% if statut == "active" %}

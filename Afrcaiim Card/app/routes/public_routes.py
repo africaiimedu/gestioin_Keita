@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import PERSONNEL, get_db, utilisateur_courant
 from app.models import BadgePersonnel, Carte, Etudiant, Journal
-from app.services.cantine import decision_repas, prix_repas, valider_repas
+from app.services.cantine import decision_repas, est_abonne, prix_repas, valider_repas
 from app.services.ecoles import libelle_niveau
 from app.services.metier import carte_courante, journaliser, maintenant
 from app.services.courrier import formater_francs
@@ -102,6 +102,7 @@ def _page_identite(request: Request, db: Session, *, jeton: str, matricule: str 
         solde = int(etudiant.solde_cantine or 0)
         decision = decision_repas(solde, prix, etudiant.email or "", statut == "active")
         pointe = _pointer_presence(db, agent, carte, statut) if staff else False
+        abonne = est_abonne(etudiant)
         return _sans_cache(
             render(
                 request,
@@ -121,6 +122,8 @@ def _page_identite(request: Request, db: Session, *, jeton: str, matricule: str 
                 email=etudiant.email or "",
                 validite=etudiant.date_validite,
                 annee=etudiant.annee_academique or "",
+                abonnement=abonne,
+                abonnement_fin=etudiant.abonnement_fin if abonne else None,
                 solde=formater_francs(solde),
                 prix=formater_francs(prix),
                 peut=decision.ok,
@@ -158,6 +161,8 @@ def _page_identite(request: Request, db: Session, *, jeton: str, matricule: str 
             email=personne.email or "",
             validite=personne.date_validite,
             annee=personne.annee_academique or "",
+            abonnement=False,
+            abonnement_fin=None,
             solde="",
             prix="",
             peut=False,
