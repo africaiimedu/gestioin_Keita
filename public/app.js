@@ -979,7 +979,7 @@ function peopleHtml(data) {
       <span>${esc(label)}</span><strong>${esc(value)}</strong><span class="muted">${esc(note)}</span>
     </button>`).join("")}
   </section>
-  <p class="row-actions"><a class="btn secondary" href="/api/listes/premiere-tranche.pdf">Télécharger la 1re tranche non payée</a></p>`;
+  <p class="row-actions"><a class="btn secondary" href="/api/listes/retards.pdf">Télécharger les étudiants en retard</a></p>`;
 }
 
 function dashboardHtml(data, control) {
@@ -1123,7 +1123,7 @@ async function showStudents(screen) {
   const program = state.catalog.programs.map((item) => `<option value="${item.id}">${esc(item.name)}</option>`).join("");
   screen.innerHTML = `    <div class="top"><div><p class="mark">Registre</p><h1>Étudiants</h1>
       <p class="top-total"><strong id="student-total">…</strong> <span id="student-total-label">étudiants inscrits</span></p></div>
-      <div class="row-actions">${allowed("student.write") ? `<button class="btn secondary" id="link-cards" type="button">Lier les cartes</button>` : ""}<a class="btn secondary" id="download-students" href="/api/listes/etudiants.pdf">Télécharger la liste</a><a class="btn secondary" href="/api/listes/premiere-tranche.pdf">PDF — 1re tranche non payée</a><button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
+      <div class="row-actions">${allowed("student.write") ? `<button class="btn secondary" id="link-cards" type="button">Lier les cartes</button>` : ""}<a class="btn secondary" id="download-students" href="/api/listes/etudiants.pdf">Télécharger la liste</a><a class="btn secondary" href="/api/listes/retards.pdf">PDF — étudiants en retard</a><button class="btn" id="new-student" type="button">Nouvelle fiche</button></div></div>
     <div class="filters"><input id="q" placeholder="Nom, matricule ou téléphone" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
       <select id="niveau"><option value="">Tous les niveaux</option>${(state.catalog.levels || []).map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
@@ -2821,8 +2821,7 @@ async function showLate(screen) {
     </article>`;
   };
   screen.innerHTML = `<div class="top"><div><p class="mark">Communication</p><h1>Étudiants en retard</h1></div>
-    <a class="btn secondary" href="/api/listes/retards.pdf">Télécharger les retards</a>
-    <a class="btn secondary" href="/api/listes/premiere-tranche.pdf">PDF — 1re tranche non payée</a></div>
+    <a class="btn secondary" href="/api/listes/retards.pdf">Télécharger les étudiants en retard</a></div>
     <section class="late-hero">
       <article class="late-stat">
         <p><span class="pulse" aria-hidden="true"></span> À relancer</p>

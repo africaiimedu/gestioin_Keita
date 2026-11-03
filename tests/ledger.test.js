@@ -934,11 +934,6 @@ test("tableau de bord : étudiants n'ayant pas payé la première tranche", asyn
   const listed = await domain.listStudents(db, { paymentStatus: domain.FIRST_INSTALLMENT_UNPAID });
   assert.ok(listed.some((row) => row.student.id === created.student.id));
   assert.equal(listed.length, after.firstInstallment.unpaid);
-  const unpaid = await domain.unpaidFirstInstallment(db);
-  const row = unpaid.find((item) => item.student.id === created.student.id);
-  assert.ok(row);
-  assert.ok(row.first.left > 0);
-  assert.equal(row.first.left, row.first.amount);
 });
 
 test("Africaiim Tech : solder la scolarité réduit l'inscription de 25 %, une avance de costume figure au reçu", async () => {

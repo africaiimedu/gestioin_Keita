@@ -38,7 +38,6 @@ import {
   updateUserAccess,
   dashboard,
   lateStudents,
-  unpaidFirstInstallment,
   listCashPayments,
   listCashStudents,
   listStudents,
@@ -490,9 +489,7 @@ app.get("/api/listes/:kind.pdf", requireAction("student.read"), async (req, res)
       paymentStatus: req.query.statut || null,
       phone: req.query.telephone || null,
     });
-    title = req.query.statut === "premiere_tranche"
-      ? "Étudiants n'ayant pas payé la première tranche"
-      : "Liste des étudiants";
+    title = req.query.statut === "en_retard" ? "Étudiants en retard" : "Liste des étudiants";
     subtitle = `${listed.length} fiche(s) · téléphone inclus · ${today}`;
     columns = [
       { label: "Matricule", width: 100 },
@@ -538,47 +535,27 @@ app.get("/api/listes/:kind.pdf", requireAction("student.read"), async (req, res)
       formatGnf(line.paid),
       formatGnf(line.reste),
     ]);
-  } else if (kind === "premiere-tranche") {
-    const unpaid = await unpaidFirstInstallment(db);
-    title = "Étudiants n'ayant pas payé la première tranche";
-    subtitle = `${unpaid.length} fiche(s) · échéance du 5 octobre · ${today}`;
+  } else if (kind === "retards") {
+    const late = await lateStudents(db);
+    title = "Étudiants en retard";
+    subtitle = `${late.length} fiche(s) · échéance dépassée · ${today}`;
     columns = [
       { label: "Matricule", width: 90 },
       { label: "Nom", width: 150 },
       { label: "Téléphone", width: 95 },
-      { label: "École", width: 150 },
-      { label: "Niveau", width: 70 },
-      { label: "1re tranche", width: 85, align: "right" },
-      { label: "Reste 1re", width: 85, align: "right" },
-      { label: "Reste total", width: 85, align: "right" },
-    ];
-    rows = unpaid.map((row) => [
-      row.student.matricule,
-      row.student.name,
-      row.student.phone || "",
-      row.student.program,
-      row.student.level,
-      formatGnf(row.first.amount),
-      formatGnf(row.first.left),
-      formatGnf(row.situation.reste),
-    ]);
-  } else if (kind === "retards") {
-    const late = await lateStudents(db);
-    title = "Étudiants en retard";
-    subtitle = `${late.length} fiche(s) · ${today}`;
-    columns = [
-      { label: "Matricule", width: 100 },
-      { label: "Nom", width: 180 },
-      { label: "Téléphone", width: 110 },
-      { label: "École", width: 190 },
-      { label: "Échu", width: 100, align: "right" },
-      { label: "Reste", width: 100, align: "right" },
+      { label: "École", width: 160 },
+      { label: "Niveau", width: 75 },
+      { label: "Jours", width: 50, align: "right" },
+      { label: "Échu", width: 90, align: "right" },
+      { label: "Reste", width: 90, align: "right" },
     ];
     rows = late.map((row) => [
       row.student.matricule,
       row.student.name,
       row.student.phone || "",
       row.student.program,
+      row.student.level,
+      String(row.situation.agingDays || 0),
       formatGnf(row.situation.overdueAmount),
       formatGnf(row.situation.reste),
     ]);
