@@ -1527,6 +1527,18 @@ export async function lateStudents(db, asOf = todayInConakry()) {
     }));
 }
 
+/** Étudiants dont la première échéance (5 octobre) n'est pas entièrement payée. */
+export async function unpaidFirstInstallment(db, asOf = todayInConakry()) {
+  return (await listStudents(db, { paymentStatus: FIRST_INSTALLMENT_UNPAID }, asOf)).map((row) => {
+    const first = firstInstallmentLeft(row.situation);
+    return {
+      student: publicStudent(row.student),
+      situation: row.situation,
+      first,
+    };
+  });
+}
+
 function parseMoney(value) {
   if (value == null || value === "") return 0;
   const digits = String(value).replace(/[^\d]/g, "");

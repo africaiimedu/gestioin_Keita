@@ -38,6 +38,7 @@ import {
   updateUserAccess,
   dashboard,
   lateStudents,
+  unpaidFirstInstallment,
   listCashPayments,
   listCashStudents,
   listStudents,
@@ -489,7 +490,9 @@ app.get("/api/listes/:kind.pdf", requireAction("student.read"), async (req, res)
       paymentStatus: req.query.statut || null,
       phone: req.query.telephone || null,
     });
-    title = "Liste des étudiants";
+    title = req.query.statut === "premiere_tranche"
+      ? "Étudiants n'ayant pas payé la première tranche"
+      : "Liste des étudiants";
     subtitle = `${listed.length} fiche(s) · téléphone inclus · ${today}`;
     columns = [
       { label: "Matricule", width: 100 },
@@ -534,6 +537,30 @@ app.get("/api/listes/:kind.pdf", requireAction("student.read"), async (req, res)
       formatGnf(line.price),
       formatGnf(line.paid),
       formatGnf(line.reste),
+    ]);
+  } else if (kind === "premiere-tranche") {
+    const unpaid = await unpaidFirstInstallment(db);
+    title = "Étudiants n'ayant pas payé la première tranche";
+    subtitle = `${unpaid.length} fiche(s) · échéance du 5 octobre · ${today}`;
+    columns = [
+      { label: "Matricule", width: 90 },
+      { label: "Nom", width: 150 },
+      { label: "Téléphone", width: 95 },
+      { label: "École", width: 150 },
+      { label: "Niveau", width: 70 },
+      { label: "1re tranche", width: 85, align: "right" },
+      { label: "Reste 1re", width: 85, align: "right" },
+      { label: "Reste total", width: 85, align: "right" },
+    ];
+    rows = unpaid.map((row) => [
+      row.student.matricule,
+      row.student.name,
+      row.student.phone || "",
+      row.student.program,
+      row.student.level,
+      formatGnf(row.first.amount),
+      formatGnf(row.first.left),
+      formatGnf(row.situation.reste),
     ]);
   } else if (kind === "retards") {
     const late = await lateStudents(db);
