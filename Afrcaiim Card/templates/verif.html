@@ -19,21 +19,56 @@
     <img class="portrait" src="/photo/{{ jeton }}" alt="Photo de la carte">
     <p class="nom-verif">{{ nom }}</p>
     <p class="pastille pastille-{{ statut }} grand">{{ statut|statutfr }}</p>
-    {% if ecole %}<p>{{ ecole }}</p>{% endif %}
-    {% if niveau %}<p class="niveau-verif">Niveau : {{ niveau }}</p>{% endif %}
-    {% if programme %}<p>{{ programme }}</p>{% endif %}
-    {% if annee %}<p>{{ annee }}</p>{% endif %}
-    {% if not personnel %}
-      {% if abonnement and abonnement_fin %}
-        <p class="cantine-verif">Abonnement cantine jusqu'au {{ abonnement_fin|datefr }}</p>
-      {% elif abonnement %}
-        <p class="cantine-verif">Abonnement cantine en cours</p>
-      {% else %}
-        <p class="cantine-verif">Cantine : non abonné</p>
+    <dl class="fiche-verif">
+      <div>
+        <dt>Matricule</dt>
+        <dd>{{ matricule }}</dd>
+      </div>
+      {% if ecole %}
+        <div>
+          <dt>{% if personnel %}Fonction{% else %}École{% endif %}</dt>
+          <dd>{{ ecole }}</dd>
+        </div>
       {% endif %}
-    {% endif %}
-    <p class="matricule-verif">{{ matricule }}</p>
-    {% if validite %}<p class="validite-verif">Valide jusqu'au {{ validite|datefr }}</p>{% endif %}
+      {% if niveau %}
+        <div>
+          <dt>Niveau</dt>
+          <dd>{{ niveau }}</dd>
+        </div>
+      {% endif %}
+      {% if programme %}
+        <div>
+          <dt>Programme</dt>
+          <dd>{{ programme }}</dd>
+        </div>
+      {% endif %}
+      {% if annee %}
+        <div>
+          <dt>Année</dt>
+          <dd>{{ annee }}</dd>
+        </div>
+      {% endif %}
+      {% if not personnel %}
+        <div>
+          <dt>Cantine</dt>
+          <dd>
+            {% if abonnement and abonnement_fin %}
+              Abonné jusqu'au {{ abonnement_fin|datefr }}
+            {% elif abonnement %}
+              Abonné
+            {% else %}
+              Non abonné
+            {% endif %}
+          </dd>
+        </div>
+      {% endif %}
+      {% if validite %}
+        <div>
+          <dt>Validité de la carte</dt>
+          <dd>jusqu'au {{ validite|datefr }}</dd>
+        </div>
+      {% endif %}
+    </dl>
     {% if statut == "active" %}
       <p class="resultat resultat-bon">{% if personnel %}Membre du personnel confirmé de l'Université AFRICAIIM.{% else %}Étudiant confirmé de l'Université AFRICAIIM.{% endif %}</p>
       {% if pointe %}

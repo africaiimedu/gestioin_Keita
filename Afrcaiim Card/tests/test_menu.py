@@ -522,8 +522,14 @@ def test_qr_menu_pour_l_etudiant_verification_et_code_barres_pour_le_personnel()
             identite = client.get(f"/id/{jeton}", follow_redirects=False)
             assert identite.status_code == 200
             assert "Étudiant confirmé de l'Université AFRICAIIM" in identite.text
-            assert "Niveau : Bachelor 1ère année" in identite.text
-            assert "Cantine : non abonné" in identite.text
+            assert "Bachelor 1ère année" in identite.text
+            fiche = identite.text[identite.text.index('class="pastille'):]
+            assert fiche.index("Matricule") < fiche.index(_MATRICULE) < fiche.index("École")
+            assert fiche.index("École") < fiche.index("AFRICAIIM Business School") < fiche.index("Niveau")
+            assert fiche.index("Niveau") < fiche.index("Bachelor 1ère année") < fiche.index("Programme")
+            assert fiche.index("Programme") < fiche.index("Bachelor en Management International") < fiche.index("Année")
+            assert fiche.index("Année") < fiche.index("2026-2027") < fiche.index("Cantine")
+            assert fiche.index("Cantine") < fiche.index("Non abonné") < fiche.index("Validité de la carte")
             assert "/login?identifiant=" in identite.text
             assert "Connexion à mon compte" in identite.text
             assert identite.text.index("Connexion à mon compte") < identite.text.index("Identité officielle")

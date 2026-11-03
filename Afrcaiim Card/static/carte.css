@@ -486,8 +486,32 @@ body.page-verif main { padding: 0.4rem 1rem 2rem; }
   margin: 0 auto 0.85rem;
   background: transparent;
 }
-.verif .niveau-verif { font-weight: 700; color: #004C22; margin: 0.15rem 0; }
-.verif .cantine-verif { font-weight: 700; color: #004C22; margin: 0.35rem 0 0.15rem; }
+.verif .fiche-verif {
+  list-style: none;
+  margin: 0.85rem auto 0.7rem;
+  padding: 0;
+  max-width: 22rem;
+  text-align: left;
+}
+.verif .fiche-verif > div {
+  display: grid;
+  grid-template-columns: 8.2rem 1fr;
+  gap: 0.35rem 0.7rem;
+  padding: 0.28rem 0;
+  border-bottom: 1px solid #e4dfd4;
+}
+.verif .fiche-verif dt {
+  margin: 0;
+  color: #5F6B66;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.verif .fiche-verif dd {
+  margin: 0;
+  color: #004C22;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
 .verif .portrait { margin: 1rem auto; width: 7.2rem; height: 9.2rem; object-fit: cover; border-radius: 0.6rem; border: 3px solid var(--vert); }
 .surtitre-verif { margin: 0; letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.78rem; color: var(--vert); font-weight: 700; }
 .verif h1 { margin: 0.2rem 0 1rem; font-size: 1.45rem; }
