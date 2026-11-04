@@ -15,7 +15,7 @@ from app.deps import get_db, utilisateur_courant
 from app.models import Etudiant, Utilisateur
 from app.services.import_etudiants import _MATRICULE, controler_fiche
 from app.services.comptes import ADRESSE, aligner_compte, assurer_compte_etudiant
-from app.services.cantine import crediter, prix_repas
+from app.services.cantine import ABONNEMENT_MENSUEL, crediter, est_abonne, poser_abonnement, prix_repas
 from app.services.metier import creer_etudiant, journaliser, supprimer_etudiant
 from app.services.ecoles import libelle_niveau
 from app.services.universite_api import rafraichir_fiche, validite_connue
@@ -187,10 +187,15 @@ def lire_cantine(matricule: str, request: Request, db: Session = Depends(get_db)
     etudiant, erreur = _fiche_cantine(db, matricule)
     if erreur:
         return erreur
+    abonne = est_abonne(etudiant)
+    fin = etudiant.abonnement_fin if abonne else None
     return {
         "matricule": etudiant.matricule,
         "solde": int(etudiant.solde_cantine or 0),
         "prixRepas": prix_repas(),
+        "abonne": abonne,
+        "abonnementMois": int(getattr(etudiant, "abonnement_mois", 0) or 0) if abonne else 0,
+        "abonnementFin": fin.isoformat() if fin else "",
     }
 
 
@@ -207,10 +212,65 @@ async def crediter_cantine_api(matricule: str, request: Request, db: Session = D
         corps = {}
     try:
         montant = int(str((corps or {}).get("montant") or "").replace(" ", "").replace(".", ""))
+        if montant > 0 and montant % ABONNEMENT_MENSUEL == 0:
+            mois = montant // ABONNEMENT_MENSUEL
+            if 1 <= mois <= 12:
+                recu = poser_abonnement(db, etudiant, None, mois)
+                etudiant = db.get(Etudiant, etudiant.id)
+                abonne = est_abonne(etudiant)
+                fin = etudiant.abonnement_fin if abonne else None
+                return {
+                    "matricule": etudiant.matricule,
+                    "solde": int(etudiant.solde_cantine or 0),
+                    "prixRepas": prix_repas(),
+                    "abonne": abonne,
+                    "abonnementMois": mois if abonne else 0,
+                    "abonnementFin": fin.isoformat() if fin else "",
+                    "recuId": recu.id,
+                    "recuNumero": recu.numero,
+                }
         solde = crediter(db, etudiant, montant, None)
     except (TypeError, ValueError) as exc:
         texte = str(exc)
         if "invalid literal" in texte or not texte:
             texte = "Indiquez un montant en francs guinéens, sans virgule."
         return JSONResponse({"message": texte}, status_code=400)
-    return {"matricule": etudiant.matricule, "solde": solde, "prixRepas": prix_repas()}
+    etudiant = db.get(Etudiant, etudiant.id)
+    return {
+        "matricule": etudiant.matricule,
+        "solde": solde,
+        "prixRepas": prix_repas(),
+        "abonne": est_abonne(etudiant),
+        "abonnementMois": int(getattr(etudiant, "abonnement_mois", 0) or 0) if est_abonne(etudiant) else 0,
+        "abonnementFin": etudiant.abonnement_fin.isoformat() if est_abonne(etudiant) and etudiant.abonnement_fin else "",
+    }
+
+
+@router.post("/api/cantine/{matricule}/abonnement")
+async def abonner_cantine_api(matricule: str, request: Request, db: Session = Depends(get_db)):
+    if not _jeton_accepte(request):
+        return JSONResponse({"message": "Jeton refusé."}, status_code=401)
+    etudiant, erreur = _fiche_cantine(db, matricule)
+    if erreur:
+        return erreur
+    try:
+        corps = await request.json()
+    except Exception:
+        corps = {}
+    try:
+        recu = poser_abonnement(db, etudiant, None, (corps or {}).get("mois", 1))
+    except ValueError as exc:
+        return JSONResponse({"message": str(exc)}, status_code=400)
+    etudiant = db.get(Etudiant, etudiant.id)
+    abonne = est_abonne(etudiant)
+    fin = etudiant.abonnement_fin if abonne else None
+    return {
+        "matricule": etudiant.matricule,
+        "solde": int(etudiant.solde_cantine or 0),
+        "prixRepas": prix_repas(),
+        "abonne": abonne,
+        "abonnementMois": int(getattr(etudiant, "abonnement_mois", 0) or 0) if abonne else 0,
+        "abonnementFin": fin.isoformat() if fin else "",
+        "recuId": recu.id,
+        "recuNumero": recu.numero,
+    }

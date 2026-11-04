@@ -324,3 +324,27 @@ def test_abonnement_plusieurs_mois_recu():
             assert pdf[:4] == b"%PDF"
     finally:
         _nettoyer()
+
+
+def test_recharge_mensuelle_devient_abonnement():
+    from app.services.cantine import crediter, est_abonne, poser_abonnement
+
+    _nettoyer()
+    try:
+        with SessionLocal() as db:
+            _assurer_menu(db)
+            etudiant, utilisateur = _etudiant(db, _MATRICULES[0], _IDENTIFIANTS[0], 0)
+            crediter(db, etudiant, 600_000, utilisateur.id)
+            db.refresh(etudiant)
+            assert etudiant.solde_cantine == 600_000
+            assert not est_abonne(etudiant)
+            recharge = db.scalar(select(RecuCantine).where(RecuCantine.etudiant_id == etudiant.id, RecuCantine.nature == "recharge"))
+            pose = poser_abonnement(db, etudiant, utilisateur.id, 1)
+            db.refresh(etudiant)
+            assert pose.id == recharge.id
+            assert pose.nature == "abonnement"
+            assert est_abonne(etudiant)
+            assert etudiant.solde_cantine == 0
+            assert etudiant.abonnement_mois == 1
+    finally:
+        _nettoyer()

@@ -9,7 +9,7 @@ from datetime import date, timezone
 from sqlalchemy import select
 
 from app.config import charger_config, definir_prix_repas
-from app.models import Carte, Etudiant, MouvementCantine, maintenant
+from app.models import Carte, Etudiant, MouvementCantine, RecuCantine, maintenant
 from app.services.courrier import formater_francs
 from app.services.import_etudiants import controler_email
 from app.services.metier import journaliser
@@ -147,22 +147,51 @@ def poser_abonnement(db, etudiant: Etudiant, acteur_id: int | None, mois=1):
         if limite:
             raise ValueError(f"Déjà abonné jusqu'au {limite.strftime('%d/%m/%Y')}.")
         raise ValueError("Cet étudiant a déjà un abonnement cantine en cours.")
+    details = (
+        f"{duree} mois · du {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')} · "
+        "plat du jour et une bouteille d'eau. Aucun débit à chaque repas."
+    )
+    deja_verse = db.scalar(
+        select(RecuCantine)
+        .where(
+            RecuCantine.etudiant_id == etudiant.id,
+            RecuCantine.nature == "recharge",
+            RecuCantine.montant == total,
+            RecuCantine.annule_le.is_(None),
+        )
+        .order_by(RecuCantine.id.desc())
+    )
     etudiant.abonne_cantine = True
     etudiant.abonnement_mois = duree
     etudiant.abonnement_fin = fin
-    recu = emettre_recu(
-        db,
-        etudiant,
-        nature="abonnement",
-        mode="abonnement",
-        montant=total,
-        solde_apres=int(etudiant.solde_cantine or 0),
-        agent_id=acteur_id,
-        details=(
-            f"{duree} mois · du {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')} · "
-            "plat du jour et une bouteille d'eau. Aucun débit à chaque repas."
-        ),
-    )
+    if deja_verse is not None:
+        if int(etudiant.solde_cantine or 0) >= total:
+            etudiant.solde_cantine = int(etudiant.solde_cantine or 0) - total
+            db.add(
+                MouvementCantine(
+                    etudiant_id=etudiant.id,
+                    montant=-total,
+                    solde_apres=etudiant.solde_cantine,
+                    agent_id=acteur_id,
+                    cree_le=maintenant(),
+                )
+            )
+        deja_verse.nature = "abonnement"
+        deja_verse.mode = "abonnement"
+        deja_verse.details = details
+        deja_verse.solde_apres = int(etudiant.solde_cantine or 0)
+        recu = deja_verse
+    else:
+        recu = emettre_recu(
+            db,
+            etudiant,
+            nature="abonnement",
+            mode="abonnement",
+            montant=total,
+            solde_apres=int(etudiant.solde_cantine or 0),
+            agent_id=acteur_id,
+            details=details,
+        )
     journaliser(
         db,
         "abonnement_cantine",

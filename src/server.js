@@ -67,7 +67,7 @@ import { renderCostumeReceiptPdf, renderDischargePdf, renderReceiptPdf } from ".
 import { renderListPdf } from "./services/listPdf.js";
 import { commitImport, csvTemplate, previewImport } from "./services/importCsv.js";
 import { pushStudentToCard, syncStudentsToCard } from "./services/cardSync.js";
-import { creditCantine, readCantine } from "./services/cardCantine.js";
+import { creditCantine, readCantine, subscribeCantine } from "./services/cardCantine.js";
 import { attachCardPortal, isCardPortal } from "./services/cardPortal.js";
 import { startEmbeddedCards } from "./services/cardRuntime.js";
 
@@ -296,7 +296,23 @@ app.post("/api/etudiants/:id/cantine", async (req, res) => {
   const current = await studentSituation(db, Number(req.params.id));
   const amount = Number(String(req.body?.amount ?? "").replace(/[^\d]/g, "") || 0);
   if (!Number.isInteger(amount) || amount <= 0) throw new HttpError(400, "Indiquez le montant à ajouter au compte cantine.");
+  const mensuel = 600_000;
+  if (amount % mensuel === 0) {
+    const mois = amount / mensuel;
+    if (mois >= 1 && mois <= 12) {
+      res.json(await subscribeCantine(current.student.matricule, mois));
+      return;
+    }
+  }
   res.json(await creditCantine(current.student.matricule, amount));
+});
+app.post("/api/etudiants/:id/cantine/abonnement", async (req, res) => {
+  if (!req.user) throw new HttpError(401, "Connexion requise");
+  if (!can(req.user, "payment.create") && !can(req.user, "cards.manage")) {
+    throw new HttpError(403, "Vous n'avez pas le droit d'enregistrer l'abonnement cantine");
+  }
+  const current = await studentSituation(db, Number(req.params.id));
+  res.json(await subscribeCantine(current.student.matricule, req.body?.mois || 1));
 });
 app.post("/api/etudiants/:id/costume", requireAction("payment.create"), async (req, res) => {
   res.status(201).json(await recordCostume(db, req.user, Number(req.params.id), req.body || {}));

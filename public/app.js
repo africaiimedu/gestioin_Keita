@@ -1507,6 +1507,25 @@ async function showStudent(screen, id) {
       }
     });
   }
+  const abonnementForm = document.querySelector("#abonnement-form");
+  if (abonnementForm) {
+    abonnementForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const error = abonnementForm.querySelector("[data-abonnement-error]");
+      error.hidden = true;
+      const button = abonnementForm.querySelector("[type=submit]");
+      button.disabled = true;
+      try {
+        const result = await api(`/api/etudiants/${id}/cantine/abonnement`, { method: "POST", body: JSON.stringify({ mois: abonnementForm.mois.value }) });
+        saved(result.abonne ? `Abonnement cantine enregistré${result.recuNumero ? ` · reçu ${result.recuNumero}` : ""}. Le QR affiche Abonné.` : "Abonnement enregistré");
+        showStudent(screen, id);
+      } catch (caught) {
+        error.hidden = false;
+        error.textContent = caught.message;
+        button.disabled = false;
+      }
+    });
+  }
   const cantineForm = document.querySelector("#cantine-form");
   if (cantineForm) {
     cantineForm.amount.addEventListener("input", (event) => {
@@ -1902,18 +1921,30 @@ function cantineCard(cantine, studentId) {
       : "Pas de fiche carte pour ce matricule. Le solde cantine se crée dans Cartes → Atelier étudiants.";
     return `<article class="card costume-box" style="margin-top:14px"><h2>Cantine</h2><p class="muted">${esc(note)}</p></article>`;
   }
+  const fin = cantine.abonnementFin ? frenchDay(cantine.abonnementFin) : "";
+  const etat = cantine.abonne
+    ? `Abonné${cantine.abonnementMois ? ` · ${cantine.abonnementMois} mois` : ""}${fin ? ` jusqu'au ${fin}` : ""}`
+    : "Non abonné · le QR affichera Abonné seulement après enregistrement de l'abonnement";
+  const mois = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => `<option value="${n}">${n} mois · ${gnf(n * 600000)}</option>`).join("");
   return `<article class="card costume-box" style="margin-top:14px">
-    <div class="costume-head"><h2>Cantine</h2><span class="tag ${cantine.solde > 0 ? "solde" : "aucun_paiement"}">${cantine.solde > 0 ? "Compte approvisionné" : "Compte à 0"}</span></div>
+    <div class="costume-head"><h2>Cantine</h2><span class="tag ${cantine.abonne ? "solde" : cantine.solde > 0 ? "partiel" : "aucun_paiement"}">${cantine.abonne ? "Abonné" : cantine.solde > 0 ? "Compte approvisionné" : "Non abonné"}</span></div>
+    <p>${esc(etat)}</p>
     <div class="stat-row">
-      <div class="stat-tile"><span>Solde du compte</span><strong>${gnf(cantine.solde)}</strong></div>
+      <div class="stat-tile"><span>Solde du compte (repas à la caisse)</span><strong>${gnf(cantine.solde)}</strong></div>
       <div class="stat-tile"><span>Prix d'un repas (QR)</span><strong>${gnf(cantine.prixRepas || 0)}</strong></div>
     </div>
-    ${canCredit ? `<form id="cantine-form" class="costume-form" novalidate>
-        <p><label>Ajouter au compte cantine (GNF)</label><input name="amount" inputmode="numeric" required placeholder="Ex. 50.000"></p>
-        <button class="btn" type="submit">Recharger</button>
+    ${canCredit && !cantine.abonne ? `<form id="abonnement-form" class="costume-form" novalidate>
+        <p><label>Abonnement élèves (600 000 FG / mois, plat du jour et une bouteille d'eau)</label>
+        <select name="mois">${mois}</select></p>
+        <button class="btn" type="submit">Enregistrer l'abonnement</button>
+        <p class="error" data-abonnement-error hidden></p>
+      </form>
+      <form id="cantine-form" class="costume-form" novalidate>
+        <p><label>Ou recharger le compte repas (autre montant, sans abonnement)</label><input name="amount" inputmode="numeric" required placeholder="Ex. 50.000"></p>
+        <button class="btn secondary" type="submit">Recharger le compte</button>
         <p class="error" data-cantine-error hidden></p>
       </form>
-      <p class="muted">Abonnement élèves : 600 000 FG par mois, de 1 à 12 mois, plat du jour et une bouteille d'eau. Un abonné n'est pas débité à chaque repas ; les autres paient à la caisse. L'abonnement et le reçu se posent dans Cartes.</p>` : `<p class="muted">L'abonnement (600 000 FG / mois, 1 à 12 mois) se pose dans Cartes → Atelier étudiants. Un reçu imprimable est émis.</p>`}
+      <p class="muted">C'est l'abonnement, pas le solde, qui s'affiche sur le QR déjà imprimé. Un versement de 600 000 FG (ou 1 200 000, etc.) est bien un abonnement.</p>` : canCredit && cantine.abonne ? `<p class="muted">Le QR de la carte imprimée affiche maintenant l'abonnement. Aucun débit à chaque repas.</p>` : `<p class="muted">L'abonnement (600 000 FG / mois) s'affiche sur le QR une fois enregistré.</p>`}
   </article>`;
 }
 
