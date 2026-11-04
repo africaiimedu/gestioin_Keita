@@ -3,6 +3,7 @@
 from datetime import date
 
 from fastapi.testclient import TestClient
+from starlette.routing import Match
 from sqlalchemy import delete, select
 
 from app.database import Base, SessionLocal, engine
@@ -135,6 +136,42 @@ def _entrer(client: TestClient, identifiant: str) -> str:
     return jeton
 
 
+def test_url_pdf_recu_ne_prend_pas_le_suffixe_comme_id():
+    cas = {
+        "/cantine/recus/5.pdf": "cuisine_recu_pdf",
+        "/menu/recus/5.pdf": "mon_recu_pdf",
+        "/admin/recus-cantine/5.pdf": "recu_cantine_bureau_pdf",
+    }
+    for chemin, attendu in cas.items():
+        scope = {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": chemin,
+            "raw_path": chemin.encode(),
+            "query_string": b"",
+            "headers": [],
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+        }
+        trouves = []
+        for wrapper in app.router.routes:
+            inner = getattr(wrapper, "original_router", None)
+            if inner is None:
+                continue
+            for route in inner.routes:
+                resultat, enfant = route.matches(scope)
+                if resultat is not Match.FULL:
+                    continue
+                params = enfant.get("path_params") if isinstance(enfant, dict) else {}
+                trouves.append((getattr(route.endpoint, "__name__", ""), params))
+        assert trouves, chemin
+        nom, params = trouves[0]
+        assert nom == attendu
+        assert params.get("recu_id") == 5
+
+
 def test_sans_solde_encaissement_recus_et_rapport():
     _nettoyer()
     with SessionLocal() as db:
@@ -248,7 +285,13 @@ def test_sans_solde_encaissement_recus_et_rapport():
             assert bilan.status_code == 200 and "Reçu (argent entré)" in bilan.text and _PLAT in bilan.text
             menu = client.get("/cantine/menu")
             assert "sans solde" in menu.text
-            assert "Télécharger le PDF" in client.get(f"/cantine/recus/{recu_id}").text
+            page_recu = client.get(f"/cantine/recus/{recu_id}")
+            assert "Télécharger le PDF" in page_recu.text
+            assert f"/cantine/recus/{recu_id}.pdf" in page_recu.text
+            pdf = client.get(f"/cantine/recus/{recu_id}.pdf")
+            assert pdf.status_code == 200
+            assert pdf.headers.get("content-type", "").startswith("application/pdf")
+            assert pdf.content.startswith(b"%PDF")
     finally:
         _nettoyer()
 

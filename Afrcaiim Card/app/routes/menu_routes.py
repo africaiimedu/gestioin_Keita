@@ -330,7 +330,20 @@ def mes_recus(
     )
 
 
-@router.get("/menu/recus/{recu_id}")
+@router.get("/menu/recus/{recu_id:int}.pdf")
+def mon_recu_pdf(
+    recu_id: int,
+    utilisateur: Utilisateur = Depends(exiger_etudiant),
+    db: Session = Depends(get_db),
+):
+    etudiant = _etudiant_de(db, utilisateur)
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None or recu_vu.etudiant_id != etudiant.id:
+        raise Redirection("/menu/recus")
+    return _pdf_recu(db, recu_vu)
+
+
+@router.get("/menu/recus/{recu_id:int}")
 def mon_recu(
     recu_id: int,
     request: Request,
@@ -342,19 +355,6 @@ def mon_recu(
     if recu_vu is None or recu_vu.etudiant_id != etudiant.id:
         raise Redirection("/menu/recus")
     return _page_recu(request, db, utilisateur, recu_vu, "/menu/recus", f"/menu/recus/{recu_vu.id}.pdf")
-
-
-@router.get("/menu/recus/{recu_id}.pdf")
-def mon_recu_pdf(
-    recu_id: int,
-    utilisateur: Utilisateur = Depends(exiger_etudiant),
-    db: Session = Depends(get_db),
-):
-    etudiant = _etudiant_de(db, utilisateur)
-    recu_vu = db.get(RecuCantine, recu_id)
-    if recu_vu is None or recu_vu.etudiant_id != etudiant.id:
-        raise Redirection("/menu/recus")
-    return _pdf_recu(db, recu_vu)
 
 
 def _page_recu(request: Request, db: Session, utilisateur: Utilisateur, recu_vu: RecuCantine, retour: str, recu_pdf: str):
@@ -541,7 +541,19 @@ def cuisine_recus(
     )
 
 
-@router.get("/cantine/recus/{recu_id}")
+@router.get("/cantine/recus/{recu_id:int}.pdf")
+def cuisine_recu_pdf(
+    recu_id: int,
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None:
+        raise Redirection("/cantine/recus")
+    return _pdf_recu(db, recu_vu)
+
+
+@router.get("/cantine/recus/{recu_id:int}")
 def cuisine_recu(
     recu_id: int,
     request: Request,
@@ -559,18 +571,6 @@ def cuisine_recu(
         f"/cantine/recus?jour={recu_vu.cree_le.date().isoformat()}",
         f"/cantine/recus/{recu_vu.id}.pdf",
     )
-
-
-@router.get("/cantine/recus/{recu_id}.pdf")
-def cuisine_recu_pdf(
-    recu_id: int,
-    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
-    db: Session = Depends(get_db),
-):
-    recu_vu = db.get(RecuCantine, recu_id)
-    if recu_vu is None:
-        raise Redirection("/cantine/recus")
-    return _pdf_recu(db, recu_vu)
 
 
 @router.get("/cantine/rapport")

@@ -467,7 +467,19 @@ def abonner_cantine(
     raise Redirection(f"/admin/recus-cantine/{recu.id}")
 
 
-@router.get("/recus-cantine/{recu_id}")
+@router.get("/recus-cantine/{recu_id:int}.pdf")
+def recu_cantine_bureau_pdf(
+    recu_id: int,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    recu_vu = db.get(RecuCantine, recu_id)
+    if recu_vu is None:
+        raise Redirection("/admin")
+    return _pdf_recu(db, recu_vu)
+
+
+@router.get("/recus-cantine/{recu_id:int}")
 def recu_cantine_bureau(
     recu_id: int,
     request: Request,
@@ -486,18 +498,6 @@ def recu_cantine_bureau(
         f"/admin/etudiants/{recu_vu.etudiant_id}" if recu_vu.etudiant_id else "/admin",
         f"/admin/recus-cantine/{recu_vu.id}.pdf",
     )
-
-
-@router.get("/recus-cantine/{recu_id}.pdf")
-def recu_cantine_bureau_pdf(
-    recu_id: int,
-    admin: Utilisateur = Depends(exiger_bureau),
-    db: Session = Depends(get_db),
-):
-    recu_vu = db.get(RecuCantine, recu_id)
-    if recu_vu is None:
-        raise Redirection("/admin")
-    return _pdf_recu(db, recu_vu)
 
 
 @router.post("/cantine/prix")
