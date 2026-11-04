@@ -535,7 +535,9 @@ def cuisine_recus(
         user=cuisiniere,
         jour=choisi,
         recus=recus,
-        total=sum(ligne.montant for ligne in valides if ligne.nature != "recharge"),
+        total_abonnements=sum(ligne.montant for ligne in valides if ligne.nature == "abonnement"),
+        total_repas=sum(ligne.montant for ligne in valides if ligne.nature in ("commande", "repas")),
+        total_recharges=sum(ligne.montant for ligne in valides if ligne.nature == "recharge"),
         natures=NATURES,
         modes=MODES,
     )

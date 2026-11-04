@@ -116,7 +116,7 @@ def lister(db, du: date, au: date, etudiant_id: int | None = None, limite: int =
 
 
 def rapport(db, du: date, au: date) -> dict:
-    """Reçu = argent entré (caisse, Orange Money, recharges). Dépensé = repas consommés."""
+    """Reçu = argent entré (caisse, Orange Money, recharges, abonnements). Dépensé = repas consommés."""
     debut, fin = bornes(du, au)
     valides = (RecuCantine.cree_le >= debut, RecuCantine.cree_le < fin, RecuCantine.annule_le.is_(None))
 
@@ -131,6 +131,7 @@ def rapport(db, du: date, au: date) -> dict:
     orange = somme(consommation, RecuCantine.mode == "orange_money")
     solde = somme(consommation, RecuCantine.mode == "solde")
     recharges = somme(RecuCantine.nature == "recharge")
+    abonnements = somme(RecuCantine.nature == "abonnement")
     annules = db.scalar(
         select(func.count(RecuCantine.id)).where(RecuCantine.annule_le >= debut, RecuCantine.annule_le < fin)
     ) or 0
@@ -171,8 +172,9 @@ def rapport(db, du: date, au: date) -> dict:
         "caisse": caisse,
         "solde": solde,
         "recharges": recharges,
+        "abonnements": abonnements,
         "depense": caisse + solde[0],
-        "recu": caisse + recharges[0],
+        "recu": caisse + recharges[0] + abonnements[0],
         "repas_scannes": somme(RecuCantine.nature == "repas"),
         "annules": int(annules),
         "par_jour": par_jour,

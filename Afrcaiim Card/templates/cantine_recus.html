@@ -9,7 +9,9 @@
     <button type="submit" class="bouton bouton-secondaire">Afficher</button>
     <a class="bouton" href="/cantine/rapport">Rapport</a>
   </form>
-  <p>Repas payés ce jour (hors recharges et reçus annulés) : <strong>{{ total|gnf }}</strong></p>
+  <p>Abonnements ce jour (hors reçus annulés) : <strong>{{ total_abonnements|gnf }}</strong></p>
+  <p>Repas payés ce jour (hors abonnements, recharges et reçus annulés) : <strong>{{ total_repas|gnf }}</strong></p>
+  <p>Recharges ce jour (hors reçus annulés) : <strong>{{ total_recharges|gnf }}</strong></p>
   <ul class="recus">
     {% for recu in recus %}
       <li{% if recu.annule_le %} class="annule"{% endif %}>

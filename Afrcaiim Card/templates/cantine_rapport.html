@@ -14,7 +14,7 @@
   </form>
 
   <div class="chiffres">
-    <div class="chiffre"><span>Reçu (argent entré)</span><strong>{{ r.recu|gnf }}</strong><small>Caisse {{ r.caisse|gnf }} + recharges {{ r.recharges[0]|gnf }}</small></div>
+    <div class="chiffre"><span>Reçu (argent entré)</span><strong>{{ r.recu|gnf }}</strong><small>Caisse {{ r.caisse|gnf }} + abonnements {{ r.abonnements[0]|gnf }} + recharges {{ r.recharges[0]|gnf }}</small></div>
     <div class="chiffre"><span>Dépensé par les étudiants</span><strong>{{ r.depense|gnf }}</strong><small>Repas payés à la caisse et sur les soldes</small></div>
   </div>
 
@@ -25,6 +25,7 @@
       <tr><td>Caisse : Orange Money</td><td>{{ r.orange_money[1] }}</td><td>{{ r.orange_money[0]|gnf }}</td></tr>
       <tr><td>Repas payés sur le compte cantine</td><td>{{ r.solde[1] }}</td><td>{{ r.solde[0]|gnf }}</td></tr>
       <tr><td>dont repas validés à la carte (QR)</td><td>{{ r.repas_scannes[1] }}</td><td>{{ r.repas_scannes[0]|gnf }}</td></tr>
+      <tr><td>Abonnements cantine</td><td>{{ r.abonnements[1] }}</td><td>{{ r.abonnements[0]|gnf }}</td></tr>
       <tr><td>Recharges des comptes cantine</td><td>{{ r.recharges[1] }}</td><td>{{ r.recharges[0]|gnf }}</td></tr>
       <tr><td>Reçus annulés sur la période</td><td>{{ r.annules }}</td><td>—</td></tr>
     </tbody>

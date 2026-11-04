@@ -281,6 +281,9 @@ def test_sans_solde_encaissement_recus_et_rapport():
             assert client.get(f"/cantine/recus/{recu_id}").status_code == 200
             jour = client.get("/cantine/recus")
             assert jour.status_code == 200 and recu_numero in jour.text
+            assert "Abonnements ce jour" in jour.text
+            assert "Repas payés ce jour" in jour.text
+            assert "Repas payés ce jour (hors recharges et reçus annulés)" not in jour.text
             bilan = client.get("/cantine/rapport")
             assert bilan.status_code == 200 and "Reçu (argent entré)" in bilan.text and _PLAT in bilan.text
             menu = client.get("/cantine/menu")
