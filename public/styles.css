@@ -203,6 +203,28 @@ a.btn { display: inline-block; text-decoration: none; }
   position: relative;
   z-index: 40;
 }
+.app-top .barre-gauche {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: none;
+  min-width: 0;
+}
+.app-top .touche-retour {
+  flex: none;
+  background: #004C22;
+  color: #F4F1EA;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.32rem 0.8rem;
+  min-height: 40px;
+  cursor: pointer;
+}
+.app-top .touche-retour:hover { background: #003918; }
+.app-top .touche-retour[hidden] { display: none !important; }
 .puce-logo {
   display: grid;
   place-items: center;
@@ -1519,6 +1541,11 @@ tbody tr:last-child td { border-bottom: 0; }
     padding: calc(env(safe-area-inset-top) + 8px) 14px 8px;
     background: #ffffff;
     box-shadow: 0 6px 18px rgba(12, 61, 46, 0.06);
+  }
+  .app-top .touche-retour {
+    font-size: 0.78rem;
+    padding: 0.22rem 0.6rem;
+    min-height: 34px;
   }
   .puce-logo, .app-top.finance-bar .puce-logo { height: 42px; padding: 0; }
   .puce-logo img, .app-top.finance-bar .puce-logo img { height: 36px; }

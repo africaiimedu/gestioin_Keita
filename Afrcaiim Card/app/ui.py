@@ -11,6 +11,7 @@ from starlette.requests import Request
 
 from app.config import ROOT, charger_config
 from app.database import SessionLocal
+from app.deps import maison
 from app.models import MessageApp
 from app.services.courrier import formater_francs
 from app.services.ecoles import ECOLES, annee_academique_courante
@@ -49,6 +50,7 @@ templates.env.globals["est_abonne"] = est_abonne
 templates.env.globals["libelle_abonnement"] = libelle_abonnement
 templates.env.globals["abonnement_mensuel"] = ABONNEMENT_MENSUEL
 templates.env.globals["abonnement_mois_max"] = MOIS_MAX
+templates.env.globals["maison_de"] = maison
 
 
 def assurer_csrf(request: Request) -> str:

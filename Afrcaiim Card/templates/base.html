@@ -7,13 +7,13 @@
   <title>{% block titre %}Cartes{% endblock %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/carte.css?v=34">
+  <link rel="stylesheet" href="/static/carte.css?v=35">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <script src="/static/mot-de-passe.js?v=2" defer></script>
   <script src="/static/impression-locale.js?v=2" defer></script>
   {% block tete %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}"{% if user %} data-accueil="{{ maison_de(user.role) }}"{% endif %}>
   <header class="barre">
     <div class="barre-gauche">
       <button type="button" class="touche-retour" id="touche-retour">← Retour</button>
@@ -46,9 +46,52 @@
   (function () {
     var bouton = document.getElementById("touche-retour");
     if (!bouton) return;
+    var CLE = "africaiim-retour";
+    var prefixe = (location.pathname === "/portail/cartes" || location.pathname.indexOf("/portail/cartes/") === 0) ? "/portail/cartes" : "";
+    var accueil = (prefixe + (document.body.getAttribute("data-accueil") || "")).replace(/\/$/, "");
+    var ici = (location.pathname.replace(/\/$/, "") || "/");
+    function cheminDe(url) {
+      return String(url || "").split("?")[0].replace(/\/$/, "") || "/";
+    }
+    function estLogin(url) {
+      var p = cheminDe(url);
+      return p === "/login" || p.indexOf("/login/") === 0 || p === "/portail/cartes/login" || p.indexOf("/portail/cartes/login/") === 0;
+    }
+    function estAccueil(url) {
+      return accueil && cheminDe(url) === accueil;
+    }
+    if (estLogin(ici)) {
+      bouton.hidden = true;
+      return;
+    }
+    var pile = [];
+    try { pile = JSON.parse(sessionStorage.getItem(CLE) || "[]"); } catch (e) { pile = []; }
+    if (!Array.isArray(pile)) pile = [];
+    var actuel = location.pathname + location.search;
+    if (!pile.length || pile[pile.length - 1] !== actuel) {
+      pile.push(actuel);
+      if (pile.length > 40) pile = pile.slice(-40);
+      try { sessionStorage.setItem(CLE, JSON.stringify(pile)); } catch (e) {}
+    }
+    if (estAccueil(ici)) {
+      bouton.hidden = true;
+      return;
+    }
     bouton.addEventListener("click", function () {
-      if (window.history.length > 1) window.history.back();
-      else window.location.href = "/";
+      var liste = [];
+      try { liste = JSON.parse(sessionStorage.getItem(CLE) || "[]"); } catch (e) { liste = []; }
+      while (liste.length && liste[liste.length - 1] === actuel) liste.pop();
+      var prec = "";
+      while (liste.length) {
+        prec = liste.pop();
+        if (!estLogin(prec)) break;
+        prec = "";
+      }
+      try { sessionStorage.setItem(CLE, JSON.stringify(liste)); } catch (e) {}
+      if (prec) location.href = prec;
+      else if (accueil) location.href = accueil;
+      else if (window.history.length > 1) history.back();
+      else location.href = "/";
     });
   })();
   </script>

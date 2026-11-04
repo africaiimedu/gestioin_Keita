@@ -52,6 +52,7 @@ h2 { margin: 1.6rem 0 0.6rem; font-size: 1.25rem; }
   cursor: pointer;
 }
 .touche-retour:hover { background: #003918; }
+.touche-retour[hidden] { display: none !important; }
 .barre a, .barre button.lien { color: var(--vert); text-decoration: none; }
 .barre nav a.actif {
   background: var(--vert);

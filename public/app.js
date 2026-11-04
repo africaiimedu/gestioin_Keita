@@ -8,7 +8,7 @@ function newKey() {
   const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-const state = { user: null, screen: "tableau", suite: "finances", carte: "etudiants", demo: null, catalog: null, idempotencyKey: newKey(), studentPage: 1 };
+const state = { user: null, screen: "tableau", suite: "finances", carte: "etudiants", demo: null, catalog: null, idempotencyKey: newKey(), studentPage: 1, trail: [] };
 
 const labels = {
   licence: "Licence", master: "Master", tech: "Tech Ingénieur",
@@ -481,9 +481,13 @@ function shell() {
         ${dropHtml("Cartes", cartes, "carte", carteCurrent)}
         ${dropHtml("Cuisine", cuisine, "carte", carteCurrent)}
         ${liens.map(([id, name]) => `<button type="button" data-carte="${id}" class="${carteCurrent === id ? "actif" : ""}">${name}</button>`).join("")}`;
+  const accueil = state.suite === "finances" && state.screen === "tableau";
   return `<div class="shell">
     <header class="app-top${onlyFinance ? " finance-bar" : ""}">
-      <button type="button" class="puce-logo" data-screen="tableau" aria-label="Tableau de bord"><img src="/logo.png?v=clair" alt="Université AFRICAIIM"></button>
+      <div class="barre-gauche">
+        <button type="button" class="touche-retour" id="touche-retour"${accueil ? " hidden" : ""}>← Retour</button>
+        <button type="button" class="puce-logo" data-screen="tableau" aria-label="Tableau de bord"><img src="/logo.png?v=clair" alt="Université AFRICAIIM"></button>
+      </div>
       <strong class="titre-barre" id="titre-barre">${esc(pageTitle())}</strong>
       <nav aria-label="Menu" id="main-nav">
         <div class="drawer-head"><span><small>Connecté</small><strong>${esc(state.user?.name || "")}</strong></span><button type="button" class="drawer-close" data-close-menu aria-label="Fermer le menu">Fermer</button></div>
@@ -551,9 +555,49 @@ function bindMenu(root) {
   }));
 }
 
+function isHomeScreen() {
+  return state.suite === "finances" && state.screen === "tableau";
+}
+
+function placeNow() {
+  return {
+    suite: state.suite,
+    screen: state.screen,
+    carte: state.carte,
+    cartePath: state.cartePath || "",
+    studentId: state.studentId || "",
+  };
+}
+
+function samePlace(a, b) {
+  if (!a || !b) return false;
+  return a.suite === b.suite
+    && a.screen === b.screen
+    && a.carte === b.carte
+    && String(a.cartePath || "") === String(b.cartePath || "")
+    && String(a.studentId || "") === String(b.studentId || "");
+}
+
+function syncBackButton() {
+  const bouton = document.querySelector("#touche-retour");
+  if (bouton) bouton.hidden = isHomeScreen();
+}
+
+function goBack() {
+  const ici = placeNow();
+  while (state.trail.length && samePlace(state.trail[state.trail.length - 1], ici)) state.trail.pop();
+  const prev = state.trail.pop();
+  if (!prev) {
+    navigate({ suite: "finances", screen: "tableau" }, { silent: true });
+    return;
+  }
+  navigate(prev, { silent: true });
+}
+
 function syncChrome() {
   const titre = document.querySelector("#titre-barre");
   if (titre) titre.textContent = pageTitle();
+  syncBackButton();
   const navEl = document.querySelector(".app-top nav");
   if (!navEl) return;
   navEl.querySelectorAll(".nav-group").forEach((group) => {
@@ -624,13 +668,22 @@ function watchTables() {
   }).observe(document.body, { childList: true, subtree: true });
 }
 
-function navigate(patch) {
+function navigate(patch, opts = {}) {
+  const before = placeNow();
   const suiteChanged = Boolean(patch.suite && patch.suite !== state.suite);
   if (patch.suite) state.suite = patch.suite;
   if (patch.screen) state.screen = patch.screen;
-  if (patch.carte) {
+  if ("studentId" in patch) state.studentId = patch.studentId;
+  if (opts.silent) {
+    if (patch.carte) state.carte = patch.carte;
+    if ("cartePath" in patch) state.cartePath = patch.cartePath || (patch.carte ? findCarte(patch.carte).path : state.cartePath);
+  } else if (patch.carte) {
     state.carte = patch.carte;
     state.cartePath = findCarte(patch.carte).path;
+  }
+  if (!opts.silent && !samePlace(before, placeNow())) {
+    state.trail.push(before);
+    if (state.trail.length > 40) state.trail.shift();
   }
   if (state.suite !== "finances" || state.screen !== "tableau") stopDashboard();
   rememberPlace();
@@ -638,10 +691,11 @@ function navigate(patch) {
   if (state.suite === "cartes" && !suiteChanged) {
     const frame = document.querySelector(".carte-frame");
     const page = findCarte(state.carte);
+    const dest = state.cartePath || page.path;
     if (frame) {
       frame.title = page.label;
-      const next = new URL(page.path, location.origin).pathname;
-      if (new URL(frame.src).pathname !== next) frame.src = page.path;
+      const next = new URL(dest, location.origin).pathname;
+      if (new URL(frame.src, location.origin).pathname !== next) frame.src = dest;
       return;
     }
   }
@@ -660,10 +714,12 @@ function bind() {
     });
     watchTables();
   }
+  document.querySelector("#touche-retour")?.addEventListener("click", goBack);
   document.querySelectorAll("[data-logout]").forEach((button) => button.addEventListener("click", async () => {
     setDrawer(false);
     await api("/api/deconnexion", { method: "POST", body: "{}" });
     state.user = null;
+    state.trail = [];
     history.replaceState(null, "", location.pathname);
     render();
   }));
@@ -1366,9 +1422,7 @@ async function showStudents(screen) {
 }
 
 function openStudent(id) {
-  state.studentId = id;
-  state.screen = "fiche";
-  render();
+  navigate({ suite: "finances", screen: "fiche", studentId: Number(id) });
 }
 
 async function showStudent(screen, id) {
