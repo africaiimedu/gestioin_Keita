@@ -2045,6 +2045,9 @@ export async function catalog(db) {
     methods: Object.entries(METHOD_LABELS).map(([code, label]) => ({ code, label })),
     levels: [
       { code: "bachelor", label: "Bachelor" },
+      { code: "bachelor_1", label: "Bachelor 1" },
+      { code: "bachelor_2", label: "Bachelor 2" },
+      { code: "bachelor_3", label: "Bachelor 3" },
       { code: "master", label: "Master" },
       { code: "cpi", label: "CPI (AFRICAIIM Tech)" },
       { code: "miage", label: "MIAGE (AFRICAIIM Tech)" },

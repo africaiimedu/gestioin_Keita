@@ -1154,6 +1154,8 @@ const STUDENT_SORTS = [
   ["recent", "Plus récents d'abord"],
   ["enregistrement", "Ordre d'enregistrement (1er inscrit en haut)"],
   ["ecole", "Trier par école"],
+  ["niveau", "Trier par niveau"],
+  ["bachelor_2", "Bachelor 2 d'abord"],
   ["telephone", "Trier par numéro de téléphone"],
 ];
 
@@ -1166,6 +1168,12 @@ function shortStamp(value) {
   return year && month && day ? `${day}/${month}/${year}` : "";
 }
 
+function levelRank(code) {
+  const order = ["cpi_1", "cpi_2", "bachelor", "bachelor_1", "bachelor_2", "bachelor_3", "miage_1", "miage_2", "miage_3", "master", "master_1", "master_2"];
+  const index = order.indexOf(String(code || ""));
+  return index === -1 ? order.length : index;
+}
+
 function sortStudents(students, mode) {
   const byName = (a, b) => a.name.localeCompare(b.name, "fr");
   const byOrder = (a, b) => stampKey(a.createdAt).localeCompare(stampKey(b.createdAt)) || a.id - b.id;
@@ -1173,6 +1181,8 @@ function sortStudents(students, mode) {
     recent: (a, b) => byOrder(b, a),
     enregistrement: byOrder,
     ecole: (a, b) => String(a.program || "").localeCompare(String(b.program || ""), "fr") || byName(a, b),
+    niveau: (a, b) => levelRank(a.level) - levelRank(b.level) || byName(a, b),
+    bachelor_2: (a, b) => Number(a.level !== "bachelor_2") - Number(b.level !== "bachelor_2") || byName(a, b),
     telephone: (a, b) => String(a.phone || "￿").localeCompare(String(b.phone || "￿"), "fr") || byName(a, b),
   }[mode];
   if (compare) students.sort(compare);

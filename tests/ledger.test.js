@@ -993,4 +993,19 @@ test("réinscription : 500 000 GNF d'inscription, le reste du barème inchangé"
   assert.equal(created.situation.due, 24_000_000 + 500_000);
   assert.equal(created.situation.paid, 0);
 });
+
+test("le registre peut filtrer les Bachelor 2", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const deux = await domain.createStudent(db, agent, {
+    lastName: "FILTRE", firstName: "Deuxieme", programId: program.id, level: "bachelor_2",
+  });
+  await domain.createStudent(db, agent, {
+    lastName: "FILTRE", firstName: "Premiere", programId: program.id, level: "bachelor_1",
+  });
+  const listed = await domain.listStudents(db, { level: "bachelor_2" });
+  assert.ok(listed.some((row) => row.student.id === deux.student.id));
+  assert.ok(listed.every((row) => row.student.level === "bachelor_2"));
+  const cat = await domain.catalog(db);
+  assert.ok(cat.levels.some((item) => item.code === "bachelor_2" && item.label === "Bachelor 2"));
+});
 });
