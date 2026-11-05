@@ -7,6 +7,8 @@
   <form method="get" action="/cantine/recus" class="filtre-jour">
     <label>Jour <input type="date" name="jour" value="{{ jour.isoformat() }}"></label>
     <button type="submit" class="bouton bouton-secondaire">Afficher</button>
+    <a class="bouton" href="/cantine/abonnes">Abonnés</a>
+    <a class="bouton" href="/cantine/abonnes.pdf">Télécharger la liste</a>
     <a class="bouton" href="/cantine/rapport">Rapport</a>
   </form>
   <p>Abonnements ce jour (hors reçus annulés) : <strong>{{ total_abonnements|gnf }}</strong></p>

@@ -150,6 +150,7 @@ function carteGroups() {
       ["menu", "Menu", "/portail/cartes/cantine/menu"],
       ["commandes", "Commandes", "/portail/cartes/cantine/commandes"],
       ["recus", "Reçus", "/portail/cartes/cantine/recus"],
+      ["abonnes", "Abonnés", "/portail/cartes/cantine/abonnes"],
       ["rapport", "Rapport", "/portail/cartes/cantine/rapport"],
     ]],
     ["Liens", [
@@ -255,6 +256,9 @@ const MENU_INFO = {
   "carte:cantine": ["plate", "Valider les repas par QR"],
   "carte:menu": ["menu", "Plats, boissons et prix"],
   "carte:commandes": ["bag", "Commandes en cours"],
+  "carte:recus": ["list", "Reçus de la cantine"],
+  "carte:abonnes": ["people", "Liste des abonnés à télécharger"],
+  "carte:rapport": ["chart", "Totaux de la cuisine"],
 };
 
 function menuIcon(name) {
@@ -816,7 +820,7 @@ async function openScreen() {
   if (!screen) return;
   if (state.suite !== "finances" || state.screen !== "tableau") stopDashboard();
   if (state.suite === "cartes") {
-    const kitchen = ["cantine", "menu", "commandes", "recus", "rapport"].includes(state.carte);
+    const kitchen = ["cantine", "menu", "commandes", "recus", "abonnes", "rapport"].includes(state.carte);
     if (kitchen ? !allowed("kitchen.manage") : !allowed("cards.manage")) {
       screen.classList.remove("carte-host");
       screen.innerHTML = `<p class="error">Cette partie n'est pas autorisée pour votre compte.</p>`;
@@ -3249,7 +3253,7 @@ function openAccountDialog(screen, data, account, creator) {
             <div class="acc-checks">${financeList.map(check).join("")}</div>
           </div>
           ${switchTile("cards.manage", "Gestion des cartes", "Étudiants, atelier, impression, import et contrôle.", "cards")}
-          ${switchTile("kitchen.manage", "Cuisine", "Cantine, menus, commandes, reçus et rapport.", "kitchen")}
+          ${switchTile("kitchen.manage", "Cuisine", "Cantine, menus, commandes, reçus, abonnés et rapport.", "kitchen")}
           ${otherList.length ? `<div class="acc-tile other"><span class="acc-tile-text"><strong>Autres autorisations</strong></span><div class="acc-checks">${otherList.map(check).join("")}</div></div>` : ""}
         </div>
       </section>

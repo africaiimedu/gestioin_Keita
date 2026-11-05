@@ -55,8 +55,9 @@ from app.services.menu_cantine import (
     refuser_commande,
     retirer_plat,
 )
-from app.services.cantine import est_abonne
+from app.services.cantine import est_abonne, lister_abonnes, montant_abonnement_etudiant
 from app.services.pdf_affiche_cantine import pdf_affiche_cantine
+from app.services.pdf_abonnes_cantine import pdf_abonnes_cantine
 from app.services.pdf_recu_cantine import pdf_recu_cantine
 from app.services.recus import MODES, NATURES, lister, rapport
 from app.ui import csrf_valide, flash, render
@@ -591,6 +592,36 @@ def cuisine_rapport(
     if (fin - debut).days > 366:
         debut = fin - timedelta(days=366)
     return render(request, "cantine_rapport.html", user=cuisiniere, r=rapport(db, debut, fin), genere=maintenant())
+
+
+@router.get("/cantine/abonnes.pdf")
+def cuisine_abonnes_pdf(
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    pdf = pdf_abonnes_cantine(lister_abonnes(db))
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="abonnes-cantine.pdf"'},
+    )
+
+
+@router.get("/cantine/abonnes")
+def cuisine_abonnes(
+    request: Request,
+    cuisiniere: Utilisateur = Depends(exiger_cuisiniere),
+    db: Session = Depends(get_db),
+):
+    abonnes = lister_abonnes(db)
+    return render(
+        request,
+        "cantine_abonnes.html",
+        user=cuisiniere,
+        abonnes=abonnes,
+        total=sum(montant_abonnement_etudiant(etudiant) for etudiant in abonnes),
+        montant_abonnement_etudiant=montant_abonnement_etudiant,
+    )
 
 
 @router.post("/cantine/commandes/{commande_id}")

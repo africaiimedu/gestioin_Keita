@@ -139,6 +139,7 @@ def _entrer(client: TestClient, identifiant: str) -> str:
 def test_url_pdf_recu_ne_prend_pas_le_suffixe_comme_id():
     cas = {
         "/cantine/recus/5.pdf": "cuisine_recu_pdf",
+        "/cantine/abonnes.pdf": "cuisine_abonnes_pdf",
         "/menu/recus/5.pdf": "mon_recu_pdf",
         "/admin/recus-cantine/5.pdf": "recu_cantine_bureau_pdf",
     }
@@ -169,7 +170,8 @@ def test_url_pdf_recu_ne_prend_pas_le_suffixe_comme_id():
         assert trouves, chemin
         nom, params = trouves[0]
         assert nom == attendu
-        assert params.get("recu_id") == 5
+        if "recu_id" in params:
+            assert params["recu_id"] == 5
 
 
 def test_sans_solde_encaissement_recus_et_rapport():
@@ -349,5 +351,54 @@ def test_recharge_mensuelle_devient_abonnement():
             assert est_abonne(etudiant)
             assert etudiant.solde_cantine == 0
             assert etudiant.abonnement_mois == 1
+    finally:
+        _nettoyer()
+
+
+def test_liste_abonnes_cantine_et_pdf():
+    from datetime import timedelta
+
+    from app.services.cantine import lister_abonnes, poser_abonnement
+    from app.services.pdf_abonnes_cantine import pdf_abonnes_cantine
+
+    _nettoyer()
+    try:
+        with SessionLocal() as db:
+            _assurer_menu(db)
+            actif, _ = _etudiant(db, _MATRICULES[0], _IDENTIFIANTS[0], 0)
+            expire, _ = _etudiant(db, _MATRICULES[1], _IDENTIFIANTS[1], 0)
+            poser_abonnement(db, actif, None, 2)
+            expire.abonne_cantine = True
+            expire.abonnement_mois = 1
+            expire.abonnement_fin = date.today() - timedelta(days=1)
+            db.add(
+                Utilisateur(
+                    identifiant=_IDENTIFIANTS[2],
+                    mot_de_passe_hash=hash_mot_de_passe(_MOT),
+                    role="cuisiniere",
+                    actif=True,
+                    peut_valider_qr=True,
+                    doit_changer_mot_de_passe=False,
+                    cree_le=maintenant(),
+                )
+            )
+            db.commit()
+            db.refresh(actif)
+            db.refresh(expire)
+            abonnes = lister_abonnes(db)
+            assert [etudiant.matricule for etudiant in abonnes] == [_MATRICULES[0]]
+            assert pdf_abonnes_cantine(abonnes).startswith(b"%PDF")
+
+        with TestClient(app) as client:
+            _entrer(client, _IDENTIFIANTS[2])
+            page = client.get("/cantine/abonnes")
+            assert page.status_code == 200
+            assert _MATRICULES[0] in page.text
+            assert _MATRICULES[1] not in page.text
+            assert "/cantine/abonnes.pdf" in page.text
+            pdf = client.get("/cantine/abonnes.pdf")
+            assert pdf.status_code == 200
+            assert pdf.headers.get("content-type", "").startswith("application/pdf")
+            assert pdf.content.startswith(b"%PDF")
     finally:
         _nettoyer()

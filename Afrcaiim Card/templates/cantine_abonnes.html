@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block titre %}Abonnés à la cantine{% endblock %}
+{% block tete %}<link rel="stylesheet" href="/static/menu.css?v=9">{% endblock %}
+{% block contenu %}
+<section class="bloc liste-recus">
+  <h1>Abonnés à la cantine</h1>
+  <p class="actions">
+    <a class="bouton" href="/cantine/abonnes.pdf">Télécharger le PDF</a>
+    <a class="bouton bouton-secondaire" href="/cantine/recus">Reçus</a>
+    <a class="bouton bouton-secondaire" href="/cantine/rapport">Rapport</a>
+  </p>
+  <p>{{ abonnes|length }} abonné{% if abonnes|length != 1 %}s{% endif %} en cours · total des abonnements : <strong>{{ total|gnf }}</strong></p>
+  <table class="tableau-rapport">
+    <thead>
+      <tr>
+        <th>N°</th>
+        <th>Nom</th>
+        <th>Prénom</th>
+        <th>Matricule</th>
+        <th>École</th>
+        <th>Mois</th>
+        <th>Validité</th>
+        <th>Montant</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for etudiant in abonnes %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ etudiant.nom }}</td>
+          <td>{{ etudiant.prenom }}</td>
+          <td>{{ etudiant.matricule }}</td>
+          <td>{{ etudiant.filiere }}</td>
+          <td>{{ etudiant.abonnement_mois or "—" }}</td>
+          <td>{% if etudiant.abonnement_fin %}{{ etudiant.abonnement_fin|datefr }}{% else %}—{% endif %}</td>
+          <td>{{ montant_abonnement_etudiant(etudiant)|gnf }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8">Aucun abonné en cours.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

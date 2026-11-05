@@ -48,6 +48,11 @@ def montant_abonnement(mois: int) -> int:
     return ABONNEMENT_MENSUEL * mois_abonnement(mois)
 
 
+def montant_abonnement_etudiant(etudiant: Etudiant) -> int:
+    mois = int(getattr(etudiant, "abonnement_mois", 0) or 0)
+    return montant_abonnement(mois) if mois else ABONNEMENT_MENSUEL
+
+
 def est_abonne(etudiant: Etudiant, aujourdhui: date | None = None) -> bool:
     if not bool(getattr(etudiant, "abonne_cantine", False)):
         return False
@@ -55,6 +60,15 @@ def est_abonne(etudiant: Etudiant, aujourdhui: date | None = None) -> bool:
     if fin is None:
         return True
     return (aujourdhui or date.today()) <= fin
+
+
+def lister_abonnes(db, aujourdhui: date | None = None) -> list[Etudiant]:
+    """Abonnements encore valables aujourd'hui, pour la cuisine et le PDF."""
+    jour = aujourdhui or date.today()
+    candidats = db.scalars(
+        select(Etudiant).where(Etudiant.abonne_cantine.is_(True)).order_by(Etudiant.nom, Etudiant.prenom, Etudiant.id)
+    ).all()
+    return [etudiant for etudiant in candidats if est_abonne(etudiant, jour)]
 
 
 def libelle_abonnement(etudiant: Etudiant) -> str:
