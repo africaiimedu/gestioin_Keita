@@ -193,15 +193,37 @@ function nav() {
   return financeGroups().flatMap(([, items]) => items);
 }
 
+function staffHome() {
+  if (allowed("dashboard.read")) return { suite: "finances", screen: "tableau" };
+  if (nav().length) return { suite: "finances", screen: nav()[0][0] };
+  if (allowed("expense.write")) return { suite: "finances", screen: "depenses" };
+  if (allowed("cards.manage")) return { suite: "cartes", carte: "etudiants", cartePath: findCarte("etudiants").path };
+  if (allowed("kitchen.manage")) return { suite: "cartes", carte: "cantine", cartePath: findCarte("cantine").path };
+  return { suite: "finances", screen: "comptes" };
+}
+
 function openHome() {
-  if (nav().length || allowed("expense.write")) {
-    state.suite = "finances";
-    state.screen = allowed("dashboard.read") ? "tableau" : (nav()[0]?.[0] || "depenses");
-    return;
+  Object.assign(state, { studentId: undefined }, staffHome());
+}
+
+function placeAllowed() {
+  if (state.suite === "cartes") {
+    const kitchen = ["cantine", "menu", "commandes", "recus", "abonnes", "rapport"].includes(state.carte);
+    return kitchen ? allowed("kitchen.manage") : allowed("cards.manage");
   }
-  state.suite = "cartes";
-  state.carte = allowed("cards.manage") ? "etudiants" : "cantine";
-  state.cartePath = findCarte(state.carte).path;
+  if (state.screen === "tableau") return allowed("dashboard.read");
+  if (state.screen === "depenses") return allowed("expense.write");
+  if (state.screen === "comptes") return true;
+  if (state.screen === "fiche") return allowed("student.read") || allowed("student.write");
+  return nav().some(([id]) => id === state.screen);
+}
+
+function openHomeIfNeeded() {
+  if (placeAllowed()) return false;
+  openHome();
+  rememberPlace();
+  syncChrome();
+  return true;
 }
 
 function passwordIssue(password) {
@@ -269,7 +291,7 @@ function dropHtml(label, items, attr, current) {
   if (!items.length) return "";
   const here = items.some(([id]) => id === current);
   return `<div class="nav-group${here ? " has-current" : ""}">
-      <button type="button" class="nav-drop${here ? " actif" : ""}" aria-expanded="false" aria-haspopup="true">${label}</button>
+      <button type="button" class="nav-drop${here ? " actif" : ""}" data-landing-${attr}="${items[0][0]}" aria-expanded="false" aria-haspopup="true">${label}</button>
       <div class="nav-menu" role="menu"><p class="nav-menu-title">${label}</p>${items.map(([id, name]) => {
         const [icon, hint] = MENU_INFO[`${attr}:${id}`] || ["list", ""];
         return `<button type="button" role="menuitem" data-${attr}="${id}" class="${current === id ? "active" : ""}">
@@ -304,6 +326,7 @@ function restorePlace() {
     state.suite = "cartes";
     state.cartePath = `/portail/cartes/${tail}`;
     state.carte = matchCarte(state.cartePath) || "etudiants";
+    if (!placeAllowed()) openHome();
     return;
   }
   if (!raw.startsWith("finances/")) return;
@@ -313,6 +336,7 @@ function restorePlace() {
   state.suite = "finances";
   state.screen = screen;
   if (screen === "fiche" && id) state.studentId = Number(id);
+  if (!placeAllowed()) openHome();
 }
 
 function rememberPlace() {
@@ -342,11 +366,15 @@ function watchCarteFrame(frame) {
 async function boot() {
   try { state.user = (await api("/api/moi")).user; } catch { state.user = null; }
   state.demo = await fetch("/api/demo").then((response) => response.json());
-  if (state.user) restorePlace();
+  if (state.user) {
+    restorePlace();
+    if (!placeAllowed()) openHome();
+  }
   render();
   window.addEventListener("hashchange", () => {
     if (!state.user || state.user.mustChangePassword) return;
     restorePlace();
+    if (!placeAllowed()) openHome();
     render();
   });
 }
@@ -486,12 +514,12 @@ function shell() {
         ${dropHtml("Cartes", cartes, "carte", carteCurrent)}
         ${dropHtml("Cuisine", cuisine, "carte", carteCurrent)}
         ${liens.map(([id, name]) => `<button type="button" data-carte="${id}" class="${carteCurrent === id ? "actif" : ""}">${name}</button>`).join("")}`;
-  const accueil = state.suite === "finances" && state.screen === "tableau";
+  const accueil = isHomeScreen();
   return `<div class="shell">
     <header class="app-top${onlyFinance ? " finance-bar" : ""}">
       <div class="barre-gauche">
         <button type="button" class="touche-retour" id="touche-retour"${accueil ? " hidden" : ""}>← Retour</button>
-        <button type="button" class="puce-logo" data-screen="tableau" aria-label="Tableau de bord"><img src="/logo.png?v=clair" alt="Université AFRICAIIM"></button>
+        <button type="button" class="puce-logo" data-home aria-label="Accueil"><img src="/logo.png?v=clair" alt="Université AFRICAIIM"></button>
       </div>
       <strong class="titre-barre" id="titre-barre">${esc(pageTitle())}</strong>
       <nav aria-label="Menu" id="main-nav">
@@ -528,40 +556,49 @@ function setDrawer(open) {
 }
 
 function bindMenu(root) {
-  root.querySelectorAll("[data-suite]").forEach((button) => button.addEventListener("click", () => {
-    if (state.suite === button.dataset.suite) return;
-    navigate({ suite: button.dataset.suite });
-  }));
-  root.querySelectorAll("[data-carte]").forEach((button) => button.addEventListener("click", () => {
+  root.querySelectorAll("[data-home]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
     closeMenus();
     button.blur();
-    if (state.suite === "cartes" && state.carte === button.dataset.carte) return;
-    navigate({ suite: "cartes", carte: button.dataset.carte });
+    navigate({ studentId: "", ...staffHome() }, { force: true });
   }));
-  root.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", () => {
+  root.querySelectorAll("[data-suite]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    navigate({ suite: button.dataset.suite }, { force: true });
+  }));
+  root.querySelectorAll("[data-carte]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
     closeMenus();
     button.blur();
-    if (state.suite === "finances" && state.screen === button.dataset.screen) return;
-    navigate({ suite: "finances", screen: button.dataset.screen });
+    navigate({ suite: "cartes", carte: button.dataset.carte }, { force: true });
+  }));
+  root.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeMenus();
+    button.blur();
+    navigate({ suite: "finances", screen: button.dataset.screen }, { force: true });
   }));
   root.querySelectorAll(".nav-group").forEach((group) => group.addEventListener("mouseleave", () => {
     group.classList.remove("is-dismissed");
   }));
   root.querySelectorAll(".nav-drop").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
-    const group = button.closest(".nav-group");
-    const open = group.classList.contains("is-open");
     closeMenus();
-    if (!open) {
-      group.classList.remove("is-dismissed");
-      group.classList.add("is-open");
-      button.setAttribute("aria-expanded", "true");
+    button.blur();
+    if (button.dataset.landingScreen) {
+      navigate({ suite: "finances", screen: button.dataset.landingScreen }, { force: true });
+      return;
+    }
+    if (button.dataset.landingCarte) {
+      navigate({ suite: "cartes", carte: button.dataset.landingCarte }, { force: true });
     }
   }));
 }
 
 function isHomeScreen() {
-  return state.suite === "finances" && state.screen === "tableau";
+  const home = staffHome();
+  if (home.suite === "cartes") return state.suite === "cartes" && state.carte === home.carte;
+  return state.suite === "finances" && state.screen === home.screen && !state.studentId;
 }
 
 function placeNow() {
@@ -593,7 +630,7 @@ function goBack() {
   while (state.trail.length && samePlace(state.trail[state.trail.length - 1], ici)) state.trail.pop();
   const prev = state.trail.pop();
   if (!prev) {
-    navigate({ suite: "finances", screen: "tableau" }, { silent: true });
+    navigate({ studentId: "", ...staffHome() }, { silent: true, force: true });
     return;
   }
   navigate(prev, { silent: true });
@@ -693,14 +730,13 @@ function navigate(patch, opts = {}) {
   if (state.suite !== "finances" || state.screen !== "tableau") stopDashboard();
   rememberPlace();
   syncChrome(suiteChanged);
-  if (state.suite === "cartes" && !suiteChanged) {
+  if (state.suite === "cartes" && !suiteChanged && !opts.force) {
     const frame = document.querySelector(".carte-frame");
     const page = findCarte(state.carte);
     const dest = state.cartePath || page.path;
     if (frame) {
       frame.title = page.label;
-      const next = new URL(dest, location.origin).pathname;
-      if (new URL(frame.src, location.origin).pathname !== next) frame.src = dest;
+      frame.src = dest;
       return;
     }
   }
@@ -803,6 +839,7 @@ async function onLogin(event) {
     state.user = data.user;
     if (location.hash) restorePlace();
     else openHome();
+    if (!placeAllowed()) openHome();
     render();
   } catch (caught) {
     if (caught.data?.totpRequired) {
@@ -861,10 +898,10 @@ async function openScreen() {
   if (!screen) return;
   if (state.suite !== "finances" || state.screen !== "tableau") stopDashboard();
   if (state.suite === "cartes") {
-    const kitchen = ["cantine", "menu", "commandes", "recus", "abonnes", "rapport"].includes(state.carte);
-    if (kitchen ? !allowed("kitchen.manage") : !allowed("cards.manage")) {
+    if (!placeAllowed()) {
+      if (openHomeIfNeeded()) return openScreen();
       screen.classList.remove("carte-host");
-      screen.innerHTML = `<p class="error">Cette partie n'est pas autorisée pour votre compte.</p>`;
+      screen.innerHTML = `<p class="lead">Chargement de votre accueil…</p>`;
       return;
     }
     const page = findCarte(state.carte);
@@ -896,7 +933,13 @@ async function openScreen() {
     else     if (state.screen === "comptes") await showAccounts(screen);
     else if (state.screen === "fiche") await showStudent(screen, state.studentId);
   } catch (error) {
-    screen.innerHTML = `<p class="error">${esc(error.message)}</p>`;
+    if (error.status === 401) {
+      state.user = null;
+      render();
+      return;
+    }
+    if (openHomeIfNeeded()) return openScreen();
+    screen.innerHTML = `<p class="lead">Chargement de votre accueil…</p>`;
   }
   screen.classList.remove("enter");
   void screen.offsetWidth;

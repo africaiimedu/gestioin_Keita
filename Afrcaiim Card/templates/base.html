@@ -17,7 +17,7 @@
   <header class="barre">
     <div class="barre-gauche">
       <button type="button" class="touche-retour" id="touche-retour">← Retour</button>
-      <a class="marque" href="/">
+      <a class="marque" href="{{ maison_de(user.role) if user else '/login' }}">
         <img class="logo-barre" src="/static/marque.png" alt="Université AFRICAIIM">
       </a>
     </div>

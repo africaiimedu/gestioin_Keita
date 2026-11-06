@@ -73,9 +73,16 @@ function portalRole(user) {
   return "";
 }
 
+function portalHome(user) {
+  if (can(user, "kitchen.manage") && !can(user, "cards.manage")) return "/cantine";
+  if (can(user, "cards.manage")) return "/admin/etudiants";
+  return "/espace";
+}
+
 function portalAllowed(user, tail) {
   if (tail.startsWith("/id/") || tail.startsWith("/verif") || tail.startsWith("/photo")) return true;
   if (!user) return false;
+  if (tail === "/" || tail === "") return can(user, "cards.manage") || can(user, "kitchen.manage");
   if (tail.startsWith("/m/") || tail === "/menu" || tail.startsWith("/menu/") || tail.startsWith("/messages")) return true;
   if (tail.startsWith("/cantine")) return can(user, "kitchen.manage");
   if (tail.startsWith("/scan")) return can(user, "kitchen.manage") || can(user, "cards.manage");
@@ -246,7 +253,7 @@ export function attachCardPortal(app, resolveUser = () => null, { renameMatricul
       return;
     }
     if (user && !portalAllowed(user, pathOnly)) {
-      res.status(403).type("html").send(`<!doctype html><meta charset="utf-8"><p style="font-family:Georgia,serif;color:#0c3d2e;padding:28px 24px">Cette partie n'est pas autorisée pour votre compte.</p>`);
+      res.redirect(302, PREFIX + portalHome(user));
       return;
     }
     let body = null;
@@ -267,8 +274,8 @@ export function attachCardPortal(app, resolveUser = () => null, { renameMatricul
     }
     if (!(await cardReady())) return unavailable(req, res);
     ensureCardSession(req, user).then(() => {
-      if (user && (tail === "/login" || tail.startsWith("/login?"))) {
-        tail = can(user, "kitchen.manage") && !can(user, "cards.manage") ? "/cantine" : "/admin/etudiants";
+      if (user && (pathOnly === "/" || pathOnly === "/login" || tail.startsWith("/login?"))) {
+        tail = portalHome(user);
       }
       forward(req, res, tail, true, body);
     });
