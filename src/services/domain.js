@@ -743,9 +743,12 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
   for (const row of rows) {
     for (const item of row.situation.plan) {
       const uncovered = item.amount - (row.situation.covered[item.code] || 0);
-      if (uncovered <= 0 || item.dueOn < asOf) continue;
+      if (uncovered <= 0 || !item.dueOn || item.dueOn < asOf) continue;
       const month = item.dueOn.slice(0, 7);
-      forecast.set(month, (forecast.get(month) || 0) + uncovered);
+      const bucket = forecast.get(month) || { amount: 0, due: 0 };
+      bucket.amount += uncovered;
+      bucket.due += item.amount;
+      forecast.set(month, bucket);
     }
   }
   const debtors = [...rows]
@@ -779,7 +782,7 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
     byMethod: [...byMethod.entries()].map(([method, amount]) => ({ method, label: METHOD_LABELS[method], amount })),
     byMonth: [...byMonth.entries()].sort().map(([month, amount]) => ({ month, amount })),
     aging,
-    forecast: [...forecast.entries()].sort().map(([month, amount]) => ({ month, amount })),
+    forecast: [...forecast.entries()].sort().map(([month, bucket]) => ({ month, amount: bucket.amount, due: bucket.due })),
     debtors,
     controlOk: control,
     filteredPayments: Boolean(filters.method || filters.agentId || filters.from || filters.to),

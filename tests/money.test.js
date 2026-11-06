@@ -72,6 +72,33 @@ test("cas réels du fichier : soldé, partiel, tech, master, aucun paiement", ()
   assert.equal(retard.overdueAmount, 5_000_000);
 });
 
+test("échéances ouvertes : un paiement va d'abord sur décembre, mars reste entière", () => {
+  const asOf = "2026-11-06";
+  const paidInscription = computeSituation({
+    tuition: 25_000_000, installments: licencePlan, asOf,
+    payments: [pay(1, 5_000_000, null)],
+  });
+  assert.equal(paidInscription.covered.inscription, 5_000_000);
+  assert.equal(paidInscription.covered.tranche_1, 0);
+  assert.equal(paidInscription.covered.tranche_2, 0);
+  assert.equal(paidInscription.overdueAmount, 0);
+
+  const paidDecemberPart = computeSituation({
+    tuition: 25_000_000, installments: licencePlan, asOf,
+    payments: [pay(1, 7_000_000, null)],
+  });
+  assert.equal(paidDecemberPart.covered.inscription, 5_000_000);
+  assert.equal(paidDecemberPart.covered.tranche_1, 2_000_000);
+  assert.equal(paidDecemberPart.covered.tranche_2, 0);
+  const decemberLeft = 10_000_000 - paidDecemberPart.covered.tranche_1;
+  const marchLeft = 10_000_000 - paidDecemberPart.covered.tranche_2;
+  assert.equal(decemberLeft, 8_000_000);
+  assert.equal(marchLeft, 10_000_000);
+  assert.equal(Math.round(decemberLeft / 10_000_000 * 100), 80);
+  assert.equal(Math.round(marchLeft / 10_000_000 * 100), 100);
+  assert.equal(decemberLeft + marchLeft + paidDecemberPart.overdueAmount, paidDecemberPart.reste);
+});
+
 test("réinscription : 500 000 GNF pour toutes les écoles", () => {
   assert.equal(enrollmentKindOf("Réinscription"), "reinscription");
   assert.equal(REGISTRATION_FEES.reenrollment, 500_000);

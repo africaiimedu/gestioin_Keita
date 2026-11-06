@@ -1230,6 +1230,7 @@ tr.clickable:hover { background: #f3f8f4; }
 .dash-school-top strong { white-space: nowrap; color: #0c3d2e; font-variant-numeric: tabular-nums; }
 .dash .figures { grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr)); }
 .dash .figures strong { white-space: nowrap; }
+.dash-forecast-hint { margin: -4px 0 14px; line-height: 1.4; }
 .dash .method-row p { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .dash .method-row strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .dash .meter span { animation: none; transform: none; }

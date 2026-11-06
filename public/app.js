@@ -101,6 +101,12 @@ function monthLabel(value) {
   const name = months[Number(month) - 1];
   return name ? `${name} ${year}` : value;
 }
+
+function forecastShare(item) {
+  const left = Math.max(0, Number(item.amount) || 0);
+  const due = Math.max(Number(item.due) || left, 1);
+  return Math.min(100, Math.round(left / due * 100));
+}
 function sortSchools(items) {
   return [...items].sort((a, b) => {
     const left = schools.indexOf(a.program);
@@ -1040,7 +1046,6 @@ function tickClock() {
 function patchDashboard(root, data, control) {
   const dueBase = Math.max(data.due, 1);
   const rate = Math.min(100, (data.rate.tenths || 0) / 10);
-  const forecastMax = Math.max(...data.forecast.map((item) => item.amount), 1);
   const write = (tone, text, width) => {
     const card = root.querySelector(`.dash-kpi.${tone}`);
     if (!card) return;
@@ -1095,7 +1100,7 @@ function patchDashboard(root, data, control) {
     const row = root.querySelector(`[data-month="${CSS.escape(item.month)}"]`);
     if (!row) return;
     row.querySelector("strong").textContent = gnf(item.amount);
-    row.querySelector(".meter span").style.width = `${Math.max(4, Math.round(item.amount / forecastMax * 100))}%`;
+    row.querySelector(".meter span").style.width = `${forecastShare(item)}%`;
   });
   data.debtors.forEach((item) => {
     const row = root.querySelector(`.dash-debtor[data-student="${CSS.escape(String(item.id))}"]`);
@@ -1130,7 +1135,6 @@ function dashboardHtml(data, control) {
   const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
   const rate = Math.min(100, (data.rate.tenths || 0) / 10);
   const circ = (2 * Math.PI * 46).toFixed(2);
-  const forecastMax = Math.max(...data.forecast.map((item) => item.amount), 1);
   const dueBase = Math.max(data.due, 1);
   const paidShare = Math.min(100, Math.round(data.paid / dueBase * 100));
   const resteShare = Math.min(100, Math.round(data.reste / dueBase * 100));
@@ -1184,7 +1188,8 @@ function dashboardHtml(data, control) {
     <section class="dash-split">
       <article class="card">
         <h2>Échéances encore ouvertes</h2>
-        ${data.forecast.map((item) => `<div class="method-row" data-month="${esc(item.month)}"><p>${esc(monthLabel(item.month))}<strong>${gnf(item.amount)}</strong></p><div class="meter"><span class="left" style="width:${Math.max(4, Math.round(item.amount / forecastMax * 100))}%"></span></div></div>`).join("") || "<p>Aucune échéance future ouverte.</p>"}
+        <p class="muted dash-forecast-hint">Chaque barre est la part encore due de cette échéance. Les paiements remplissent d'abord décembre, puis mars.</p>
+        ${data.forecast.map((item) => `<div class="method-row" data-month="${esc(item.month)}"><p>${esc(monthLabel(item.month))}<strong>${gnf(item.amount)}</strong></p><div class="meter"><span class="left" style="width:${forecastShare(item)}%"></span></div></div>`).join("") || "<p>Aucune échéance future ouverte.</p>"}
       </article>
       <article class="card">
         <h2>Plus gros restes</h2>

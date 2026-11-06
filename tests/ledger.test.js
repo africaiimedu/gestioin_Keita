@@ -923,6 +923,38 @@ test("changement d'école et de programme après l'inscription : nouveaux frais,
   assert.equal(newcomer.situation.paid, 1_000_000);
 });
 
+test("tableau de bord : restes d'échéances ouvertes = tranches futures non couvertes", async () => {
+  const asOf = "2026-11-06";
+  const rows = await domain.listStudents(db, {}, asOf);
+  const expected = new Map();
+  let overdue = 0;
+  let reste = 0;
+  for (const row of rows) {
+    overdue += row.situation.overdueAmount;
+    reste += row.situation.reste;
+    for (const item of row.situation.plan) {
+      const uncovered = item.amount - (row.situation.covered[item.code] || 0);
+      assert.ok(uncovered >= 0, "une échéance ne peut pas être couverte au-delà de son montant");
+      if (uncovered <= 0 || !item.dueOn || item.dueOn < asOf) continue;
+      const month = item.dueOn.slice(0, 7);
+      const bucket = expected.get(month) || { amount: 0, due: 0 };
+      bucket.amount += uncovered;
+      bucket.due += item.amount;
+      expected.set(month, bucket);
+    }
+  }
+  const dash = await domain.dashboard(db, {}, asOf);
+  assert.deepEqual(
+    dash.forecast,
+    [...expected.entries()].sort().map(([month, bucket]) => ({ month, amount: bucket.amount, due: bucket.due })),
+  );
+  const future = dash.forecast.reduce((sum, item) => sum + item.amount, 0);
+  assert.equal(future + overdue, reste);
+  for (const item of dash.forecast) {
+    assert.ok(item.due >= item.amount);
+  }
+});
+
 test("tableau de bord : étudiants n'ayant pas payé la première tranche", async () => {
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const before = await domain.dashboard(db, {});
