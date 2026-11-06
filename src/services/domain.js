@@ -1992,7 +1992,7 @@ export async function updateUserAccess(db, actor, userId, input) {
       { where: { id: target.id } },
     );
     if (password) {
-      await User.update({ password_hash: hashPassword(password), must_change_password: 1 }, { where: { id: target.id } });
+      await User.update({ password_hash: hashPassword(password), must_change_password: 0 }, { where: { id: target.id } });
       await Session.destroy({ where: { user_id: target.id } });
     }
     await audit(db, actor.id, "utilisateur.modifier", "users", target.id,

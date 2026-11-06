@@ -199,7 +199,7 @@ test("une nouvelle fiche ne produit aucun reçu d'inscription, et l'e-mail du pe
     fullName: "Agent renommé", email: "agent.renomme@univ-africaiim.com", rights: ["dashboard.read"], password: "Nouveau2#",
   });
   const changed = await db.prepare("SELECT full_name, email, must_change_password FROM users WHERE id = ?").get(account.id);
-  assert.deepEqual([changed.full_name, changed.email, changed.must_change_password], ["Agent renommé", "agent.renomme@univ-africaiim.com", 1]);
+  assert.deepEqual([changed.full_name, changed.email, changed.must_change_password], ["Agent renommé", "agent.renomme@univ-africaiim.com", 0]);
   await assert.rejects(() => domain.updateUserAccess(db, superAdmin, account.id, { email: "x@gmail.com", rights: ["dashboard.read"] }));
   await domain.deactivateUser(db, agent, account.id);
   assert.equal((await db.prepare("SELECT active FROM users WHERE id = ?").get(account.id)).active, 0);

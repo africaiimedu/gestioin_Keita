@@ -170,9 +170,16 @@ app.use(async (req, res, next) => {
   next();
 });
 
+function staffLoginEmail(value) {
+  const raw = String(value || "").trim().toLowerCase().replace(/\s+/g, ".");
+  if (!raw) return raw;
+  if (raw.includes("@")) return raw;
+  return `${raw}@univ-africaiim.com`;
+}
+
 app.post("/api/connexion", async (req, res) => {
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  const password = String(req.body?.password || "");
+  const email = staffLoginEmail(req.body?.email);
+  const password = String(req.body?.password || "").trim();
   const ip = req.ip || "";
   if ((await recentFailures(email)) >= MAX_FAILURES) {
     res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${FAILURE_WINDOW_MINUTES} minutes.` });

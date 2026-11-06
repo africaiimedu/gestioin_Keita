@@ -430,9 +430,10 @@ function loginHtml() {
           <div class="login-fold"><div class="login-fold-inner">
             <form id="login-form">
               <label>Nom d'utilisateur ou e-mail</label>
-              <input name="email" type="text" autocomplete="username" required>
+              <input name="email" type="text" autocomplete="username" required placeholder="prenom.nom ou e-mail">
               <label>Mot de passe</label>
               <input name="password" type="password" autocomplete="current-password" placeholder="Saisissez votre mot de passe" required>
+              <label id="totp-row" hidden>Code de vérification<input name="totp" inputmode="numeric" autocomplete="one-time-code"></label>
               <p class="forgot"><button type="button" id="forgot">Mot de passe oublié ?</button></p>
               <p id="forgot-note" class="muted" hidden>Contactez la scolarité pour recevoir un nouveau mot de passe.</p>
               <p id="login-error" class="error" hidden></p>
@@ -778,10 +779,25 @@ async function onFirstPassword(event) {
   }
 }
 
+function portalLocation(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value, location.origin);
+    let path = url.pathname + url.search;
+    if (path.startsWith("/portail/cartes") || path.startsWith("/static/") || path.startsWith("/#")) return path;
+    if (path.startsWith("/") && !path.startsWith("//")) return `/portail/cartes${path}`;
+  } catch { /* ignore */ }
+  return value;
+}
+
 async function onLogin(event) {
   event.preventDefault();
-  const form = new FormData(event.target);
+  const formEl = event.target;
+  const submit = formEl.querySelector("[type=submit]");
+  const form = new FormData(formEl);
   const error = document.querySelector("#login-error");
+  error.hidden = true;
+  if (submit) submit.disabled = true;
   try {
     const data = await api("/api/connexion", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) });
     state.user = data.user;
@@ -789,30 +805,55 @@ async function onLogin(event) {
     else openHome();
     render();
   } catch (caught) {
+    if (caught.data?.totpRequired) {
+      const row = document.querySelector("#totp-row");
+      if (row) row.hidden = false;
+      error.hidden = false;
+      error.textContent = "Entrez le code de vérification, puis reconnectez-vous.";
+      if (submit) submit.disabled = false;
+      formEl.querySelector("[name=totp]")?.focus();
+      return;
+    }
     const identifiant = String(form.get("email") || "").trim();
     if (identifiant && await studentLogin(identifiant, String(form.get("password") || "")).catch(() => false)) return;
     error.hidden = false;
     error.textContent = caught.message;
+    if (submit) submit.disabled = false;
   }
 }
 
 async function studentLogin(email, password) {
-  const page = await fetch("/portail/cartes/login", { credentials: "same-origin" });
-  if (!new URL(page.url).pathname.endsWith("/login")) {
-    location.href = page.url;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  const asPortal = (response) => {
+    const loc = response.headers.get("location") || (response.url ? new URL(response.url, location.origin).pathname : "");
+    if (!loc || /\/login\/?$/.test(loc.split("?")[0])) return "";
+    return portalLocation(loc);
+  };
+  try {
+    const page = await fetch("/portail/cartes/login", { credentials: "same-origin", redirect: "manual", signal: ctrl.signal });
+    const already = asPortal(page);
+    if (already) {
+      location.href = already;
+      return true;
+    }
+    const csrf = (await page.text()).match(/name="csrf" value="([^"]+)"/)?.[1];
+    if (!csrf) return false;
+    const sent = await fetch("/portail/cartes/login", {
+      method: "POST",
+      credentials: "same-origin",
+      redirect: "manual",
+      signal: ctrl.signal,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ identifiant: email, mot_de_passe: password, csrf, suivant: "" }),
+    });
+    const next = asPortal(sent);
+    if (!next) return false;
+    location.href = next;
     return true;
+  } finally {
+    clearTimeout(timer);
   }
-  const csrf = (await page.text()).match(/name="csrf" value="([^"]+)"/)?.[1];
-  if (!csrf) return false;
-  const sent = await fetch("/portail/cartes/login", {
-    method: "POST",
-    credentials: "same-origin",
-    body: new URLSearchParams({ identifiant: email, mot_de_passe: password, csrf, suivant: "" }),
-  });
-  const target = new URL(sent.url);
-  if (!sent.ok || target.pathname.endsWith("/login")) return false;
-  location.href = target.pathname + target.search;
-  return true;
 }
 
 async function openScreen() {
@@ -3270,10 +3311,10 @@ function openAccountDialog(screen, data, account, creator) {
 
       <section class="acc-section">
         <h3><span>3</span> Mot de passe</h3>
-        <label>${creating ? "Mot de passe provisoire" : "Nouveau mot de passe provisoire"} ${creating ? "" : `<em>facultatif</em>`}
+        <label>${creating ? "Mot de passe provisoire" : "Nouveau mot de passe"} ${creating ? "" : `<em>facultatif</em>`}
           <span class="acc-pass"><input name="password" type="password" autocomplete="new-password" placeholder="${creating ? "" : "Laisser vide pour ne pas le changer"}" ${creating ? "required" : ""}><button type="button" data-eye>Afficher</button></span>
         </label>
-        <p class="acc-hint">${PASSWORD_RULE} ${creating ? "La personne le changera à sa première connexion." : "La personne devra le changer à sa prochaine connexion."}</p>
+        <p class="acc-hint">${PASSWORD_RULE} ${creating ? "La personne le changera à sa première connexion." : "Elle pourra se connecter tout de suite avec ce mot de passe."}</p>
       </section>
 
       <p class="error" data-dialog-error hidden></p>
@@ -3342,7 +3383,7 @@ function openAccountDialog(screen, data, account, creator) {
       if (creating) await api("/api/utilisateurs", { method: "POST", body: JSON.stringify(body) });
       else await api(`/api/utilisateurs/${account.id}`, { method: "PUT", body: JSON.stringify(body) });
       close();
-      saved(creating ? "Compte créé" : password ? "Compte mis à jour, mot de passe provisoire remis" : "Compte mis à jour");
+      saved(creating ? "Compte créé" : password ? "Compte mis à jour, nouveau mot de passe enregistré" : "Compte mis à jour");
       showAccounts(screen);
     } catch (caught) {
       submit.disabled = false;
