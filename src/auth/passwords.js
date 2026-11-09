@@ -16,6 +16,7 @@ const PERMISSIONS = {
 
 export const RIGHTS = [
   ["dashboard.read", "Tableau de bord"],
+  ["dashboard.counts", "Admin 2 — effectifs sans montants"],
   ["student.read", "Consulter les étudiants"],
   ["student.write", "Créer et modifier une fiche"],
   ["student.status", "Changer le statut d'un étudiant"],
@@ -62,6 +63,23 @@ export function rightsOf(userOrRole) {
 export function can(userOrRole, action) {
   const list = rightsOf(userOrRole);
   return list.includes("*") || list.includes(action);
+}
+
+export function canSeeDashboard(userOrRole) {
+  return can(userOrRole, "dashboard.read") || can(userOrRole, "dashboard.counts");
+}
+
+export function maySeeMoney(userOrRole) {
+  return can(userOrRole, "dashboard.read")
+    || can(userOrRole, "student.read")
+    || can(userOrRole, "student.write")
+    || can(userOrRole, "payment.create")
+    || can(userOrRole, "report.read")
+    || can(userOrRole, "expense.write")
+    || can(userOrRole, "fee.write")
+    || can(userOrRole, "settings.write")
+    || can(userOrRole, "audit.read")
+    || can(userOrRole, "receipt.read");
 }
 
 export function passwordIssue(password) {

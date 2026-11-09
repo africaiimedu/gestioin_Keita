@@ -429,7 +429,7 @@ main { padding: 28px 32px 56px; min-width: 0; flex: 1; min-height: 0; overflow: 
   padding: 13px 22px; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 .acc-add span { font-size: 1.15rem; margin-right: 4px; }
-.acc-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.acc-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .acc-stat {
   background: #fff; border: 1px solid #d5e8dc; border-radius: 18px; padding: 14px 18px;
   display: flex; justify-content: space-between; align-items: center; gap: 10px; white-space: nowrap;
@@ -438,6 +438,7 @@ main { padding: 28px 32px 56px; min-width: 0; flex: 1; min-height: 0; overflow: 
 .acc-stat span { color: #3d6b52; font-size: 0.88rem; }
 .acc-stat strong { font-size: 1.6rem; color: #0c3d2e; font-variant-numeric: tabular-nums; }
 .acc-stat.finance { border-top-color: #128a45; }
+.acc-stat.counts { border-top-color: #3d6bb3; }
 .acc-stat.cards { border-top-color: #e2a31a; }
 .acc-stat.kitchen { border-top-color: #3d6b52; }
 .acc-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
@@ -472,6 +473,7 @@ main { padding: 28px 32px 56px; min-width: 0; flex: 1; min-height: 0; overflow: 
 .acc-role.admin { background: #0c3d2e; color: #fff; }
 .acc-role.staff { background: #eef6f1; color: #0c3d2e; border: 1px solid #d5e8dc; }
 .acc-pill.finance { background: #e6f4ec; color: #0c3d2e; }
+.acc-pill.counts { background: #eef3ff; color: #1c3d7a; }
 .acc-pill.cards { background: #fbf0d6; color: #0c3d2e; }
 .acc-pill.kitchen { background: #fff; color: #0c3d2e; border: 1px solid #0c3d2e; }
 .acc-pill.all { background: linear-gradient(90deg, #128a45, #0c3d2e); color: #fff; }
@@ -527,6 +529,7 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 }
 .acc-tile.finance, .acc-tile.other { display: block; cursor: default; }
 .acc-tile.finance { border-left-color: #128a45; }
+.acc-tile.counts { border-left-color: #3d6bb3; }
 .acc-tile.cards { border-left-color: #e2a31a; }
 .acc-tile.kitchen { border-left-color: #0c3d2e; }
 .acc-tile.gold { border-left-color: #e2a31a; background: #fffaf0; margin-top: 12px; }

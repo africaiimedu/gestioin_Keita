@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import compression from "compression";
 import express from "express";
 import { Op } from "sequelize";
-import { verifyPassword, sessionToken, can, hashPassword, passwordIssue, RIGHTS, rightsOf } from "./auth/passwords.js";
+import { verifyPassword, sessionToken, can, canSeeDashboard, maySeeMoney, hashPassword, passwordIssue, RIGHTS, rightsOf } from "./auth/passwords.js";
 import { verifyTotp, totp } from "./auth/totp.js";
 import { closeDb, getDb, transaction } from "./db/index.js";
 import { ensureAccountEmails } from "./services/identity.js";
@@ -30,6 +30,7 @@ import {
   laterReceipt,
   recordCostume,
   catalog,
+  countsOnlyDashboard,
   createPayment,
   createReminder,
   createStudent,
@@ -243,9 +244,29 @@ app.get("/api/demo/code", async (req, res) => {
   res.json({ code: totp(user.totp_secret) });
 });
 
-app.get("/api/referentiel", requireUser, async (_req, res) => res.json(await catalog(db)));
-app.get("/api/tableau", requireAction("dashboard.read"), async (req, res) => {
-  res.json(await dashboard(db, readFilters(req), todayInConakry()));
+app.get("/api/referentiel", requireUser, async (req, res) => {
+  const data = await catalog(db);
+  if (maySeeMoney(req.user)) {
+    res.json(data);
+    return;
+  }
+  res.json({
+    ...data,
+    fees: [],
+    agents: [],
+    settings: {},
+    registrationFees: {},
+    cashDiscount: 0,
+    hypotheses: [],
+  });
+});
+app.get("/api/tableau", requireUser, async (req, res) => {
+  if (!canSeeDashboard(req.user)) {
+    res.status(403).json({ error: "Accès refusé pour votre rôle" });
+    return;
+  }
+  const data = await dashboard(db, readFilters(req), todayInConakry());
+  res.json(can(req.user, "dashboard.read") ? data : countsOnlyDashboard(data));
 });
 app.get("/api/coherence", requireAction("dashboard.read"), async (_req, res) => res.json(await reconcile(db)));
 app.get("/api/etudiants", requireAction("student.read"), async (req, res) => {

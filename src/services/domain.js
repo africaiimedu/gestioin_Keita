@@ -789,6 +789,38 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
   };
 }
 
+/** Tableau de bord sans aucun montant : effectifs par école et par cycle seulement. */
+export function countsOnlyDashboard(data) {
+  return {
+    asOf: data.asOf,
+    students: data.students,
+    cycles: data.cycles,
+    byProgram: (data.byProgram || []).map((row) => ({
+      program: row.program,
+      students: row.students,
+      bachelor: row.bachelor,
+      bachelor2: row.bachelor2,
+      master: row.master,
+    })),
+    hideAmounts: true,
+    due: 0,
+    paid: 0,
+    paidAll: 0,
+    reste: 0,
+    credit: 0,
+    rate: { tenths: 0, label: "" },
+    counts: {},
+    byMethod: [],
+    byMonth: [],
+    aging: {},
+    forecast: [],
+    debtors: [],
+    costume: {},
+    firstInstallment: {},
+    controlOk: true,
+  };
+}
+
 export async function reconcile(db, asOf = todayInConakry()) {
   const rows = await listStudents(db, {}, asOf);
   const sqlPaidByStudent = new Map((await db.prepare(`

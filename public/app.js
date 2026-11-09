@@ -176,7 +176,7 @@ function findCarte(id) {
 function financeGroups() {
   const groups = [
     ["Pilotage", [
-      allowed("dashboard.read") && ["tableau", "Tableau de bord"],
+      (allowed("dashboard.read") || allowed("dashboard.counts")) && ["tableau", "Tableau de bord"],
     ]],
     ["Scolarité", [
       (allowed("student.read") || allowed("student.write")) && ["etudiants", "Étudiants"],
@@ -199,8 +199,12 @@ function nav() {
   return financeGroups().flatMap(([, items]) => items);
 }
 
+function seesMoney() {
+  return allowed("dashboard.read");
+}
+
 function staffHome() {
-  if (allowed("dashboard.read")) return { suite: "finances", screen: "tableau" };
+  if (allowed("dashboard.read") || allowed("dashboard.counts")) return { suite: "finances", screen: "tableau" };
   if (nav().length) return { suite: "finances", screen: nav()[0][0] };
   if (allowed("expense.write")) return { suite: "finances", screen: "depenses" };
   if (allowed("cards.manage")) return { suite: "cartes", carte: "etudiants", cartePath: findCarte("etudiants").path };
@@ -217,7 +221,7 @@ function placeAllowed() {
     const kitchen = ["cantine", "menu", "commandes", "recus", "abonnes", "rapport"].includes(state.carte);
     return kitchen ? allowed("kitchen.manage") : allowed("cards.manage");
   }
-  if (state.screen === "tableau") return allowed("dashboard.read");
+  if (state.screen === "tableau") return allowed("dashboard.read") || allowed("dashboard.counts");
   if (state.screen === "depenses") return allowed("expense.write");
   if (state.screen === "comptes") return true;
   if (state.screen === "fiche") return allowed("student.read") || allowed("student.write");
@@ -970,6 +974,7 @@ function frenchMoment(stamp) {
 }
 
 function bindDashboard(screen) {
+  if (!seesMoney()) return;
   screen.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => {
     state.status = button.dataset.filter || "";
     state.studentPage = 1;
@@ -988,10 +993,12 @@ function bindDashboard(screen) {
 /** Toutes les écoles, même sans étudiant, avec leur nombre d'inscrits. */
 function schoolCounts(data) {
   const counts = new Map((data.byProgram || []).map((item) => [item.program, item]));
-  return sortSchools((state.catalog?.programs || []).map((item) => {
-    const found = counts.get(item.name) || {};
+  const names = (state.catalog?.programs || []).map((item) => item.name);
+  const list = names.length ? names : [...counts.keys()];
+  return sortSchools(list.map((name) => {
+    const found = counts.get(name) || {};
     return {
-      program: item.name,
+      program: name,
       students: found.students || 0,
       bachelor: found.bachelor || 0,
       bachelor2: found.bachelor2 || 0,
@@ -1045,31 +1052,33 @@ function tickClock() {
 
 function patchDashboard(root, data, control) {
   const dueBase = Math.max(data.due, 1);
-  const rate = Math.min(100, (data.rate.tenths || 0) / 10);
+  const rate = Math.min(100, (data.rate?.tenths || 0) / 10);
   const write = (tone, text, width) => {
     const card = root.querySelector(`.dash-kpi.${tone}`);
     if (!card) return;
     card.querySelector(".value").textContent = text;
     card.querySelector(".dash-track i").style.width = `${width}%`;
   };
-  write("tone-due", gnf(data.due), 100);
-  write("tone-paid", gnf(data.paid), Math.min(100, Math.round(data.paid / dueBase * 100)));
-  write("tone-left", gnf(data.reste), Math.min(100, Math.round(data.reste / dueBase * 100)));
-  write("tone-rate", data.rate.label, rate);
-  const ring = root.querySelector(".donut-value");
-  if (ring) ring.style.setProperty("--pct", String(rate));
-  const rateLabel = root.querySelector(".donut-label strong");
-  if (rateLabel) rateLabel.textContent = data.rate.label;
-  const badge = root.querySelector(".coherence");
-  if (badge) {
-    badge.className = `coherence ${control.ok ? "ok" : "bad"}`;
-    badge.textContent = control.ok ? "Cohérence OK" : "Écart de cohérence";
-  }
-  for (const [key, , value, note] of peopleFigures(data)) {
-    const tile = root.querySelector(`[data-people="${key}"]`);
-    if (!tile) continue;
-    tile.querySelector("strong").textContent = value;
-    tile.querySelector(".muted").textContent = note;
+  if (seesMoney() && !data.hideAmounts) {
+    write("tone-due", gnf(data.due), 100);
+    write("tone-paid", gnf(data.paid), Math.min(100, Math.round(data.paid / dueBase * 100)));
+    write("tone-left", gnf(data.reste), Math.min(100, Math.round(data.reste / dueBase * 100)));
+    write("tone-rate", data.rate.label, rate);
+    const ring = root.querySelector(".donut-value");
+    if (ring) ring.style.setProperty("--pct", String(rate));
+    const rateLabel = root.querySelector(".donut-label strong");
+    if (rateLabel) rateLabel.textContent = data.rate.label;
+    const badge = root.querySelector(".coherence");
+    if (badge) {
+      badge.className = `coherence ${control.ok ? "ok" : "bad"}`;
+      badge.textContent = control.ok ? "Cohérence OK" : "Écart de cohérence";
+    }
+    for (const [key, , value, note] of peopleFigures(data)) {
+      const tile = root.querySelector(`[data-people="${key}"]`);
+      if (!tile) continue;
+      tile.querySelector("strong").textContent = value;
+      tile.querySelector(".muted").textContent = note;
+    }
   }
   const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
   const bachelor = root.querySelector(".dash-bachelor");
@@ -1093,9 +1102,10 @@ function patchDashboard(root, data, control) {
     if (bachelor) bachelor.textContent = String(item.bachelor);
     if (bachelor2) bachelor2.textContent = String(item.bachelor2);
     if (master) master.textContent = String(item.master);
-    if (paid) paid.textContent = gnf(item.paid);
-    if (due) due.textContent = gnf(item.due);
+    if (paid && seesMoney()) paid.textContent = gnf(item.paid);
+    if (due && seesMoney()) due.textContent = gnf(item.due);
   }
+  if (!seesMoney() || data.hideAmounts) return;
   data.forecast.forEach((item) => {
     const row = root.querySelector(`[data-month="${CSS.escape(item.month)}"]`);
     if (!row) return;
@@ -1132,8 +1142,9 @@ function peopleHtml(data) {
 }
 
 function dashboardHtml(data, control) {
+  const countsOnly = !seesMoney() || data.hideAmounts;
   const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
-  const rate = Math.min(100, (data.rate.tenths || 0) / 10);
+  const rate = Math.min(100, (data.rate?.tenths || 0) / 10);
   const circ = (2 * Math.PI * 46).toFixed(2);
   const dueBase = Math.max(data.due, 1);
   const paidShare = Math.min(100, Math.round(data.paid / dueBase * 100));
@@ -1145,7 +1156,8 @@ function dashboardHtml(data, control) {
       </button>
       <span class="dash-track" aria-hidden="true"><i style="width:${share}%"></i></span>
     </article>`;
-  return `<div class="dash">
+  const schoolMoney = (item) => countsOnly ? "" : `<span>Montant payé <strong class="school-paid">${gnf(item.paid)}</strong></span><span>Montant attendu <strong class="school-due">${gnf(item.due)}</strong></span>`;
+  return `<div class="dash${countsOnly ? " dash-counts" : ""}">
     <header class="dash-hero">
       <div>
         <p class="mark">Scolarité · ${esc(frenchDay(data.asOf))}</p>
@@ -1163,9 +1175,9 @@ function dashboardHtml(data, control) {
           <li>Bachelor 2 <strong class="dash-bachelor2">${cycles.bachelor2 || 0}</strong></li>
           <li>Total Master <strong class="dash-master">${cycles.master}</strong></li>
         </ul>
-        <ul class="dash-schools" aria-label="Bachelor, Master et montants par école">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Bachelor 2 <strong class="school-bachelor2">${item.bachelor2}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span><span>Montant payé <strong class="school-paid">${gnf(item.paid)}</strong></span><span>Montant attendu <strong class="school-due">${gnf(item.due)}</strong></span></li>`).join("")}</ul>
+        <ul class="dash-schools" aria-label="${countsOnly ? "Effectifs par école" : "Bachelor, Master et montants par école"}">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Bachelor 2 <strong class="school-bachelor2">${item.bachelor2}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span>${schoolMoney(item)}</li>`).join("")}</ul>
       </div>
-      <div class="dash-hero-side">
+      ${countsOnly ? "" : `<div class="dash-hero-side">
         <div class="donut-wrap">
           <svg class="donut" viewBox="0 0 120 120" role="img" aria-label="Taux de recouvrement ${esc(data.rate.label)}">
             <defs><linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1b7a45"/><stop offset="100%" stop-color="#d4a017"/></linearGradient></defs>
@@ -1176,9 +1188,9 @@ function dashboardHtml(data, control) {
           <div class="donut-label"><strong>${esc(data.rate.label)}</strong><span class="muted">encaissé</span></div>
         </div>
         <span class="coherence ${control.ok ? "ok" : "bad"}">${control.ok ? "Cohérence OK" : "Écart de cohérence"}</span>
-      </div>
+      </div>`}
     </header>
-    <section class="dash-kpis">
+    ${countsOnly ? "" : `<section class="dash-kpis">
       ${kpiCard("Frais attendus", gnf(data.due), 100, "tone-due")}
       ${kpiCard("Encaissé", gnf(data.paid), paidShare, "tone-paid")}
       ${kpiCard("Reste à payer", gnf(data.reste), resteShare, "tone-left")}
@@ -1199,7 +1211,7 @@ function dashboardHtml(data, control) {
           <strong class="due">${gnf(item.reste)}</strong>
         </button>`).join("")}</div>
       </article>
-    </section>
+    </section>`}
   </div>`;
 }
 
@@ -1208,7 +1220,8 @@ async function showDashboard(screen) {
   clearTimeout(state.dashClock);
   state.dashSignature = "";
   const paint = async () => {
-    const [data, control] = await Promise.all([api("/api/tableau"), api("/api/coherence")]);
+    const data = await api("/api/tableau");
+    const control = seesMoney() && !data.hideAmounts ? await api("/api/coherence") : { ok: true };
     if (state.screen !== "tableau") return;
     const signature = dashSignature(data);
     const root = screen.querySelector(".dash");
@@ -3146,13 +3159,14 @@ function accountAreas(account) {
   if (account.role === "super_admin" || rights.includes("*")) return ["all"];
   const areas = [];
   if (rights.some((code) => FINANCE_RIGHTS.includes(code))) areas.push("finance");
+  if (rights.includes("dashboard.counts")) areas.push("counts");
   if (rights.includes("cards.manage")) areas.push("cards");
   if (rights.includes("kitchen.manage")) areas.push("kitchen");
   return areas;
 }
 
 function areaPills(account) {
-  const names = { all: "Tous les droits", finance: "Finances", cards: "Cartes", kitchen: "Cuisine" };
+  const names = { all: "Tous les droits", finance: "Finances", counts: "Admin 2", cards: "Cartes", kitchen: "Cuisine" };
   const areas = accountAreas(account);
   if (!areas.length) return `<span class="acc-pill none">Aucun accès</span>`;
   return areas.map((area) => `<span class="acc-pill ${area}">${names[area]}</span>`).join("");
@@ -3235,6 +3249,7 @@ async function showAccounts(screen) {
     ${manager ? `<div class="acc-stats">
       <div class="acc-stat"><span>Comptes actifs</span><strong>${data.users.length}</strong></div>
       <div class="acc-stat finance"><span>Accès finances</span><strong>${count("finance")}</strong></div>
+      <div class="acc-stat counts"><span>Accès Admin 2</span><strong>${count("counts")}</strong></div>
       <div class="acc-stat cards"><span>Accès cartes</span><strong>${count("cards")}</strong></div>
       <div class="acc-stat kitchen"><span>Accès cuisine</span><strong>${count("kitchen")}</strong></div>
     </div>` : ""}
@@ -3246,6 +3261,7 @@ async function showAccounts(screen) {
           <div class="acc-seg" role="group" aria-label="Filtrer">
             <button type="button" class="on" data-area="">Tous</button>
             <button type="button" data-area="finance">Finances</button>
+            <button type="button" data-area="counts">Admin 2</button>
             <button type="button" data-area="cards">Cartes</button>
             <button type="button" data-area="kitchen">Cuisine</button>
           </div>
@@ -3311,7 +3327,7 @@ function openAccountDialog(screen, data, account, creator) {
   const labels = new Map(data.rights.map((right) => [right.code, right.label]));
   const financeList = FINANCE_RIGHTS.filter((code) => labels.has(code));
   const otherList = data.rights.map((right) => right.code)
-    .filter((code) => !FINANCE_RIGHTS.includes(code) && !["cards.manage", "kitchen.manage", "import.run"].includes(code));
+    .filter((code) => !FINANCE_RIGHTS.includes(code) && !["cards.manage", "kitchen.manage", "import.run", "dashboard.counts"].includes(code));
   const check = (code) => `<label class="acc-check"><input type="checkbox" name="right" value="${esc(code)}" ${has(code) ? "checked" : ""}><span>${esc(labels.get(code) || code)}</span></label>`;
   const switchTile = (code, title, text, tone) => `<label class="acc-tile ${tone}">
       <span class="acc-tile-text"><strong>${title}</strong><small>${text}</small></span>
@@ -3351,6 +3367,7 @@ function openAccountDialog(screen, data, account, creator) {
             </label>
             <div class="acc-checks">${financeList.map(check).join("")}</div>
           </div>
+          ${switchTile("dashboard.counts", "Admin 2", "Tableau de bord : effectifs par école et par classe, sans aucun montant.", "counts")}
           ${switchTile("cards.manage", "Gestion des cartes", "Étudiants, atelier, impression, import et contrôle.", "cards")}
           ${switchTile("kitchen.manage", "Cuisine", "Cantine, menus, commandes, reçus, abonnés et rapport.", "kitchen")}
           ${otherList.length ? `<div class="acc-tile other"><span class="acc-tile-text"><strong>Autres autorisations</strong></span><div class="acc-checks">${otherList.map(check).join("")}</div></div>` : ""}
@@ -3423,7 +3440,7 @@ function openAccountDialog(screen, data, account, creator) {
     }
     const rights = [...form.querySelectorAll("input[name=right]:checked")].map((input) => input.value);
     const superAdmin = Boolean(superBox?.checked);
-    if (!superAdmin && !rights.length) return fail("Activez au moins une partie : Finances, Gestion des cartes ou Cuisine.");
+    if (!superAdmin && !rights.length) return fail("Activez au moins une partie : Finances, Admin 2, Gestion des cartes ou Cuisine.");
     const body = { fullName: form.fullName.value.trim(), email: form.email.value.trim(), superAdmin, rights, password };
     const submit = form.querySelector("[type=submit]");
     submit.disabled = true;

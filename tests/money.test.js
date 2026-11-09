@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bachelorSchoolingParts, computeSituation, enrollmentKindOf, feesDue, fitPlanToDue, officialInstallments, recoveryRate, registrationFee, REGISTRATION_FEES } from "../src/finance/money.js";
 import { hotp } from "../src/auth/totp.js";
-import { can } from "../src/auth/passwords.js";
+import { can, canSeeDashboard, maySeeMoney } from "../src/auth/passwords.js";
 
 const AS_OF = "2026-10-06";
 const licencePlan = [
@@ -183,4 +183,10 @@ test("vecteur TOTP connu et permissions", () => {
   assert.equal(can("admin", "user.write"), true);
   assert.equal(can("super_admin", "user.write"), true);
   assert.equal(can("super_admin", "payment.cancel"), true);
+  const admin2 = { role: "gestionnaire", permissions_json: JSON.stringify(["dashboard.counts"]) };
+  assert.equal(can(admin2, "dashboard.counts"), true);
+  assert.equal(canSeeDashboard(admin2), true);
+  assert.equal(maySeeMoney(admin2), false);
+  assert.equal(can(admin2, "dashboard.read"), false);
+  assert.equal(can(admin2, "student.read"), false);
 });
