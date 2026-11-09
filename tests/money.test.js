@@ -185,6 +185,7 @@ test("vecteur TOTP connu et permissions", () => {
   assert.equal(can("super_admin", "payment.cancel"), true);
   const admin2 = { role: "gestionnaire", permissions_json: JSON.stringify(["dashboard.counts"]) };
   assert.equal(can(admin2, "dashboard.counts"), true);
+  assert.equal(can({ role: "gestionnaire", permissions_json: ["dashboard.counts"] }, "dashboard.counts"), true);
   assert.equal(canSeeDashboard(admin2), true);
   assert.equal(maySeeMoney(admin2), false);
   assert.equal(can(admin2, "dashboard.read"), false);

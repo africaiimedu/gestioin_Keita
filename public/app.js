@@ -120,14 +120,16 @@ async function api(url, options = {}) {
     headers: { "Content-Type": "application/json", "X-Africaiim": "1", ...(options.headers || {}) },
   });
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { error: "Réponse illisible" }; }
   if (response.status === 401 && !url.endsWith("/connexion")) {
     state.user = null;
     render();
-    throw new Error(data.error || "Connexion requise");
+    throw Object.assign(new Error(data.error || "Connexion requise"), { status: 401, data });
   }
   if (!response.ok) {
     const error = new Error(data.error || "Erreur");
+    error.status = response.status;
     error.data = data;
     throw error;
   }
@@ -862,7 +864,8 @@ async function onLogin(event) {
       return;
     }
     const identifiant = String(form.get("email") || "").trim();
-    if (identifiant && await studentLogin(identifiant, String(form.get("password") || "")).catch(() => false)) return;
+    const looksStaff = /@/.test(identifiant) || identifiant.includes(".") || /^admin2$/i.test(identifiant);
+    if (!looksStaff && identifiant && await studentLogin(identifiant, String(form.get("password") || "")).catch(() => false)) return;
     error.hidden = false;
     error.textContent = caught.message;
     if (submit) submit.disabled = false;
@@ -923,7 +926,8 @@ async function openScreen() {
   }
   screen.classList.remove("carte-host");
   try {
-    if (!state.catalog) {
+    const needCatalog = state.screen !== "tableau" || allowed("dashboard.read");
+    if (needCatalog && !state.catalog) {
       state.catalog = await api("/api/referentiel");
       state.catalog.programs.sort((a, b) => {
         const left = schools.indexOf(a.name);
@@ -1016,11 +1020,11 @@ function shortSchool(name) {
 
 function dashSignature(data) {
   return JSON.stringify({
-    programs: sortSchools(data.byProgram).map((item) => item.program),
-    statuses: Object.keys(data.counts),
-    methods: data.byMethod.map((item) => item.label),
-    months: data.forecast.map((item) => item.month),
-    debtors: data.debtors.map((item) => item.id),
+    programs: sortSchools(data.byProgram || []).map((item) => item.program),
+    statuses: Object.keys(data.counts || {}),
+    methods: (data.byMethod || []).map((item) => item.label),
+    months: (data.forecast || []).map((item) => item.month),
+    debtors: (data.debtors || []).map((item) => item.id),
   });
 }
 

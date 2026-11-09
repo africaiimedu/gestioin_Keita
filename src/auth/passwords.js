@@ -48,9 +48,10 @@ export function rightsOf(userOrRole) {
   }
   if (!userOrRole) return [];
   if (userOrRole.role === "super_admin") return ["*"];
-  if (userOrRole.permissions_json) {
+  if (userOrRole.permissions_json != null && userOrRole.permissions_json !== "") {
     try {
-      const parsed = JSON.parse(userOrRole.permissions_json);
+      const raw = userOrRole.permissions_json;
+      const parsed = Array.isArray(raw) ? raw : JSON.parse(raw);
       if (Array.isArray(parsed)) return normalizeRights(parsed);
     } catch {
       /* le rôle sert de repli */
