@@ -17,6 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as pdf_canvas
 
 from app.config import ROOT, charger_config, chemin_logo, polices
+from app.services.ecoles import niveau_sur_carte
 
 MM = 72 / 25.4
 # L'atelier affiche la carte à 7,4 px par mm. Le PDF reprend ces mêmes traits.
@@ -575,9 +576,9 @@ def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
         "fonction": fonction,
         "ecole": fonction if personnel else (getattr(etu, "filiere", None) or "").strip(),
         "programme": "" if personnel else (getattr(etu, "programme", None) or "").strip(),
-        "niveau": "" if personnel else (getattr(etu, "niveau", None) or "").strip(),
+        "niveau": "" if personnel else niveau_sur_carte(etu),
         "email": getattr(etu, "email", None) or "",
-        "annee_academique": etu.annee_academique,
+        "annee_academique": etu.annee_academique if personnel else (niveau_sur_carte(etu) or etu.annee_academique),
         "date_validite": etu.date_validite.strftime("%d/%m/%Y"),
         "url": url_affichee(base, etu.matricule),
         "edition": f"Éd. {edition}",

@@ -324,13 +324,24 @@ def test_flash_qr_reconnu_sans_code_de_controle():
 
 
 def test_libelle_niveau_master_et_bachelor():
-    from app.services.ecoles import libelle_niveau
+    from datetime import date
+
+    from app.services.ecoles import libelle_niveau, niveau_sur_carte
 
     assert libelle_niveau("master_1") == "Master 1"
     assert libelle_niveau("bachelor_1") == "Bachelor 1ère année"
     assert libelle_niveau("1re année", programme="Bachelor en Management International") == "Bachelor 1ère année"
     assert libelle_niveau("1re année", programme="Master en Finance") == "Master 1"
-    assert libelle_niveau(None, intake_year=2026, duration_years=3, programme="Bachelor en Management International") == "Bachelor 1ère année"
+    assert libelle_niveau(None, intake_year=2026, duration_years=3, programme="Bachelor en Management International", au=date(2026, 11, 13)) == "Bachelor 1ère année"
+    assert libelle_niveau("bachelor", intake_year=2025, duration_years=3, programme="Bachelor en Management International", au=date(2026, 11, 13)) == "Bachelor 2e année"
+    assert libelle_niveau("1re année", intake_year=2025, duration_years=3, programme="Bachelor en Management International", au=date(2026, 11, 13)) == "Bachelor 2e année"
+    etu = SimpleNamespace(
+        niveau="Bachelor 1ère année",
+        annee_academique="2025-2026",
+        programme="Bachelor en Management International",
+        filiere="AFRICAIIM Business School",
+    )
+    assert niveau_sur_carte(etu, date(2026, 11, 13)) == "Bachelor 2e année"
 
 
 def test_mot_de_passe_depart_etudiant():

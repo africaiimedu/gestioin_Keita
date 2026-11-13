@@ -50,6 +50,26 @@ def test_fiche_depuis_api_mapping_et_duree():
     assert date_validite_api(2026, 1) == date(2027, 8, 31)
 
 
+def test_fiche_depuis_api_entree_2025_affiche_bachelor_2(monkeypatch):
+    monkeypatch.setattr("app.services.ecoles.annee_academique_courante", lambda jour=None: "2026-2027")
+    fiche = fiche_depuis_api(
+        {
+            "student_number": "UA25ABS0001",
+            "first_name": "Fatou",
+            "last_name": "Bah",
+            "school": "AFRICAIIM Business School",
+            "programme": "Bachelor en Management International",
+            "institutional_email": "fatou.bah@etu.univ-africaiim.com",
+            "intake_year": 2025,
+            "duration_years": 3,
+            "year_of_study": 1,
+            "status": "active",
+        }
+    )
+    assert fiche["annee"] == "2025-2026"
+    assert fiche["niveau"] == "Bachelor 2e année"
+
+
 def test_fiche_nom_vide_reparti_depuis_prenom():
     """Cas réel API : last_name vide, first_name = « Mamadou Adama »."""
     fiche = fiche_depuis_api(

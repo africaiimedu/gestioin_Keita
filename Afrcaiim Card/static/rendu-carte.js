@@ -27,6 +27,24 @@ function initialesCarte(etu) {
   return `${prenom.slice(0, 1)}${nom.slice(0, 1)}`.toUpperCase();
 }
 
+function niveauCarte(etu) {
+  if (!etu) return "";
+  if (etu.fonction || String(etu.matricule || "").startsWith("PERS")) return etu.annee_academique || "";
+  const annee = String(etu.annee_academique || "");
+  const prise = annee.match(/^(20\d{2})-\d{4}$/);
+  const programme = `${etu.programme || ""} ${etu.filiere || ""}`.toLowerCase();
+  if (prise) {
+    const now = new Date();
+    const courant = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+    const rang = Math.max(1, courant - Number(prise[1]) + 1);
+    if (/master/.test(programme)) return `Master ${Math.min(rang, 2)}`;
+    if (/miage/.test(programme)) return `MIAGE ${Math.min(rang, 3)}`;
+    if (/cpi|pr[eé]paratoire/.test(programme)) return `CPI ${Math.min(rang, 2)}`;
+    return rang <= 1 ? "Bachelor 1ère année" : `Bachelor ${rang}e année`;
+  }
+  return etu.niveau || annee;
+}
+
 function texteCarte(obj, etu) {
   if (obj.personnalise) return obj.personnalise;
   if (obj.type === "texte") return obj.texte || "";
@@ -34,6 +52,7 @@ function texteCarte(obj, etu) {
   const femme = String(etu.sexe || "M").toUpperCase() === "F";
   const fonction = (etu.fonction || etu.filiere || "").trim();
   const personnel = Boolean(etu.fonction) || String(etu.matricule || "").startsWith("PERS");
+  const niveau = niveauCarte(etu);
   const brut = {
     nom: etu.nom || "",
     prenom: etu.prenom || "",
@@ -43,7 +62,8 @@ function texteCarte(obj, etu) {
     ecole: fonction || (etu.filiere || "").trim(),
     programme: etu.programme || "",
     email: etu.email || "",
-    annee_academique: etu.annee_academique || "",
+    niveau,
+    annee_academique: personnel ? (etu.annee_academique || "") : (niveau || etu.annee_academique || ""),
     date_validite: dateCarte(etu.date_validite),
     url: etu.url || "",
     edition: `Éd. ${etu.edition || 1}`,

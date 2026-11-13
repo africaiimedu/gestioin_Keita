@@ -108,43 +108,55 @@ def libelle_cycle_annee(cycle: str, rang: int) -> str:
     return f"Bachelor {rang}e année"
 
 
+def rang_depuis_entree(intake_year: Any, duration_years: Any = None, jour: date | None = None) -> int | None:
+    """Année d'études : entrée 2025 en 2026-2027 → 2e année (Bachelor 2)."""
+    try:
+        debut = int(intake_year)
+    except (TypeError, ValueError):
+        return None
+    if debut < 2000 or debut > 2100:
+        return None
+    courant = int(annee_academique_courante(jour).split("-")[0])
+    rang = max(1, courant - debut + 1)
+    try:
+        duree = int(duration_years) if duration_years is not None else 12
+    except (TypeError, ValueError):
+        duree = 12
+    if duree < 1:
+        duree = 12
+    return min(rang, duree)
+
+
 def libelle_niveau(
     valeur: Any = None,
     *,
     intake_year: Any = None,
     duration_years: Any = None,
     programme: Any = None,
+    au: date | None = None,
 ) -> str:
-    """Libellé sur la fiche d'identité : Master 1, Bachelor 1ère année…"""
+    """Libellé sur la fiche et la carte : Master 1, Bachelor 2e année…"""
     brut = str(valeur or "").strip()
-    if brut:
-        cle = _clef(brut).replace(" ", "_")
-        if cle in _NIVEAUX:
-            return _NIVEAUX[cle]
-        if brut in _NIVEAUX.values():
-            return brut
-        low = _clef(brut)
-        if low.startswith(("master ", "master_")) and _rang_depuis(brut):
-            return libelle_cycle_annee("master", _rang_depuis(brut) or 1)
-        if low.startswith(("bachelor ", "bachelor_")) and _rang_depuis(brut):
-            return libelle_cycle_annee("bachelor", _rang_depuis(brut) or 1)
-    rang = _rang_depuis(brut) if brut else None
-    if rang is None:
-        try:
-            debut = int(intake_year)
-        except (TypeError, ValueError):
-            debut = None
-        if debut and 2000 <= debut <= 2100:
-            courant = int(annee_academique_courante().split("-")[0])
-            rang = max(1, courant - debut + 1)
-            try:
-                duree = int(duration_years) if duration_years is not None else 12
-            except (TypeError, ValueError):
-                duree = 12
-            if duree < 1:
-                duree = 12
-            rang = min(rang, duree)
     cycle = _cycle_depuis(str(programme or ""), duration_years)
+    if not cycle and brut:
+        low = _clef(brut).replace(" ", "_")
+        if low.startswith("master"):
+            cycle = "master"
+        elif low.startswith(("cpi", "preparatoire")):
+            cycle = "cpi"
+        elif low.startswith("miage"):
+            cycle = "miage"
+        elif low.startswith(("bachelor", "licence")):
+            cycle = "bachelor"
+    rang = rang_depuis_entree(intake_year, duration_years, au)
+    if rang is None:
+        rang = _rang_depuis(brut) if brut else None
+        if brut:
+            cle = _clef(brut).replace(" ", "_")
+            if cle in _NIVEAUX:
+                return _NIVEAUX[cle]
+            if brut in _NIVEAUX.values():
+                return brut
     if cycle and rang:
         return libelle_cycle_annee(cycle, rang)
     if cycle:
@@ -152,6 +164,22 @@ def libelle_niveau(
     if rang:
         return libelle_annee_etude(rang)
     return brut
+
+
+def niveau_sur_carte(etu: Any, jour: date | None = None) -> str:
+    """Texte imprimé : année d'entrée 2025 → Bachelor 2, même si l'API a envoyé Bachelor 1."""
+    annee = str(getattr(etu, "annee_academique", None) or "").strip()
+    debut = None
+    if re.match(r"^20\d{2}-\d{4}$", annee):
+        debut = int(annee[:4])
+    programme = getattr(etu, "programme", None) or getattr(etu, "filiere", None) or ""
+    libelle = libelle_niveau(
+        None if debut else (getattr(etu, "niveau", None) or ""),
+        intake_year=debut,
+        programme=programme,
+        au=jour,
+    )
+    return libelle or (getattr(etu, "niveau", None) or "") or annee
 
 
 def ecole_officielle(texte: str) -> str:
