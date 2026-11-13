@@ -70,6 +70,26 @@ def test_fiche_depuis_api_entree_2025_affiche_bachelor_2(monkeypatch):
     assert fiche["niveau"] == "Bachelor 2e année"
 
 
+def test_fiche_api_garde_la_2e_annee_meme_si_intake_2026(monkeypatch):
+    monkeypatch.setattr("app.services.ecoles.annee_academique_courante", lambda jour=None: "2026-2027")
+    fiche = fiche_depuis_api(
+        {
+            "student_number": "UA26ABS0071",
+            "first_name": "Hawa",
+            "last_name": "Kaba",
+            "school": "AFRICAIIM Business School",
+            "programme": "Bachelor en Management International",
+            "institutional_email": "hawa.kaba@etu.univ-africaiim.com",
+            "intake_year": 2026,
+            "duration_years": 3,
+            "year_of_study": 1,
+            "current_year_of_study": 2,
+            "status": "active",
+        }
+    )
+    assert fiche["niveau"] == "Bachelor 2e année"
+
+
 def test_fiche_nom_vide_reparti_depuis_prenom():
     """Cas réel API : last_name vide, first_name = « Mamadou Adama »."""
     fiche = fiche_depuis_api(

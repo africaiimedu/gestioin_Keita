@@ -22,7 +22,7 @@ from app.config import env
 from app.models import Etudiant
 from app.services.import_etudiants import controler_fiche
 from app.services.comptes import assurer_compte_etudiant
-from app.services.ecoles import libelle_niveau
+from app.services.ecoles import meilleur_niveau
 from app.services.metier import carte_courante, creer_etudiant, modifier_etudiant, remplacer_photo, supprimer_etudiant
 from app.services.photos import normaliser_photo
 
@@ -103,6 +103,41 @@ def _repartir_nom_prenom(prenom: str, nom: str) -> tuple[str, str]:
     return prenom, nom
 
 
+_CLES_ANNEE_ETUDE = (
+    "year_of_study", "study_year", "current_year_of_study", "yearOfStudy",
+    "annee_etude", "annee_etudes", "anneeEtude", "study_level",
+    "current_study_year", "class_year", "year_in_programme", "year_in_program",
+    "level", "academic_level", "level_name", "year_of_study_display",
+)
+
+
+_MOTIFS_CLE_ANNEE = ("year_of_study", "study_year", "annee_etud", "academic_level", "class_year", "year_in_program", "year_in_programme", "current_year")
+
+
+def _annees_etude_api(brut: dict) -> list[Any]:
+    """Tous les champs d'année d'études renvoyés par l'API (le plus avancé l'emporte)."""
+    trouves: list[Any] = []
+
+    def prendre(obj: Any, profondeur: int = 0) -> None:
+        if profondeur > 4:
+            return
+        if isinstance(obj, list):
+            for item in obj[:20]:
+                prendre(item, profondeur + 1)
+            return
+        if not isinstance(obj, dict):
+            return
+        for cle, valeur in obj.items():
+            nom = str(cle).lower()
+            if valeur not in (None, "") and (cle in _CLES_ANNEE_ETUDE or any(motif in nom for motif in _MOTIFS_CLE_ANNEE)):
+                trouves.append(valeur)
+            if isinstance(valeur, (dict, list)):
+                prendre(valeur, profondeur + 1)
+
+    prendre(brut)
+    return trouves
+
+
 def fiche_depuis_api(brut: dict) -> dict:
     """Transforme une fiche API en champs atelier (100 % source Université)."""
     matricule = str(brut.get("student_number") or "").strip()
@@ -117,8 +152,8 @@ def fiche_depuis_api(brut: dict) -> dict:
     photo_url = str(brut.get("photo_url") or "").strip()
     programme = str(brut.get("programme") or "").strip()
     duree = _entier(brut.get("duration_years"), 1) or 1
-    niveau = libelle_niveau(
-        brut.get("year_of_study") or brut.get("study_year") or brut.get("level") or brut.get("academic_level"),
+    niveau = meilleur_niveau(
+        *_annees_etude_api(brut),
         intake_year=brut.get("intake_year"),
         duration_years=brut.get("duration_years"),
         programme=programme,
@@ -339,7 +374,13 @@ def _enregistrer_fiche_api(db: Session, brut: dict, acteur_id: int | None) -> tu
             date_validite=fiche.date_validite,
             email=fiche.email,
             programme=raw["programme"],
-            niveau=raw["niveau"],
+            niveau=meilleur_niveau(
+                existant.niveau,
+                raw["niveau"],
+                intake_year=brut.get("intake_year"),
+                duration_years=raw["duree_ans"],
+                programme=raw["programme"] or existant.filiere,
+            ),
             sexe=existant.sexe or "M",
             acteur_id=acteur_id,
         )

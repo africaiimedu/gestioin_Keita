@@ -27,22 +27,34 @@ function initialesCarte(etu) {
   return `${prenom.slice(0, 1)}${nom.slice(0, 1)}`.toUpperCase();
 }
 
+function rangNiveau(texte) {
+  const brut = String(texte || "").trim();
+  const entier = Number(brut);
+  if (entier >= 1 && entier <= 5) return entier;
+  const t = brut.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/bachelor[_\s-]*3|licence[_\s-]*3|\b3(e|eme)?\b/.test(t)) return 3;
+  if (/bachelor[_\s-]*2|licence[_\s-]*2|\b2(e|eme)?\b/.test(t)) return 2;
+  if (/bachelor[_\s-]*1|licence[_\s-]*1|\b1(re|ere)?\b/.test(t)) return 1;
+  return 0;
+}
+
 function niveauCarte(etu) {
   if (!etu) return "";
   if (etu.fonction || String(etu.matricule || "").startsWith("PERS")) return etu.annee_academique || "";
   const annee = String(etu.annee_academique || "");
   const prise = annee.match(/^(20\d{2})-\d{4}$/);
   const programme = `${etu.programme || ""} ${etu.filiere || ""}`.toLowerCase();
+  let rang = rangNiveau(etu.niveau);
   if (prise) {
     const now = new Date();
     const courant = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-    const rang = Math.max(1, courant - Number(prise[1]) + 1);
-    if (/master/.test(programme)) return `Master ${Math.min(rang, 2)}`;
-    if (/miage/.test(programme)) return `MIAGE ${Math.min(rang, 3)}`;
-    if (/cpi|pr[eé]paratoire/.test(programme)) return `CPI ${Math.min(rang, 2)}`;
-    return rang <= 1 ? "Bachelor 1ère année" : `Bachelor ${rang}e année`;
+    rang = Math.max(rang, Math.max(1, courant - Number(prise[1]) + 1));
   }
-  return etu.niveau || annee;
+  if (!rang) return etu.niveau || annee;
+  if (/master/.test(programme)) return `Master ${Math.min(rang, 2)}`;
+  if (/miage/.test(programme)) return `MIAGE ${Math.min(rang, 3)}`;
+  if (/cpi|pr[eé]paratoire/.test(programme)) return `CPI ${Math.min(rang, 2)}`;
+  return rang <= 1 ? "Bachelor 1ère année" : `Bachelor ${rang}e année`;
 }
 
 function texteCarte(obj, etu) {

@@ -335,6 +335,7 @@ def test_libelle_niveau_master_et_bachelor():
     assert libelle_niveau(None, intake_year=2026, duration_years=3, programme="Bachelor en Management International", au=date(2026, 11, 13)) == "Bachelor 1ère année"
     assert libelle_niveau("bachelor", intake_year=2025, duration_years=3, programme="Bachelor en Management International", au=date(2026, 11, 13)) == "Bachelor 2e année"
     assert libelle_niveau("1re année", intake_year=2025, duration_years=3, programme="Bachelor en Management International", au=date(2026, 11, 13)) == "Bachelor 2e année"
+    assert libelle_niveau("2e année", intake_year=2026, duration_years=3, programme="Bachelor en Management International", au=date(2026, 11, 13)) == "Bachelor 2e année"
     etu = SimpleNamespace(
         niveau="Bachelor 1ère année",
         annee_academique="2025-2026",
@@ -342,6 +343,13 @@ def test_libelle_niveau_master_et_bachelor():
         filiere="AFRICAIIM Business School",
     )
     assert niveau_sur_carte(etu, date(2026, 11, 13)) == "Bachelor 2e année"
+    hawa = SimpleNamespace(
+        niveau="2e année",
+        annee_academique="2026-2027",
+        programme="Bachelor en Management International",
+        filiere="AFRICAIIM Business School",
+    )
+    assert niveau_sur_carte(hawa, date(2026, 11, 13)) == "Bachelor 2e année"
 
 
 def test_mot_de_passe_depart_etudiant():

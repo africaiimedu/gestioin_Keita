@@ -83,17 +83,62 @@ def _cycle_depuis(programme: str = "", duration_years: Any = None) -> str:
 
 
 def _rang_depuis(valeur: str) -> int | None:
-    cle = _clef(valeur).replace("année", " ").replace("annee", " ")
+    brut = str(valeur or "").strip()
+    if not brut:
+        return None
+    try:
+        nombre = int(brut)
+    except ValueError:
+        nombre = None
+    if nombre is not None and 1 <= nombre <= 5:
+        return nombre
+    cle = _clef(brut).replace("année", " ").replace("annee", " ")
+    compact = cle.replace(" ", "").replace("_", "")
+    for motif, rang in (("bachelor3", 3), ("licence3", 3), ("b3", 3), ("l3", 3), ("bachelor2", 2), ("licence2", 2), ("b2", 2), ("l2", 2), ("bachelor1", 1), ("licence1", 1), ("b1", 1), ("l1", 1)):
+        if motif in compact:
+            return rang
     for mot in reversed(cle.replace("_", " ").split()):
         if mot in _RANGS_TEXTE:
             return _RANGS_TEXTE[mot]
-    try:
-        nombre = int(str(valeur).strip())
-    except ValueError:
-        return None
-    if 1 <= nombre <= 5:
-        return nombre
     return None
+
+
+def meilleur_niveau(*textes: Any, intake_year: Any = None, duration_years: Any = None, programme: Any = None, au: date | None = None) -> str:
+    """Garde l'année d'études la plus avancée : API, fiche déjà connue, ou année d'entrée."""
+    cycle = _cycle_depuis(str(programme or ""), duration_years)
+    rangs: list[int] = []
+    for texte in textes:
+        brut = str(texte or "").strip()
+        if not brut:
+            continue
+        if not cycle:
+            low = _clef(brut).replace(" ", "_")
+            if low.startswith("master"):
+                cycle = "master"
+            elif low.startswith(("cpi", "preparatoire")):
+                cycle = "cpi"
+            elif low.startswith("miage"):
+                cycle = "miage"
+            elif low.startswith(("bachelor", "licence")):
+                cycle = "bachelor"
+        rang = _rang_depuis(brut)
+        if rang:
+            rangs.append(rang)
+    extra = rang_depuis_entree(intake_year, duration_years, au)
+    if extra:
+        rangs.append(extra)
+    rang = max(rangs) if rangs else None
+    if cycle and rang:
+        return libelle_cycle_annee(cycle, rang)
+    if cycle:
+        return libelle_cycle_annee(cycle, 1)
+    if rang:
+        return libelle_annee_etude(rang)
+    for texte in textes:
+        brut = str(texte or "").strip()
+        if brut:
+            return brut
+    return ""
 
 
 def libelle_cycle_annee(cycle: str, rang: int) -> str:
@@ -136,50 +181,29 @@ def libelle_niveau(
     au: date | None = None,
 ) -> str:
     """Libellé sur la fiche et la carte : Master 1, Bachelor 2e année…"""
-    brut = str(valeur or "").strip()
-    cycle = _cycle_depuis(str(programme or ""), duration_years)
-    if not cycle and brut:
-        low = _clef(brut).replace(" ", "_")
-        if low.startswith("master"):
-            cycle = "master"
-        elif low.startswith(("cpi", "preparatoire")):
-            cycle = "cpi"
-        elif low.startswith("miage"):
-            cycle = "miage"
-        elif low.startswith(("bachelor", "licence")):
-            cycle = "bachelor"
-    rang = rang_depuis_entree(intake_year, duration_years, au)
-    if rang is None:
-        rang = _rang_depuis(brut) if brut else None
-        if brut:
-            cle = _clef(brut).replace(" ", "_")
-            if cle in _NIVEAUX:
-                return _NIVEAUX[cle]
-            if brut in _NIVEAUX.values():
-                return brut
-    if cycle and rang:
-        return libelle_cycle_annee(cycle, rang)
-    if cycle:
-        return libelle_cycle_annee(cycle, 1)
-    if rang:
-        return libelle_annee_etude(rang)
-    return brut
+    return meilleur_niveau(
+        valeur,
+        intake_year=intake_year,
+        duration_years=duration_years,
+        programme=programme,
+        au=au,
+    )
 
 
 def niveau_sur_carte(etu: Any, jour: date | None = None) -> str:
-    """Texte imprimé : année d'entrée 2025 → Bachelor 2, même si l'API a envoyé Bachelor 1."""
+    """Texte imprimé : ne jamais redescendre en 1re année si la fiche ou l'entrée indiquent la 2e."""
     annee = str(getattr(etu, "annee_academique", None) or "").strip()
     debut = None
     if re.match(r"^20\d{2}-\d{4}$", annee):
         debut = int(annee[:4])
     programme = getattr(etu, "programme", None) or getattr(etu, "filiere", None) or ""
-    libelle = libelle_niveau(
-        None if debut else (getattr(etu, "niveau", None) or ""),
+    libelle = meilleur_niveau(
+        getattr(etu, "niveau", None),
         intake_year=debut,
         programme=programme,
         au=jour,
     )
-    return libelle or (getattr(etu, "niveau", None) or "") or annee
+    return libelle or annee
 
 
 def ecole_officielle(texte: str) -> str:
