@@ -1454,6 +1454,14 @@ async function showStudents(screen) {
       amount.required = !scholar;
       form.method.required = !scholar;
       if (scholar) amount.value = "0";
+      const costumeBox = form.querySelector(".costume-block");
+      if (costumeBox) {
+        costumeBox.hidden = isMaster();
+        if (isMaster()) {
+          if (form.costumeAmount) form.costumeAmount.value = "";
+          if (form.costumeQuantity) form.costumeQuantity.value = "";
+        }
+      }
     };
     form.level.addEventListener("change", syncFee);
     form.studyYear.addEventListener("change", syncFee);
@@ -1537,8 +1545,8 @@ async function showStudents(screen) {
           scholarshipAmount: form.scholarship.checked ? form.scholarshipAmount.value.replace(/\D/g, "") : 0,
           cashDiscount: discountChosen(form),
           paymentAmount: form.scholarship.checked ? 0 : form.paymentAmount.value.replace(/\D/g, ""),
-          costumeAmount: moneyOf(form.costumeAmount),
-          costumeQuantity: Number(form.costumeQuantity?.value) || null,
+          costumeAmount: isMaster() ? 0 : moneyOf(form.costumeAmount),
+          costumeQuantity: isMaster() ? null : (Number(form.costumeQuantity?.value) || null),
           matricule: form.matricule.value.trim(),
           method: form.method.value,
         }) });
@@ -2108,6 +2116,12 @@ function cantineCard(cantine, studentId) {
 
 function costumeCard(costume) {
   if (!costume) return "";
+  if (costume.required === false || costume.status === "sans_costume") {
+    return `<article class="card costume-box" style="margin-top:14px">
+      <div class="costume-head"><h2>Costume</h2><span class="tag aucun_paiement">Pas de costume</span></div>
+      <p class="muted">Les étudiants en Master n'ont pas de costume à payer.</p>
+    </article>`;
+  }
   const tone = { paye: "solde", partiel: "partiel", non_paye: "en_retard", non_fixe: "aucun_paiement" }[costume.status] || "aucun_paiement";
   const share = costume.price ? Math.min(100, Math.round(costume.paid / costume.price * 100)) : 0;
   const methodLabel = (code) => state.catalog.methods.find((item) => item.code === code)?.label || "—";
@@ -2248,6 +2262,7 @@ function openPaymentUpdate(record, onDone) {
   form.paidOn.addEventListener("change", refreshUpdatePreview);
   form.cashDiscount.addEventListener("change", refreshUpdatePreview);
   showDiscountFor(form, record.level, record.customFee ?? null);
+  showCostumeFor(form, record.level);
   wireCostume(form);
   refreshUpdatePreview();
   form.addEventListener("submit", async (event) => {
@@ -2446,8 +2461,21 @@ function showDiscountFor(form, level, customFee = null) {
   if (row.hidden) form.cashDiscount.value = "non";
 }
 
+function showCostumeFor(form, level) {
+  const box = form?.querySelector(".costume-block");
+  if (!box) return;
+  const master = String(level || "").startsWith("master");
+  box.hidden = master;
+  if (master) {
+    if (form.costumeAmount) form.costumeAmount.value = "";
+    if (form.costumeQuantity) form.costumeQuantity.value = "";
+  }
+}
+
 function showCurrent(student) {
-  showDiscountFor(document.querySelector("#pay-form"), student.level, student.customFee ?? null);
+  const form = document.querySelector("#pay-form");
+  showDiscountFor(form, student.level, student.customFee ?? null);
+  showCostumeFor(form, student.level);
   const situation = student.situation;
   if (!situation) {
     document.querySelector("#current").innerHTML = `<div class="preview"><p><strong>${esc(student.name)}</strong> · ${esc(student.matricule)}</p></div>`;
@@ -2619,16 +2647,16 @@ function discountChosen(form) {
 
 function costumeField(label = "Avance ou solde costume (GNF)") {
   const price = costumePriceSetting();
-  if (!price) return `<p class="muted costume-hint">Costume : prix non fixé. L'administrateur le règle dans Tarifs.</p>`;
+  if (!price) return `<div class="costume-block"><p class="muted costume-hint">Costume : prix non fixé. L'administrateur le règle dans Tarifs.</p></div>`;
   const counts = Array.from({ length: 10 }, (_, index) => index + 1)
     .map((count) => `<option value="${count}">${count} costume${count > 1 ? "s" : ""} · ${gnf(count * price)}</option>`).join("");
-  return `<div class="costume-field">
+  return `<div class="costume-block"><div class="costume-field">
       <div class="duo">
         <p><label>${esc(label)} <span class="muted">(avance possible)</span></label><input name="costumeAmount" inputmode="numeric" placeholder="0, une avance, ou le prix entier"></p>
         <p><label>Nombre de costumes</label><select name="costumeQuantity"><option value="">Selon le montant versé</option>${counts}</select></p>
       </div>
       <p class="costume-live muted" data-costume-live>Prix unitaire : ${gnf(price)}. Vous pouvez verser une avance ; le reçu indiquera le versé et le reste.</p>
-    </div>`;
+    </div></div>`;
 }
 
 /** Nombre de costumes retenu à l'écran : celui choisi, sinon celui que le montant paie exactement. */

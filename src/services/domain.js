@@ -169,12 +169,17 @@ export async function costumePrice(db) {
 
 export const COSTUME_MAX = 20;
 
+export function wearsCostume(level) {
+  return !String(level || "").toLowerCase().startsWith("master");
+}
+
 /** Prix (nombre de costumes × prix unitaire), versé et reste. Un versement lié à un paiement annulé ne compte plus. */
 export async function costumeSituation(db, studentId, quantityOverride = null) {
   const unitPrice = await costumePrice(db);
-  const row = await db.prepare("SELECT costume_quantity FROM students WHERE id = ?").get(studentId);
-  const quantity = quantityOverride || Math.max(1, Number(row?.costume_quantity || 1));
-  const price = unitPrice * quantity;
+  const row = await db.prepare("SELECT costume_quantity, level FROM students WHERE id = ?").get(studentId);
+  const required = wearsCostume(row?.level);
+  const quantity = required ? (quantityOverride || Math.max(1, Number(row?.costume_quantity || 1))) : 0;
+  const price = required ? unitPrice * quantity : 0;
   const entries = (await db.prepare(`
     SELECT c.id, c.amount, c.paid_on, c.method, c.note, c.status, c.cancel_reason, c.payment_id,
            r.number AS receipt_number, r.id AS receipt_id, p.status AS payment_status, c.receipt_number AS costume_receipt_number
@@ -190,13 +195,14 @@ export async function costumeSituation(db, studentId, quantityOverride = null) {
   const paid = entries.filter((row) => row.counted).reduce((sum, row) => sum + row.amount, 0);
   const reste = Math.max(0, price - paid);
   let status = "non_paye";
-  if (!price) status = "non_fixe";
+  if (!required) status = "sans_costume";
+  else if (!price) status = "non_fixe";
   else if (reste === 0) status = "paye";
   else if (paid > 0) status = "partiel";
-  const labels = { non_fixe: "Prix non fixé", paye: "Payé", partiel: "Partiellement payé", non_paye: "Non payé" };
+  const labels = { sans_costume: "Pas de costume", non_fixe: "Prix non fixé", paye: "Payé", partiel: "Partiellement payé", non_paye: "Non payé" };
   const counted = entries.filter((row) => row.counted);
   const lastReceipt = counted.map((row) => row.costume_receipt_number || row.receipt_number).filter(Boolean).at(-1) || null;
-  return { unitPrice, quantity, price, paid, reste, status, statusLabel: labels[status], entries, lastReceipt };
+  return { unitPrice, quantity, price, paid, reste, required, status, statusLabel: labels[status], entries, lastReceipt };
 }
 
 function costumeQuantityOf(value) {
@@ -242,6 +248,7 @@ function costumeAmountOf(value) {
 
 function assertCostumeRoom(costume, amount) {
   if (amount <= 0) return;
+  if (costume.required === false) throw new HttpError(400, "Les étudiants en Master n'ont pas de costume à payer");
   if (!costume.price) throw new HttpError(400, "Le prix du costume n'est pas encore fixé dans les paramètres");
   if (amount > costume.reste) {
     const several = costume.quantity > 1 ? `les ${costume.quantity} costumes` : "le costume";
@@ -263,6 +270,7 @@ export async function recordCostume(db, user, studentId, input, asOf = todayInCo
   return transaction(db, async () => {
     const student = await db.prepare(`${STUDENT_SELECT} WHERE s.id = ?`).get(Number(studentId));
     if (!student) throw new HttpError(404, "Étudiant introuvable");
+    if (!wearsCostume(student.level)) throw new HttpError(400, "Les étudiants en Master n'ont pas de costume à payer");
     const before = await costumeFor(db, student.id, amount, input.quantity, { write: true });
     assertCostumeRoom(before, amount);
     let number = null;
@@ -612,9 +620,12 @@ async function costumeLines(db, rows) {
     GROUP BY c.student_id
   `).all()).map((row) => [row.student_id, Number(row.paid)]));
   const lines = rows.map(({ student }) => {
+    const paid = paidBy.get(student.id) || 0;
+    if (!wearsCostume(student.level)) {
+      return { student, quantity: 0, price: 0, paid, reste: 0 };
+    }
     const quantity = Math.max(1, Number(student.costume_quantity || 1));
     const price = unitPrice * quantity;
-    const paid = paidBy.get(student.id) || 0;
     return { student, quantity, price, paid, reste: Math.max(0, price - paid) };
   });
   return { unitPrice, lines };
@@ -627,6 +638,10 @@ async function costumeLines(db, rows) {
 function costumeTotals(unitPrice, lines) {
   const totals = { unitPrice, students: lines.length, costumes: 0, costumesPaid: 0, expected: 0, amount: 0, reste: 0, paid: 0, partial: 0, none: 0, unpaid: 0 };
   for (const line of lines) {
+    if (line.price <= 0) {
+      if (line.paid > 0) totals.amount += line.paid;
+      continue;
+    }
     totals.costumes += line.quantity;
     totals.expected += line.price;
     totals.amount += line.paid;
@@ -1058,6 +1073,7 @@ function publicStudent(student, discounts = []) {
     enrollmentKind: enrollmentKindOf(student.enrollment_kind),
     scholarship: isScholarStudent(student, discounts),
     scholarshipAmount: scholarshipAmountOf(student),
+    wearsCostume: wearsCostume(student.level),
   };
 }
 
@@ -1112,6 +1128,9 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
       throw new HttpError(400, overpayMessage(input.amount, room, offers), { code: "AMOUNT_TOO_HIGH", reste: room });
     }
     const costumeAmount = costumeAmountOf(input.costumeAmount);
+    if (costumeAmount > 0 && !wearsCostume(current.student.level)) {
+      throw new HttpError(400, "Les étudiants en Master n'ont pas de costume à payer");
+    }
     const costumeBefore = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity, { write: true });
     assertCostumeRoom(costumeBefore, costumeAmount);
     if (offers.cash.apply) await addCashDiscount(db, user, current.student.id);
@@ -1620,8 +1639,11 @@ export async function createStudent(db, user, input) {
   if (scholarship && paymentAmount > 0) throw new HttpError(400, "Un boursier ne verse aucun frais de scolarité");
   const cashDiscount = !scholarship && truthy(input.cashDiscount);
   if (cashDiscount && !cashDiscountFor(input.level)) throw new HttpError(400, "La remise de 1.200.000 GNF est réservée au Bachelor : pas de remise en Master.");
-  const costumeAmount = costumeAmountOf(input.costumeAmount);
-  const costumeQuantity = costumeQuantityOf(input.costumeQuantity);
+  const costumeAmount = wearsCostume(input.level) ? costumeAmountOf(input.costumeAmount) : 0;
+  const costumeQuantity = wearsCostume(input.level) ? costumeQuantityOf(input.costumeQuantity) : null;
+  if (!wearsCostume(input.level) && (costumeAmountOf(input.costumeAmount) > 0 || costumeQuantityOf(input.costumeQuantity))) {
+    throw new HttpError(400, "Les étudiants en Master n'ont pas de costume à payer");
+  }
   if ((paymentAmount > 0 || costumeAmount > 0) && !METHODS.has(input.method)) throw new HttpError(400, "Choisissez le moyen de paiement");
   const typedMatricule = matriculeOf(input.matricule, { optional: true });
   const year = await activeYear(db);
@@ -1828,8 +1850,9 @@ export async function setCostumeQuantity(db, user, studentId, value) {
   const quantity = costumeQuantityOf(value);
   if (!quantity) throw new HttpError(400, "Indiquez le nombre de costumes");
   return transaction(db, async () => {
-    const student = await db.prepare("SELECT id FROM students WHERE id = ?").get(Number(studentId));
+    const student = await db.prepare("SELECT id, level FROM students WHERE id = ?").get(Number(studentId));
     if (!student) throw new HttpError(404, "Étudiant introuvable");
+    if (!wearsCostume(student.level)) throw new HttpError(400, "Les étudiants en Master n'ont pas de costume à payer");
     const before = await costumeSituation(db, student.id);
     if (quantity === before.quantity) return before;
     const after = await costumeFor(db, Number(studentId), 0, quantity, { write: true });

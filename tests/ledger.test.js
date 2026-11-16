@@ -84,7 +84,7 @@ test("cohérence : somme des étudiants = total général", async () => {
   const levels = await db.prepare("SELECT level FROM students").all();
   assert.equal(master, levels.filter((row) => row.level.startsWith("master")).length);
   const { paid, partial, none } = dashboard.costume;
-  assert.equal(paid + partial + none, dashboard.students);
+  assert.equal(paid + partial + none, dashboard.students - master);
 });
 
 test("idempotence, refus des montants invalides, deux paiements, annulation, reçus sans trou", async () => {
@@ -865,11 +865,40 @@ test("bourse : montant hors finances et nombre de boursiers au tableau de bord",
   assert.ok(listed.some((row) => row.student.id === created.student.id));
 });
 
+test("Master : pas de costume à payer, ni à l'inscription ni au tableau de bord", async () => {
+  await domain.updateSettings(db, agent, { costume_price: "800.000" });
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const before = await domain.dashboard(db, {});
+  await assert.rejects(
+    () => domain.createStudent(db, agent, {
+      lastName: "MASTER", firstName: "Costume", programId: program.id, level: "master_1",
+      phone: "620000010", costumeAmount: 800_000, method: "especes", paymentAmount: 0,
+    }),
+    /n'ont pas de costume/,
+  );
+  const created = await domain.createStudent(db, agent, {
+    lastName: "MASTER", firstName: "SansCostume", programId: program.id, level: "master_1", phone: "620000011", paymentAmount: 0,
+  });
+  const costume = await domain.costumeSituation(db, created.student.id);
+  assert.equal(costume.required, false);
+  assert.equal(costume.price, 0);
+  assert.equal(costume.reste, 0);
+  assert.equal(costume.status, "sans_costume");
+  await assert.rejects(
+    () => domain.recordCostume(db, agent, created.student.id, { amount: 800_000, method: "especes" }),
+    /n'ont pas de costume/,
+  );
+  const after = await domain.dashboard(db, {});
+  assert.equal(after.costume.expected, before.costume.expected);
+  assert.equal(after.costume.unpaid, before.costume.unpaid);
+  assert.equal(after.cycles.master, before.cycles.master + 1);
+});
+
 test("tableau de bord : un costume entièrement payé compte, un costume partiel compte à part", async () => {
   await domain.updateSettings(db, agent, { costume_price: "800.000" });
   const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
   const before = await domain.dashboard(db, {});
-  const full = await domain.createStudent(db, agent, { lastName: "TABLEAU", firstName: "Complet", programId: program.id, level: "master_1" });
+  const full = await domain.createStudent(db, agent, { lastName: "TABLEAU", firstName: "Complet", programId: program.id, level: "bachelor_1" });
   await domain.recordCostume(db, agent, full.student.id, { amount: 800_000, method: "especes" });
   const half = await domain.createStudent(db, agent, { lastName: "TABLEAU", firstName: "Moitie", programId: program.id, level: "bachelor_2" });
   await domain.recordCostume(db, agent, half.student.id, { amount: 400_000, method: "especes" });
@@ -877,8 +906,7 @@ test("tableau de bord : un costume entièrement payé compte, un costume partiel
   assert.equal(after.costume.paid, before.costume.paid + 1);
   assert.equal(after.costume.partial, before.costume.partial + 1);
   assert.equal(after.costume.amount, before.costume.amount + 1_200_000);
-  assert.equal(after.cycles.master, before.cycles.master + 1);
-  assert.equal(after.cycles.bachelor, before.cycles.bachelor + 1);
+  assert.equal(after.cycles.bachelor, before.cycles.bachelor + 2);
 });
 
 test("costumes impayés : le montant attendu est le nombre de costumes × le prix, pas le nombre d'étudiants × le prix", async () => {
