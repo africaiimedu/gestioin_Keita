@@ -1380,9 +1380,9 @@ async function showStudents(screen) {
             <option value="reinscription">Réinscription (500 000 GNF)</option>
           </select>
         </p>
-        <label class="check"><input type="checkbox" name="scholarship"> Boursier — aucun frais de scolarité</label>
+        <label class="check"><input type="checkbox" name="scholarship"> Boursier</label>
         <p id="scholarship-amount-row" hidden><label>Montant total de la bourse (GNF)</label><input name="scholarshipAmount" inputmode="numeric" placeholder="Ex. 15 000 000"></p>
-        <p class="muted" id="scholarship-hint" hidden>Ce montant est enregistré sur la fiche. Il n'entre pas dans les frais dus, l'encaissé ni le reste à payer.</p>
+        <p class="muted" id="scholarship-hint" hidden>La bourse est déduite des frais (après les versements déjà encaissés). L'inscription peut encore être payée. Seul l'argent réellement versé entre dans l'encaissé.</p>
         ${discountField()}
         <div class="duo" id="payment-fields"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
           <p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p></div>
@@ -1446,14 +1446,15 @@ async function showStudents(screen) {
       const techNote = techSchool()
         ? ` Si toute la scolarité (${gnf(schoolingOf())}) est versée, l'inscription passe à ${gnf(registrationOf() - Math.floor((registrationOf() * (state.catalog.techInscriptionRate || 25) + 50) / 100))} (− 25 %).`
         : "";
+      const grant = scholar ? Number(form.scholarshipAmount.value.replace(/\D/g, "") || 0) : 0;
+      const dueAfterGrant = Math.max(0, tuition - grant);
       document.querySelector("#fee-hint").textContent = scholar
-        ? "Boursier : aucun frais de scolarité à encaisser. Le montant de la bourse n'est pas compté dans les finances."
+        ? `Boursier : frais ${gnf(tuition)} − bourse ${gnf(grant)} = ${gnf(dueAfterGrant)} à payer. L'inscription peut encore être encaissée. La bourse n'entre pas dans l'encaissé.`
         : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + ${form.enrollmentKind.value === "reinscription" ? "réinscription" : "inscription"} ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : (withDiscount ? ` Avec la remise : ${gnf(cashOf(tuition) - techCut)} à payer.` : " Sans remise.")}${techNote}`;
-      document.querySelector("#payment-fields").hidden = scholar;
+      document.querySelector("#payment-fields").hidden = false;
       const amount = form.paymentAmount;
-      amount.required = !scholar;
-      form.method.required = !scholar;
-      if (scholar) amount.value = "0";
+      amount.required = true;
+      form.method.required = Number(amount.value.replace(/\D/g, "") || 0) > 0;
       const costumeBox = form.querySelector(".costume-block");
       if (costumeBox) {
         costumeBox.hidden = isMaster();
@@ -1509,18 +1510,19 @@ async function showStudents(screen) {
       if (!form.level.value) missing.push("le niveau");
       if (!form.studyYear.value) missing.push("l'année");
       if (form.scholarship.checked && !form.scholarshipAmount.value.replace(/\D/g, "")) missing.push("le montant total de la bourse");
-      if (!form.scholarship.checked && form.paymentAmount.value.trim() === "") missing.push("le versement du jour");
-      if (!form.scholarship.checked && !form.method.value) missing.push("le moyen de paiement");
+      if (form.paymentAmount.value.trim() === "") missing.push("le versement du jour");
+      if (Number(form.paymentAmount.value.replace(/\D/g, "") || 0) > 0 && !form.method.value) missing.push("le moyen de paiement");
       if (missing.length) {
         error.hidden = false;
         error.textContent = `Renseignez ${missing.join(", ")} avant d'enregistrer.`;
         return;
       }
-      if (!form.scholarship.checked) {
+      {
         const typed = Number(form.paymentAmount.value.replace(/\D/g, "") || 0);
         const tuition = tuitionOf();
+        const grant = form.scholarship.checked ? Number(form.scholarshipAmount.value.replace(/\D/g, "") || 0) : 0;
         const techCut = techSchool() && typed >= schoolingOf() ? Math.floor((registrationOf() * (state.catalog.techInscriptionRate || 25) + 50) / 100) : 0;
-        const limit = (discountChosen(form) ? cashOf(tuition) : tuition) - techCut;
+        const limit = Math.max(0, (discountChosen(form) ? cashOf(tuition) : tuition) - grant - techCut);
         if (typed > limit) {
           const notes = [];
           if (limit < tuition - techCut) notes.push(`remise de ${gnf(state.catalog.cashDiscount || 0)} déduite`);
@@ -1544,7 +1546,7 @@ async function showStudents(screen) {
           scholarship: form.scholarship.checked,
           scholarshipAmount: form.scholarship.checked ? form.scholarshipAmount.value.replace(/\D/g, "") : 0,
           cashDiscount: discountChosen(form),
-          paymentAmount: form.scholarship.checked ? 0 : form.paymentAmount.value.replace(/\D/g, ""),
+          paymentAmount: form.paymentAmount.value.replace(/\D/g, ""),
           costumeAmount: isMaster() ? 0 : moneyOf(form.costumeAmount),
           costumeQuantity: isMaster() ? null : (Number(form.costumeQuantity?.value) || null),
           matricule: form.matricule.value.trim(),
@@ -1590,7 +1592,7 @@ async function showStudent(screen, id) {
         ${allowed("payment.cancel") ? `<button class="btn secondary" id="custom-fee" type="button">${student.customFee !== null ? "Modifier le prix exceptionnel" : "Prix exceptionnel"}</button>` : ""}
         ${allowed("student.write") ? `<button class="btn secondary" id="grant-scholarship" type="button">${student.scholarship ? "Modifier la bourse" : "Donner une bourse"}</button>` : ""}
       </div></div>
-    ${student.scholarship ? `<p class="banner">Boursier${student.scholarshipAmount ? ` · montant de la bourse <strong>${gnf(student.scholarshipAmount)}</strong>` : ""} — ce montant n'entre pas dans les frais dus, l'encaissé ni le reste à payer.</p>` : ""}
+    ${student.scholarship ? `<p class="banner">Boursier${student.scholarshipAmount ? ` · bourse <strong>${gnf(student.scholarshipAmount)}</strong>` : ""} — déduite des frais dus (après les versements déjà encaissés). L'inscription peut encore être payée. La bourse n'entre pas dans l'encaissé.</p>` : ""}
     ${student.customFee !== null ? `<p class="banner">Prix exceptionnel : <strong>${gnf(student.customFee)}</strong> pour l'année, sans remise${student.customFeeReason ? ` · ${esc(student.customFeeReason)}` : ""}</p>` : ""}
     ${state.paymentReceipt ? `<div class="banner">Paiement mis à jour. Nouveau reçu <a href="/api/recus/${state.paymentReceipt.id}.pdf" target="_blank">${esc(state.paymentReceipt.number)}</a>${printButton(`/api/recus/${state.paymentReceipt.id}.pdf`)}. L'ancien reçu est annulé.</div>` : ""}
     <section class="kpis">${kpi("Frais dus", situation.due)}${kpi("Total payé", situation.paid)}${kpi("Reste", situation.reste)}${kpi("Statut", situation.statusLabel, true)}</section>
@@ -1736,7 +1738,7 @@ async function showStudent(screen, id) {
     `Rétablir le reste de ${gnf(data.settled || 0)} pour ${student.name} ?\n\nMotif (au moins 5 caractères) :`,
     "Reste rétabli");
   document.querySelector("#grant-scholarship")?.addEventListener("click", async () => {
-    const typed = window.prompt(`Montant total de la bourse pour ${student.name}, en GNF.\nCe montant n'entre pas dans les frais dus, l'encaissé ni le reste à payer.`,
+    const typed = window.prompt(`Montant total de la bourse pour ${student.name}, en GNF.\nIl est déduit des frais dus. L'inscription déjà payée reste un encaissement. La bourse n'entre pas dans l'encaissé.`,
       student.scholarshipAmount ? grouped(student.scholarshipAmount) : "");
     if (typed === null) return;
     const amount = typed.replace(/\D/g, "");

@@ -281,14 +281,16 @@ test("bachelor, masters, remise de 1.200.000 au choix et boursier", async () => 
     lastName: "DIALLO", firstName: "Bourse", programId: program.id, level: "master_1",
     phone: "620000004", scholarship: true, scholarshipAmount: 15_000_000,
   });
-  assert.equal(boursier.situation.due, 0);
+  assert.equal(boursier.situation.due, 16_000_000);
   assert.equal(boursier.situation.paid, 0);
-  assert.equal(boursier.situation.status, "solde");
   assert.equal(Number(boursier.student.scholarship_amount), 15_000_000);
   assert.equal(domain.publicStudent(boursier.student, boursier.discounts).scholarshipAmount, 15_000_000);
-  await assert.rejects(() => domain.createPayment(db, agent, {
-    studentId: boursier.student.id, amount: 1_000, paidOn: "2026-10-06", method: "especes", idempotencyKey: "boursier-refus",
-  }, "2026-10-06"));
+  const inscription = await domain.createPayment(db, agent, {
+    studentId: boursier.student.id, amount: 1_000_000, paidOn: "2026-10-06", method: "especes", idempotencyKey: "boursier-inscription-1",
+  }, "2026-10-06");
+  assert.equal(inscription.after.paid, 1_000_000);
+  assert.equal(inscription.after.due, 16_000_000);
+  assert.equal(inscription.after.reste, 15_000_000);
 
   const bachelorYears = (await db.prepare("SELECT DISTINCT level FROM fee_schedules WHERE level LIKE 'bachelor_%'").all()).map((row) => row.level).sort();
   assert.deepEqual(bachelorYears, ["bachelor_1", "bachelor_2", "bachelor_3"]);
@@ -844,21 +846,22 @@ test("bourse : montant hors finances et nombre de boursiers au tableau de bord",
   assert.equal(mid.cycles.scholars, before.cycles.scholars);
   const granted = await domain.grantScholarship(db, agent, paying.student.id, { amount: 12_000_000 });
   assert.equal(Number(granted.student.scholarship_amount), 12_000_000);
-  assert.equal(granted.situation.due, 0);
+  assert.equal(granted.situation.due, paying.situation.due - 12_000_000);
   assert.equal(granted.situation.paid, 0);
   const afterGrant = await domain.dashboard(db, {});
-  assert.equal(afterGrant.due, before.due);
+  assert.equal(afterGrant.due, before.due + paying.situation.due - 12_000_000);
   assert.equal(afterGrant.paidAll, before.paidAll);
   assert.equal(afterGrant.cycles.scholars, before.cycles.scholars + 1);
   const created = await domain.createStudent(db, agent, {
     lastName: "BOURSE", firstName: "Directe", programId: program.id, level: "bachelor_1", phone: "620000003",
-    scholarship: true, scholarshipAmount: "8.000.000",
+    scholarship: true, scholarshipAmount: "8.000.000", paymentAmount: 1_000_000, method: "especes",
   });
-  assert.equal(created.situation.due, 0);
+  assert.equal(created.situation.due, paying.situation.due - 8_000_000);
+  assert.equal(created.situation.paid, 1_000_000);
   assert.equal(Number(created.student.scholarship_amount), 8_000_000);
   const after = await domain.dashboard(db, {});
-  assert.equal(after.due, before.due);
-  assert.equal(after.paidAll, before.paidAll);
+  assert.equal(after.due, before.due + paying.situation.due - 12_000_000 + created.situation.due);
+  assert.equal(after.paidAll, before.paidAll + 1_000_000);
   assert.equal(after.cycles.scholars, before.cycles.scholars + 2);
   const listed = await domain.listStudents(db, { paymentStatus: "boursier" });
   assert.ok(listed.some((row) => row.student.id === paying.student.id));

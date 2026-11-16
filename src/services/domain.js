@@ -49,12 +49,19 @@ function isScholarStudent(student, discounts = []) {
 }
 
 async function ensureScholarDiscount(db, user, studentId) {
-  const found = await db.prepare("SELECT id FROM discounts WHERE student_id = ? AND label = ?").get(studentId, SCHOLAR_LABEL);
-  if (found) return;
-  await db.prepare(`
-    INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
-    VALUES(?, ?, 'pourcentage', 100, ?, ?)
-  `).run(studentId, SCHOLAR_LABEL, "Étudiant boursier : aucun frais de scolarité. Le montant de la bourse n'entre pas dans les finances.", user.id);
+  await db.prepare("DELETE FROM discounts WHERE student_id = ? AND label = ? AND mode = 'pourcentage'").run(studentId, SCHOLAR_LABEL);
+}
+
+function scholarFeeDiscounts(student, discounts) {
+  const others = discounts.filter((item) => item.label !== SCHOLAR_LABEL);
+  const grant = scholarshipAmountOf(student);
+  if (grant > 0) {
+    return [...others, { label: SCHOLAR_LABEL, mode: "fixe", value: grant, reason: "Bourse déduite des frais, hors encaissé" }];
+  }
+  if (discounts.some((item) => item.label === SCHOLAR_LABEL && item.mode === "pourcentage" && Number(item.value) === 100)) {
+    return [...others, { label: SCHOLAR_LABEL, mode: "pourcentage", value: 100, reason: "Bourse" }];
+  }
+  return others;
 }
 
 /** Remise fixe quand toute l'année est payée en une fois. Le Master n'en a pas. */
@@ -509,8 +516,11 @@ function hasCustomFee(student) {
 
 function bundleFrom(student, ledger, asOf) {
   const { tuition, installments } = planFrom(student, ledger);
-  const discounts = ledger.strip(ledger.discounts.get(student.id) || [])
-    .filter((item) => !hasCustomFee(student) || item.label !== CASH_LABEL);
+  const discounts = scholarFeeDiscounts(
+    student,
+    ledger.strip(ledger.discounts.get(student.id) || [])
+      .filter((item) => !hasCustomFee(student) || item.label !== CASH_LABEL),
+  );
   const adjustments = ledger.strip(ledger.adjustments.get(student.id) || []);
   const payments = ledger.strip(ledger.payments.get(student.id) || []);
   const situation = computeSituation({ tuition, discounts, adjustments, installments, payments, asOf });
@@ -902,7 +912,6 @@ export async function previewPayment(db, input, asOf = todayInConakry()) {
   if (input.amount <= 0 && !costumeOnly) throw new HttpError(400, "Le montant doit être supérieur à zéro");
   const current = await studentSituation(db, input.studentId, asOf);
   const warnings = [];
-  if (!costumeOnly && isScholar(current.discounts)) throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
   let costume = await costumeSituation(db, current.student.id);
   try {
     costume = await costumeFor(db, current.student.id, costumeAmount, input.costumeQuantity);
@@ -1118,9 +1127,6 @@ export async function createPayment(db, user, input, asOf = todayInConakry()) {
     }
     let current = await studentSituation(db, Number(input.studentId), asOf);
     assertCanPay(current.student);
-    if (isScholar(current.discounts)) {
-      throw new HttpError(400, "Cet étudiant est boursier : aucun frais de scolarité à encaisser");
-    }
     const offers = extrasOf(current, input.amount, truthy(input.cashDiscount));
     if (offers.cash.refusal) throw new HttpError(400, offers.cash.refusal);
     const room = payableRoom(current, offers.extras);
@@ -1636,7 +1642,6 @@ export async function createStudent(db, user, input) {
     throw new HttpError(400, "Indiquez le versement du jour. Mettez 0 s'il n'y a aucun versement.");
   }
   if (scholarship && scholarshipAmount <= 0) throw new HttpError(400, "Indiquez le montant total de la bourse");
-  if (scholarship && paymentAmount > 0) throw new HttpError(400, "Un boursier ne verse aucun frais de scolarité");
   const cashDiscount = !scholarship && truthy(input.cashDiscount);
   if (cashDiscount && !cashDiscountFor(input.level)) throw new HttpError(400, "La remise de 1.200.000 GNF est réservée au Bachelor : pas de remise en Master.");
   const costumeAmount = wearsCostume(input.level) ? costumeAmountOf(input.costumeAmount) : 0;
@@ -2165,7 +2170,7 @@ export async function catalog(db) {
       "Bachelor hors AFRICAIIM Tech : 1re année 4 000 000 + inscription, puis 10 000 000 et 10 000 000 ; 2e année 5 000 000 + inscription, puis 10 000 000 et 10 000 000 ; 3e année 6 000 000 + inscription, puis 10 000 000 et 10 000 000. AFRICAIIM Tech garde 20 % / 40 % / 40 %.",
       "Nouvelles fiches : Bachelor 1, 2 et 3, Master 1 et Master 2. À AFRICAIIM Tech : Cycle Préparatoire Intégré (CPI 1, CPI 2) puis MIAGE 1, 2 et 3. Chaque école se règle dans Tarifs.",
       `En Licence, Bachelor, CPI et MIAGE, l'agent choisit à l'encaissement s'il y a remise : si oui, ${formatGnf(CASH_DISCOUNT)} sont déduits des frais annuels (scolarité et inscription). Le Master n'a pas de remise.`,
-      "Un étudiant boursier ne paie ni la scolarité ni les frais d'inscription.",
+      "Un boursier peut encore payer l'inscription. Le montant de la bourse est déduit des frais dus ; seul l'argent réellement versé entre dans l'encaissé.",
       "Les fiches déjà enregistrées gardent leur barème (Licence 25 000 000, Master 30 000 000, Tech 37 000 000).",
       "L'admin de la scolarité peut modifier ces montants. Les paiements déjà enregistrés ne changent pas.",
     ],
