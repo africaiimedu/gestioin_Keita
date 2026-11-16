@@ -1333,6 +1333,10 @@ tr.clickable:hover { background: #f3f8f4; }
 .dash-hero h1 { color: #fff; font-size: 2.2rem; }
 .dash-schools { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; max-width: 760px; }
 .dash-cycles { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.dash-cycle-link {
+  display: inline; margin: 0; padding: 0; border: 0; background: transparent;
+  color: inherit; font: inherit; cursor: pointer; text-align: inherit;
+}
 .dash-cycles li {
   display: inline-flex; align-items: baseline; gap: 8px; padding: 8px 14px; border-radius: 14px;
   background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.35);

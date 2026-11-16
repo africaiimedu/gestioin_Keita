@@ -978,13 +978,13 @@ function frenchMoment(stamp) {
 }
 
 function bindDashboard(screen) {
-  if (!seesMoney()) return;
   screen.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => {
     state.status = button.dataset.filter || "";
     state.studentPage = 1;
     state.screen = button.dataset.go;
     render();
   }));
+  if (!seesMoney()) return;
   screen.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => {
     state.status = button.dataset.status;
     state.studentPage = 1;
@@ -1007,6 +1007,7 @@ function schoolCounts(data) {
       bachelor: found.bachelor || 0,
       bachelor2: found.bachelor2 || 0,
       master: found.master || 0,
+      scholars: found.scholars || 0,
       paid: found.paid || 0,
       due: found.due || 0,
     };
@@ -1084,13 +1085,15 @@ function patchDashboard(root, data, control) {
       tile.querySelector(".muted").textContent = note;
     }
   }
-  const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
+  const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0, scholars: 0 };
   const bachelor = root.querySelector(".dash-bachelor");
   if (bachelor) bachelor.textContent = String(cycles.bachelor);
   const bachelor2 = root.querySelector(".dash-bachelor2");
   if (bachelor2) bachelor2.textContent = String(cycles.bachelor2 || 0);
   const master = root.querySelector(".dash-master");
   if (master) master.textContent = String(cycles.master);
+  const scholars = root.querySelector(".dash-scholars");
+  if (scholars) scholars.textContent = String(cycles.scholars || 0);
   const count = root.querySelector(".dash-count");
   if (count) count.textContent = String(data.students);
   const plural = root.querySelector(".dash-plural");
@@ -1101,11 +1104,13 @@ function patchDashboard(root, data, control) {
     const bachelor = chip.querySelector(".school-bachelor");
     const bachelor2 = chip.querySelector(".school-bachelor2");
     const master = chip.querySelector(".school-master");
+    const scholars = chip.querySelector(".school-scholars");
     const paid = chip.querySelector(".school-paid");
     const due = chip.querySelector(".school-due");
     if (bachelor) bachelor.textContent = String(item.bachelor);
     if (bachelor2) bachelor2.textContent = String(item.bachelor2);
     if (master) master.textContent = String(item.master);
+    if (scholars) scholars.textContent = String(item.scholars || 0);
     if (paid && seesMoney()) paid.textContent = gnf(item.paid);
     if (due && seesMoney()) due.textContent = gnf(item.due);
   }
@@ -1147,7 +1152,7 @@ function peopleHtml(data) {
 
 function dashboardHtml(data, control) {
   const countsOnly = !seesMoney() || data.hideAmounts;
-  const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
+  const cycles = data.cycles || { bachelor: 0, bachelor2: 0, master: 0, tech: 0, scholars: 0 };
   const rate = Math.min(100, (data.rate?.tenths || 0) / 10);
   const circ = (2 * Math.PI * 46).toFixed(2);
   const dueBase = Math.max(data.due, 1);
@@ -1178,8 +1183,9 @@ function dashboardHtml(data, control) {
           <li>Total Bachelor <strong class="dash-bachelor">${cycles.bachelor}</strong></li>
           <li>Bachelor 2 <strong class="dash-bachelor2">${cycles.bachelor2 || 0}</strong></li>
           <li>Total Master <strong class="dash-master">${cycles.master}</strong></li>
+          <li><button class="dash-cycle-link" data-go="etudiants" data-filter="boursier" type="button">Boursiers <strong class="dash-scholars">${cycles.scholars || 0}</strong></button></li>
         </ul>
-        <ul class="dash-schools" aria-label="${countsOnly ? "Effectifs par école" : "Bachelor, Master et montants par école"}">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Bachelor 2 <strong class="school-bachelor2">${item.bachelor2}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span>${schoolMoney(item)}</li>`).join("")}</ul>
+        <ul class="dash-schools" aria-label="${countsOnly ? "Effectifs par école" : "Bachelor, Master et montants par école"}">${schoolCounts(data).map((item) => `<li data-school-count="${esc(item.program)}"><span class="name">${esc(shortSchool(item.program))}</span><span>Bachelor <strong class="school-bachelor">${item.bachelor}</strong></span><span>Bachelor 2 <strong class="school-bachelor2">${item.bachelor2}</strong></span><span>Master <strong class="school-master">${item.master}</strong></span><span>Boursiers <strong class="school-scholars">${item.scholars || 0}</strong></span>${schoolMoney(item)}</li>`).join("")}</ul>
       </div>
       ${countsOnly ? "" : `<div class="dash-hero-side">
         <div class="donut-wrap">
@@ -1303,7 +1309,7 @@ async function showStudents(screen) {
     <div class="filters"><input id="q" placeholder="Nom, matricule ou téléphone" value="${esc(state.q || "")}">
       <select id="filiere"><option value="">Toutes les écoles</option>${program}</select>
       <select id="niveau"><option value="">Tous les niveaux</option>${(state.catalog.levels || []).map((item) => `<option value="${item.code}">${esc(item.label)}</option>`).join("")}</select>
-      <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}<option value="premiere_tranche" ${state.status === "premiere_tranche" ? "selected" : ""}>1re tranche non payée</option></select>
+      <select id="statut"><option value="">Tous les statuts</option>${state.catalog.statuses.map((item) => `<option value="${item.code}" ${state.status === item.code ? "selected" : ""}>${esc(item.label)}</option>`).join("")}<option value="premiere_tranche" ${state.status === "premiere_tranche" ? "selected" : ""}>1re tranche non payée</option><option value="boursier" ${state.status === "boursier" ? "selected" : ""}>Boursiers</option></select>
       <select id="telephone" aria-label="Filtrer par téléphone"><option value="">Tous les téléphones</option><option value="avec">Avec numéro</option><option value="sans">Sans numéro</option></select>
       <select id="tri" aria-label="Trier par">${STUDENT_SORTS.map(([code, label]) => `<option value="${code}" ${(state.studentSort || "nom") === code ? "selected" : ""}>${label}</option>`).join("")}</select></div>
     <div id="student-table"></div>
@@ -1375,6 +1381,8 @@ async function showStudents(screen) {
           </select>
         </p>
         <label class="check"><input type="checkbox" name="scholarship"> Boursier — aucun frais de scolarité</label>
+        <p id="scholarship-amount-row" hidden><label>Montant total de la bourse (GNF)</label><input name="scholarshipAmount" inputmode="numeric" placeholder="Ex. 15 000 000"></p>
+        <p class="muted" id="scholarship-hint" hidden>Ce montant est enregistré sur la fiche. Il n'entre pas dans les frais dus, l'encaissé ni le reste à payer.</p>
         ${discountField()}
         <div class="duo" id="payment-fields"><p><label>Scolarité versée ce jour (GNF, sans le costume)</label><input name="paymentAmount" inputmode="numeric" required placeholder="0 si aucun versement"></p>
           <p><label>Moyen de paiement</label><select name="method" required>${methods}</select></p></div>
@@ -1424,6 +1432,11 @@ async function showStudents(screen) {
       document.querySelector("#year-label").textContent = yearLabels[track];
       const tuition = tuitionOf();
       const scholar = form.scholarship.checked;
+      const grantRow = document.querySelector("#scholarship-amount-row");
+      const grantHint = document.querySelector("#scholarship-hint");
+      if (grantRow) grantRow.hidden = !scholar;
+      if (grantHint) grantHint.hidden = !scholar;
+      form.scholarshipAmount.required = scholar;
       const discountRow = form.querySelector(".discount-row");
       discountRow.hidden = scholar || isMaster();
       if (discountRow.hidden) form.cashDiscount.value = "non";
@@ -1434,7 +1447,7 @@ async function showStudents(screen) {
         ? ` Si toute la scolarité (${gnf(schoolingOf())}) est versée, l'inscription passe à ${gnf(registrationOf() - Math.floor((registrationOf() * (state.catalog.techInscriptionRate || 25) + 50) / 100))} (− 25 %).`
         : "";
       document.querySelector("#fee-hint").textContent = scholar
-        ? "Boursier : les frais de scolarité sont à 0 GNF."
+        ? "Boursier : aucun frais de scolarité à encaisser. Le montant de la bourse n'est pas compté dans les finances."
         : `Frais annuels : ${gnf(tuition)} (scolarité ${gnf(schoolingOf())} + ${form.enrollmentKind.value === "reinscription" ? "réinscription" : "inscription"} ${gnf(registrationOf())}).${isMaster() ? " Pas de remise en Master." : (withDiscount ? ` Avec la remise : ${gnf(cashOf(tuition) - techCut)} à payer.` : " Sans remise.")}${techNote}`;
       document.querySelector("#payment-fields").hidden = scholar;
       const amount = form.paymentAmount;
@@ -1448,6 +1461,10 @@ async function showStudents(screen) {
     form.enrollmentKind.addEventListener("change", syncFee);
     form.scholarship.addEventListener("change", syncFee);
     form.cashDiscount.addEventListener("change", syncFee);
+    form.scholarshipAmount.addEventListener("input", (event) => {
+      const digits = event.target.value.replace(/[^\d]/g, "");
+      event.target.value = digits ? grouped(Number(digits)) : "";
+    });
     form.paymentAmount.addEventListener("input", (event) => {
       const digits = event.target.value.replace(/[^\d]/g, "");
       event.target.value = digits ? grouped(Number(digits)) : "";
@@ -1483,6 +1500,7 @@ async function showStudents(screen) {
       if (!form.programId.value) missing.push("l'école");
       if (!form.level.value) missing.push("le niveau");
       if (!form.studyYear.value) missing.push("l'année");
+      if (form.scholarship.checked && !form.scholarshipAmount.value.replace(/\D/g, "")) missing.push("le montant total de la bourse");
       if (!form.scholarship.checked && form.paymentAmount.value.trim() === "") missing.push("le versement du jour");
       if (!form.scholarship.checked && !form.method.value) missing.push("le moyen de paiement");
       if (missing.length) {
@@ -1516,6 +1534,7 @@ async function showStudents(screen) {
           level,
           enrollmentKind: form.enrollmentKind.value,
           scholarship: form.scholarship.checked,
+          scholarshipAmount: form.scholarship.checked ? form.scholarshipAmount.value.replace(/\D/g, "") : 0,
           cashDiscount: discountChosen(form),
           paymentAmount: form.scholarship.checked ? 0 : form.paymentAmount.value.replace(/\D/g, ""),
           costumeAmount: moneyOf(form.costumeAmount),
@@ -1561,7 +1580,9 @@ async function showStudent(screen, id) {
         ${allowed("payment.cancel") && situation.reste > 0 ? `<button class="btn secondary" id="settle-balance" type="button">Mettre le reste à 0</button>` : ""}
         ${allowed("payment.cancel") && data.settled > 0 ? `<button class="btn secondary" id="reopen-balance" type="button">Rétablir le reste (${gnf(data.settled)})</button>` : ""}
         ${allowed("payment.cancel") ? `<button class="btn secondary" id="custom-fee" type="button">${student.customFee !== null ? "Modifier le prix exceptionnel" : "Prix exceptionnel"}</button>` : ""}
+        ${allowed("student.write") ? `<button class="btn secondary" id="grant-scholarship" type="button">${student.scholarship ? "Modifier la bourse" : "Donner une bourse"}</button>` : ""}
       </div></div>
+    ${student.scholarship ? `<p class="banner">Boursier${student.scholarshipAmount ? ` · montant de la bourse <strong>${gnf(student.scholarshipAmount)}</strong>` : ""} — ce montant n'entre pas dans les frais dus, l'encaissé ni le reste à payer.</p>` : ""}
     ${student.customFee !== null ? `<p class="banner">Prix exceptionnel : <strong>${gnf(student.customFee)}</strong> pour l'année, sans remise${student.customFeeReason ? ` · ${esc(student.customFeeReason)}` : ""}</p>` : ""}
     ${state.paymentReceipt ? `<div class="banner">Paiement mis à jour. Nouveau reçu <a href="/api/recus/${state.paymentReceipt.id}.pdf" target="_blank">${esc(state.paymentReceipt.number)}</a>${printButton(`/api/recus/${state.paymentReceipt.id}.pdf`)}. L'ancien reçu est annulé.</div>` : ""}
     <section class="kpis">${kpi("Frais dus", situation.due)}${kpi("Total payé", situation.paid)}${kpi("Reste", situation.reste)}${kpi("Statut", situation.statusLabel, true)}</section>
@@ -1706,6 +1727,23 @@ async function showStudent(screen, id) {
   balanceAction("#reopen-balance", "retablir-reste",
     `Rétablir le reste de ${gnf(data.settled || 0)} pour ${student.name} ?\n\nMotif (au moins 5 caractères) :`,
     "Reste rétabli");
+  document.querySelector("#grant-scholarship")?.addEventListener("click", async () => {
+    const typed = window.prompt(`Montant total de la bourse pour ${student.name}, en GNF.\nCe montant n'entre pas dans les frais dus, l'encaissé ni le reste à payer.`,
+      student.scholarshipAmount ? grouped(student.scholarshipAmount) : "");
+    if (typed === null) return;
+    const amount = typed.replace(/\D/g, "");
+    if (!amount) {
+      saved("Indiquez le montant total de la bourse");
+      return;
+    }
+    try {
+      await api(`/api/etudiants/${id}/bourse`, { method: "POST", body: JSON.stringify({ amount }) });
+      saved("Bourse enregistrée (montant hors finances)");
+      showStudent(screen, id);
+    } catch (caught) {
+      saved(caught.message);
+    }
+  });
   document.querySelector("#custom-fee")?.addEventListener("click", async () => {
     const typed = window.prompt(`Prix annuel exceptionnel pour ${student.name} (scolarité + inscription, sans remise), en GNF.\nLaisser vide pour revenir au barème normal.`,
       student.customFee !== null ? grouped(student.customFee) : "");

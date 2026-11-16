@@ -81,6 +81,7 @@ const tables = () => ({
     custom_fee: { type: DataTypes.BIGINT, allowNull: true },
     custom_fee_reason: text(),
     enrollment_kind: { type: DataTypes.TEXT, allowNull: false, defaultValue: "inscription" },
+    scholarship_amount: { type: DataTypes.BIGINT, allowNull: false, defaultValue: 0 },
     created_at: stamp(),
   }],
   Discount: ["discounts", {

@@ -34,6 +34,7 @@ import {
   createPayment,
   createReminder,
   createStudent,
+  grantScholarship,
   createUser,
   deactivateUser,
   updateUserAccess,
@@ -304,7 +305,12 @@ app.get("/api/etudiants", requireAction("student.read"), async (req, res) => {
     phone: req.query.telephone || null,
   });
   res.json({
-    students: rows.map((row) => ({ ...publicStudent(row.student), situation: row.situation })),
+    students: rows.map((row) => ({
+      ...publicStudent(row.student),
+      scholarship: Boolean(row.scholar),
+      scholarshipAmount: Number(row.student.scholarship_amount) || 0,
+      situation: row.situation,
+    })),
   });
 });
 app.get("/api/etudiants/prochain-matricule", requireAction("student.write"), async (req, res) => {
@@ -329,7 +335,7 @@ app.get("/api/etudiants/:id", requireAction("student.read"), async (req, res) =>
     readCantine(current.student.matricule),
   ]);
   res.json({
-    student: publicStudent(current.student),
+    student: publicStudent(current.student, current.discounts),
     situation: current.situation,
     discounts: current.discounts,
     adjustments: current.adjustments,
@@ -407,13 +413,17 @@ app.put("/api/etudiants/:id/prix", requireAction("payment.cancel"), async (req, 
   const result = await setCustomFee(db, req.user, Number(req.params.id), req.body || {});
   res.json({ situation: result.situation, settled: result.settled });
 });
+app.post("/api/etudiants/:id/bourse", requireAction("student.write"), async (req, res) => {
+  const result = await grantScholarship(db, req.user, Number(req.params.id), req.body || {});
+  res.json({ student: publicStudent(result.student, result.discounts), situation: result.situation });
+});
 app.post("/api/costumes/:id/annuler", requireAction("payment.cancel"), async (req, res) => {
   res.json(await cancelCostume(db, req.user, Number(req.params.id), req.body?.reason));
 });
 app.post("/api/etudiants", requireAction("student.write"), async (req, res) => {
   const created = await createStudent(db, req.user, req.body || {});
   res.status(201).json({
-    student: publicStudent(created.student),
+    student: publicStudent(created.student, created.discounts),
     situation: created.situation,
     namesakes: (created.namesakes || []).map((row) => ({
       id: row.id,

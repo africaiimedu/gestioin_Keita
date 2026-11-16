@@ -40,6 +40,23 @@ function isScholar(discounts) {
   return discounts.some((item) => item.label === SCHOLAR_LABEL || (item.mode === "pourcentage" && Number(item.value) === 100));
 }
 
+function scholarshipAmountOf(student) {
+  return Math.max(0, Number(student?.scholarship_amount) || 0);
+}
+
+function isScholarStudent(student, discounts = []) {
+  return scholarshipAmountOf(student) > 0 || isScholar(discounts);
+}
+
+async function ensureScholarDiscount(db, user, studentId) {
+  const found = await db.prepare("SELECT id FROM discounts WHERE student_id = ? AND label = ?").get(studentId, SCHOLAR_LABEL);
+  if (found) return;
+  await db.prepare(`
+    INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
+    VALUES(?, ?, 'pourcentage', 100, ?, ?)
+  `).run(studentId, SCHOLAR_LABEL, "Étudiant boursier : aucun frais de scolarité. Le montant de la bourse n'entre pas dans les finances.", user.id);
+}
+
 /** Remise fixe quand toute l'année est payée en une fois. Le Master n'en a pas. */
 export const CASH_DISCOUNT = 1_200_000;
 
@@ -535,11 +552,16 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
     miage: ["miage_1", "miage_2", "miage_3"],
   }[filters.level];
   return students
-    .map((student) => ({ student, situation: bundleFrom(student, ledger, asOf).situation }))
+    .map((student) => {
+      const bundle = bundleFrom(student, ledger, asOf);
+      return { student, situation: bundle.situation, scholar: isScholarStudent(student, bundle.discounts) };
+    })
     .filter((row) => {
       if (family && !family.includes(row.student.level)) return false;
       if (!family && filters.level && row.student.level !== filters.level) return false;
-      if (filters.paymentStatus === FIRST_INSTALLMENT_UNPAID) {
+      if (filters.paymentStatus === "boursier") {
+        if (!row.scholar) return false;
+      } else if (filters.paymentStatus === FIRST_INSTALLMENT_UNPAID) {
         if (firstInstallmentLeft(row.situation).left <= 0) return false;
       } else if (filters.paymentStatus && row.situation.status !== filters.paymentStatus) return false;
       const phone = `${row.student.phone || ""} ${row.student.guardian_phone || ""}`;
@@ -571,10 +593,11 @@ function studentCycle(level) {
 
 /** Effectifs par cycle : Bachelor (Licence, années de bachelor, CPI), Master, MIAGE. */
 function cycleCounts(rows) {
-  const counts = { bachelor: 0, bachelor2: 0, master: 0, tech: 0 };
-  for (const { student } of rows) {
-    counts[studentCycle(student.level)] += 1;
-    if (String(student.level || "") === "bachelor_2") counts.bachelor2 += 1;
+  const counts = { bachelor: 0, bachelor2: 0, master: 0, tech: 0, scholars: 0 };
+  for (const row of rows) {
+    counts[studentCycle(row.student.level)] += 1;
+    if (String(row.student.level || "") === "bachelor_2") counts.bachelor2 += 1;
+    if (row.scholar) counts.scholars += 1;
   }
   return counts;
 }
@@ -715,7 +738,7 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
   const byProgram = new Map();
   for (const row of rows) {
     const key = row.student.program_name;
-    if (!byProgram.has(key)) byProgram.set(key, { program: key, paid: 0, reste: 0, due: 0, students: 0, bachelor: 0, bachelor2: 0, master: 0 });
+    if (!byProgram.has(key)) byProgram.set(key, { program: key, paid: 0, reste: 0, due: 0, students: 0, bachelor: 0, bachelor2: 0, master: 0, scholars: 0 });
     const bucket = byProgram.get(key);
     bucket.paid += row.situation.paid;
     bucket.reste += row.situation.reste;
@@ -724,6 +747,7 @@ export async function dashboard(db, filters, asOf = todayInConakry()) {
     const cycle = studentCycle(row.student.level);
     if (cycle === "bachelor" || cycle === "master") bucket[cycle] += 1;
     if (String(row.student.level || "") === "bachelor_2") bucket.bachelor2 += 1;
+    if (row.scholar) bucket.scholars += 1;
   }
 
   const byMethod = new Map();
@@ -801,6 +825,7 @@ export function countsOnlyDashboard(data) {
       bachelor: row.bachelor,
       bachelor2: row.bachelor2,
       master: row.master,
+      scholars: row.scholars || 0,
     })),
     hideAmounts: true,
     due: 0,
@@ -1006,7 +1031,7 @@ export async function previewPaymentUpdate(db, paymentId, input = {}, asOf = tod
   };
 }
 
-function publicStudent(student) {
+function publicStudent(student, discounts = []) {
   return {
     id: student.id,
     matricule: student.matricule,
@@ -1031,6 +1056,8 @@ function publicStudent(student) {
     customFee: hasCustomFee(student) ? Number(student.custom_fee) : null,
     customFeeReason: hasCustomFee(student) ? student.custom_fee_reason : null,
     enrollmentKind: enrollmentKindOf(student.enrollment_kind),
+    scholarship: isScholarStudent(student, discounts),
+    scholarshipAmount: scholarshipAmountOf(student),
   };
 }
 
@@ -1583,11 +1610,13 @@ export async function createStudent(db, user, input) {
   if (last.length < 2 || first.length < 2) throw new HttpError(400, "Le nom et le prénom sont obligatoires");
   if (!phone || phone.replace(/\D/g, "").length < 8) throw new HttpError(400, "Indiquez le numéro de téléphone de l'étudiant");
   if (!LEVELS.has(input.level)) throw new HttpError(400, "Niveau inconnu");
-  const scholarship = truthy(input.scholarship);
+  const scholarship = truthy(input.scholarship) || Number(String(input.scholarshipAmount ?? "").replace(/[^\d]/g, "") || 0) > 0;
+  const scholarshipAmount = scholarship ? parseMoney(input.scholarshipAmount) : 0;
   const paymentAmount = parseMoney(input.paymentAmount);
   if (!scholarship && input.paymentAmount != null && String(input.paymentAmount).trim() === "") {
     throw new HttpError(400, "Indiquez le versement du jour. Mettez 0 s'il n'y a aucun versement.");
   }
+  if (scholarship && scholarshipAmount <= 0) throw new HttpError(400, "Indiquez le montant total de la bourse");
   if (scholarship && paymentAmount > 0) throw new HttpError(400, "Un boursier ne verse aucun frais de scolarité");
   const cashDiscount = !scholarship && truthy(input.cashDiscount);
   if (cashDiscount && !cashDiscountFor(input.level)) throw new HttpError(400, "La remise de 1.200.000 GNF est réservée au Bachelor : pas de remise en Master.");
@@ -1608,21 +1637,16 @@ export async function createStudent(db, user, input) {
     const matricule = typedMatricule || await nextMatricule(db, year.label, program);
     await refuseTakenMatricule(db, matricule);
     const result = await db.prepare(`
-      INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source, costume_quantity, enrollment_kind)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie', ?, ?) RETURNING id
-    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, phone, clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1, enrollmentKind);
+      INSERT INTO students(matricule, last_name, first_name, program_id, academic_year_id, level, phone, email, guardian_name, guardian_phone, source, costume_quantity, enrollment_kind, scholarship_amount)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saisie', ?, ?, ?) RETURNING id
+    `).run(matricule, last.toUpperCase(), first, program.id, year.id, input.level, phone, clean(input.email), clean(input.guardianName), clean(input.guardianPhone), costumeQuantity || 1, enrollmentKind, scholarshipAmount);
     const studentId = result.lastInsertRowid;
     await assignAccountEmail(db, { id: studentId, first_name: first, last_name: last });
     await audit(db, user.id, "etudiant.creer", "students", studentId, null, {
-      matricule, last, first, level: input.level, scholarship, enrollmentKind,
+      matricule, last, first, level: input.level, scholarship, scholarshipAmount, enrollmentKind,
       namesakes: namesakes.map((row) => row.matricule),
     });
-    if (scholarship) {
-      await db.prepare(`
-        INSERT INTO discounts(student_id, label, mode, value, reason, approved_by)
-        VALUES(?, ?, 'pourcentage', 100, ?, ?)
-      `).run(studentId, SCHOLAR_LABEL, "Étudiant boursier : aucun frais de scolarité", user.id);
-    }
+    if (scholarship) await ensureScholarDiscount(db, user, studentId);
     if (cashDiscount && paymentAmount <= 0) await addCashDiscount(db, user, studentId);
     if (paymentAmount > 0) {
       await createPayment(db, user, {
@@ -1645,6 +1669,24 @@ export async function createStudent(db, user, input) {
   });
   pushStudentToCard(created.student).catch(() => {});
   return created;
+}
+
+export async function grantScholarship(db, user, studentId, input = {}) {
+  if (!can(user, "student.write")) throw new HttpError(403, "Vous n'avez pas le droit d'attribuer une bourse");
+  const amount = parseMoney(input.scholarshipAmount ?? input.amount);
+  if (amount <= 0) throw new HttpError(400, "Indiquez le montant total de la bourse");
+  const updated = await transaction(db, async () => {
+    const before = await studentSituation(db, Number(studentId));
+    const previous = scholarshipAmountOf(before.student);
+    await db.prepare("UPDATE students SET scholarship_amount = ? WHERE id = ?").run(amount, before.student.id);
+    await ensureScholarDiscount(db, user, before.student.id);
+    await audit(db, user.id, "etudiant.bourse", "students", before.student.id, { scholarshipAmount: previous }, { scholarshipAmount: amount });
+    const current = await studentSituation(db, before.student.id);
+    await refreshCard(db, current.student, current.situation);
+    return current;
+  });
+  pushStudentToCard(updated.student).catch(() => {});
+  return updated;
 }
 
 const MATRICULE_FORMAT = /^[A-Z0-9][A-Z0-9-]{2,30}$/;

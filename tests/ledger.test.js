@@ -279,11 +279,13 @@ test("bachelor, masters, remise de 1.200.000 au choix et boursier", async () => 
 
   const boursier = await domain.createStudent(db, agent, {
     lastName: "DIALLO", firstName: "Bourse", programId: program.id, level: "master_1",
-    scholarship: true,
+    phone: "620000004", scholarship: true, scholarshipAmount: 15_000_000,
   });
   assert.equal(boursier.situation.due, 0);
   assert.equal(boursier.situation.paid, 0);
   assert.equal(boursier.situation.status, "solde");
+  assert.equal(Number(boursier.student.scholarship_amount), 15_000_000);
+  assert.equal(domain.publicStudent(boursier.student, boursier.discounts).scholarshipAmount, 15_000_000);
   await assert.rejects(() => domain.createPayment(db, agent, {
     studentId: boursier.student.id, amount: 1_000, paidOn: "2026-10-06", method: "especes", idempotencyKey: "boursier-refus",
   }, "2026-10-06"));
@@ -823,6 +825,44 @@ test("seul l'admin corrige un paiement saisi par erreur : ancien reçu annulé, 
   assert.equal(costume.entries[0].payment_id, fixed.paymentId);
   await assert.rejects(() => db.prepare("UPDATE costume_payments SET amount = 1 WHERE student_id = ?").run(created.student.id), /ne peut pas être modifié/);
   await assert.rejects(() => domain.correctPayment(db, agent, wrong.id, { amount: 1_000, reason: "Deuxième correction", idempotencyKey: "correction-bis-001" }), /déjà annulé/);
+});
+
+test("bourse : montant hors finances et nombre de boursiers au tableau de bord", async () => {
+  const program = await db.prepare("SELECT id FROM programs WHERE code = 'ABS'").get();
+  const before = await domain.dashboard(db, {});
+  await assert.rejects(
+    () => domain.createStudent(db, agent, {
+      lastName: "BOURSE", firstName: "Sansmontant", programId: program.id, level: "bachelor_1", phone: "620000001", scholarship: true,
+    }),
+    /montant total de la bourse/,
+  );
+  const paying = await domain.createStudent(db, agent, {
+    lastName: "BOURSE", firstName: "PlusTard", programId: program.id, level: "bachelor_1", phone: "620000002", paymentAmount: 0,
+  });
+  const mid = await domain.dashboard(db, {});
+  assert.equal(mid.due, before.due + paying.situation.due);
+  assert.equal(mid.cycles.scholars, before.cycles.scholars);
+  const granted = await domain.grantScholarship(db, agent, paying.student.id, { amount: 12_000_000 });
+  assert.equal(Number(granted.student.scholarship_amount), 12_000_000);
+  assert.equal(granted.situation.due, 0);
+  assert.equal(granted.situation.paid, 0);
+  const afterGrant = await domain.dashboard(db, {});
+  assert.equal(afterGrant.due, before.due);
+  assert.equal(afterGrant.paidAll, before.paidAll);
+  assert.equal(afterGrant.cycles.scholars, before.cycles.scholars + 1);
+  const created = await domain.createStudent(db, agent, {
+    lastName: "BOURSE", firstName: "Directe", programId: program.id, level: "bachelor_1", phone: "620000003",
+    scholarship: true, scholarshipAmount: "8.000.000",
+  });
+  assert.equal(created.situation.due, 0);
+  assert.equal(Number(created.student.scholarship_amount), 8_000_000);
+  const after = await domain.dashboard(db, {});
+  assert.equal(after.due, before.due);
+  assert.equal(after.paidAll, before.paidAll);
+  assert.equal(after.cycles.scholars, before.cycles.scholars + 2);
+  const listed = await domain.listStudents(db, { paymentStatus: "boursier" });
+  assert.ok(listed.some((row) => row.student.id === paying.student.id));
+  assert.ok(listed.some((row) => row.student.id === created.student.id));
 });
 
 test("tableau de bord : un costume entièrement payé compte, un costume partiel compte à part", async () => {
