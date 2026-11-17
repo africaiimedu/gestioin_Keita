@@ -559,7 +559,7 @@ export async function listStudents(db, filters, asOf = todayInConakry()) {
     ${STUDENT_SELECT}
     WHERE s.academic_year_id = ?
       AND (?::int IS NULL OR s.program_id = ?)
-      AND (?::text IS NULL OR s.status = ?)
+      AND CASE WHEN ?::text IS NULL THEN s.status <> 'archive' ELSE s.status = ? END
   `).all(year.id, filters.programId ?? null, filters.programId ?? null, filters.studentStatus ?? null, filters.studentStatus ?? null);
   const ledger = await loadLedger(db, students);
   const query = (filters.q || "").trim().toLowerCase();
