@@ -38,7 +38,7 @@ try:
 except ImportError:
     import cups  # type: ignore[no-redef]
 
-VERSION = "1"
+VERSION = "2"
 DOSSIER = Path.home() / "Library" / "Application Support" / "AfricaIIM" / "relais"
 ETIQUETTE = "com.univ-africaiim.relais-impression"
 AGENT = Path.home() / "Library" / "LaunchAgents" / f"{ETIQUETTE}.plist"

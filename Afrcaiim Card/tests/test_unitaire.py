@@ -568,6 +568,20 @@ def test_imprimantes_lues_en_francais_et_en_anglais():
     assert anglais[0]["primacy"] is False
 
 
+def test_petit_texte_fonce_part_en_resine():
+    from reportlab.lib.colors import HexColor
+    from app.services.pdf_carte import _encre, _hex
+
+    petit_vert = _encre(_hex("#004C22"), 4.4)
+    grand_vert = _encre(_hex("#004C22"), 11.5)
+    or_couleur = _encre(_hex("#FEAB00"), 5.0)
+    nom = _encre(_hex("#1A1A1A"), 10.5)
+    assert petit_vert.red < 0.02 and petit_vert.green < 0.02
+    assert grand_vert.green > 0.2
+    assert abs(or_couleur.red - HexColor("#FEAB00").red) < 0.01
+    assert nom.red < 0.02 and nom.green < 0.02 and nom.blue < 0.02
+
+
 def test_impression_recto_verso_et_couleurs():
     from app.routes.admin_routes import _commande_lp
 
@@ -582,7 +596,8 @@ def test_impression_recto_verso_et_couleurs():
     assert "Duplex=DuplexNoTumble" in avec
     assert "PageSize=CR80" in avec
     assert "ColorModel=RGB" in avec
-    assert "Resolution=600dpi" in avec
+    assert "Resolution=300dpi" in avec
+    assert "Resolution=600dpi" not in avec
     assert "orientation-requested=5" in avec
     assert "print-color-mode=color" in avec
     assert "fit-to-page=false" in avec
@@ -618,7 +633,8 @@ def test_impression_recto_verso_et_couleurs():
     assert "PageSize=Card" in paysage
     assert "Orientation=LANDSCAPE_CC90" in paysage
     assert "orientation-requested=5" in paysage
-    assert "Resolution=600dpi" in paysage
+    assert "Resolution=300dpi" in paysage
+    assert "Resolution=600dpi" not in paysage
     assert "Resolution=1200dpi" not in paysage
     assert "FColorContrast=VAL10" in paysage
     assert "BColorContrast=VAL10" in paysage
@@ -626,14 +642,15 @@ def test_impression_recto_verso_et_couleurs():
     assert "FColorBrightness=VAL10" in paysage
     assert "BColorBrightness=VAL10" in paysage
     assert "GDuplexType=DUPLEX_CC" in paysage
-    assert "FHalftoning=THRESHOLD" in paysage
-    assert "BHalftoning=THRESHOLD" in paysage
-    assert "FBlackManagement=ALLBLACKPOINT" in paysage
-    assert "BBlackManagement=ALLBLACKPOINT" in paysage
-    assert "IFColorProfileMode=DRIVERPROFILE" in paysage
-    assert "IBColorProfileMode=DRIVERPROFILE" in paysage
+    assert "FHalftoning=FLOYD" in paysage
+    assert "BHalftoning=FLOYD" in paysage
+    assert "FHalftoning=THRESHOLD" not in paysage
+    assert "FBlackManagement=TEXTINBLACK" in paysage
+    assert "BBlackManagement=TEXTINBLACK" in paysage
+    assert "IFColorProfileMode=NOPROFILE" in paysage
+    assert "IBColorProfileMode=NOPROFILE" in paysage
     assert "IFColorProfile=STDPROFILE" in paysage
-    assert "GSmoothing=ADVSMOOTH" in paysage
+    assert "GSmoothing=NOSMOOTH" in paysage
     assert "FPageRotate180=ON" in paysage
     assert "BPageRotate180=ON" in paysage
     assert "media=" not in "".join(paysage)

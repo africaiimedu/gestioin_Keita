@@ -148,8 +148,8 @@ def commande_lp(
         if "Color" in valeurs:
             commande += ["-o", f"{cle}=Color"]
             break
-    # 1200 dpi gonfle le fichier : le travail tarde, puis la Primacy 2 sort une carte vierge.
-    for voulu in ("600dpi", "300dpi", "300x300dpi"):
+    # 300 ppp = le PDF et la Primacy 2. 600/1200 ppp forcent un second lissage et brouillent photo et verts.
+    for voulu in ("300dpi", "300x300dpi", "600dpi"):
         if voulu in choix.get("Resolution", []):
             commande += ["-o", f"Resolution={voulu}"]
             break
@@ -162,17 +162,18 @@ def commande_lp(
     for cle in ("FColorContrast", "BColorContrast", "FColorBrightness", "BColorBrightness"):
         _poser_option(commande, choix, cle, "VAL10")
     _poser_option(commande, choix, "GDuplexType", "DUPLEX_CC")
-    # Le noir pur (#000000) part sur le panneau K en résine : petits textes, QR et code-barres nets.
-    # Le tramage le transformerait en points épars, d'où le seuil.
+    # Photo + vert institution : tramage Floyd (pas le seuil 1 bit).
+    # TEXTINBLACK : seuls QR, codes-barres et vrai noir partent en résine K.
+    # NOPROFILE : les RVB du PDF (bandeau #004C22, or #FEAB00, photo) sortent comme à l'écran.
     for cle in ("FHalftoning", "BHalftoning"):
-        _poser_option(commande, choix, cle, "THRESHOLD")
+        _poser_option(commande, choix, cle, "FLOYD")
     for cle in ("FBlackManagement", "BBlackManagement"):
-        _poser_option(commande, choix, cle, "ALLBLACKPOINT")
+        _poser_option(commande, choix, cle, "TEXTINBLACK")
     for cle in ("IFColorProfileMode", "IBColorProfileMode"):
-        _poser_option(commande, choix, cle, "DRIVERPROFILE")
+        _poser_option(commande, choix, cle, "NOPROFILE")
     for cle in ("IFColorProfile", "IBColorProfile"):
         _poser_option(commande, choix, cle, "STDPROFILE")
-    _poser_option(commande, choix, "GSmoothing", "ADVSMOOTH")
+    _poser_option(commande, choix, "GSmoothing", "NOSMOOTH")
     # Paysage (étudiants) : demi-tour pilote. Portrait (personnel) : le PDF tourne déjà le verso
     # (retourner_verso) — ne pas cumuler un second demi-tour ici.
     demi_tour = "ON" if paysage else "OFF"

@@ -223,8 +223,8 @@ def positions_lot() -> list[tuple[float, float]]:
 
 
 def _taille(c, texte: str, police: str, taille: float, largeur: float, approche: float = 0) -> float:
-    while taille > 3.3 and _largeur_texte(c, texte, police, taille, approche) > largeur:
-        taille -= 0.15
+    while taille > 5.2 and _largeur_texte(c, texte, police, taille, approche) > largeur:
+        taille -= 0.12
     return taille
 
 
@@ -539,11 +539,12 @@ def _hex(valeur, defaut="#000000"):
         return HexColor(defaut)
 
 
-# La Primacy 2 ne pose en résine (panneau K, trait net) que le noir pur. Les autres couleurs
-# passent en sublimation : sous 7 pt, un texte gris ou vert foncé y sort flou.
+# La Primacy 2 ne pose en résine (panneau K, trait net) que le noir pur.
+# Bandeau, or et grands titres restent en couleur. Sous 7,5 pt, un vert ou un gris
+# part en résine : en sublimation ces écritures sortaient floues / pointillées.
 NOIR_RESINE = HexColor("#000000")
-PETIT_TEXTE = 7.0
-TEXTE_GRAS_SOUS = 6.0
+PETIT_TEXTE = 7.5
+TEXTE_GRAS_SOUS = 7.5
 POINT_IMPRIMANTE = 72 / 300
 
 
@@ -552,10 +553,11 @@ def _luminance(couleur) -> float:
 
 
 def _encre(couleur, taille: float | None = None):
-    """Noir résine pour le quasi-noir, et pour tout texte foncé de petite taille."""
-    if max(couleur.red, couleur.green, couleur.blue) < 0.15:
+    """Noir résine pour le quasi-noir et pour tout texte foncé trop petit pour la couleur."""
+    r, g, b = couleur.red, couleur.green, couleur.blue
+    if max(r, g, b) < 0.18:
         return NOIR_RESINE
-    if taille is not None and taille < PETIT_TEXTE and _luminance(couleur) < 0.4:
+    if taille is not None and taille < PETIT_TEXTE and _luminance(couleur) < 0.45:
         return NOIR_RESINE
     return couleur
 
@@ -778,18 +780,13 @@ def _guilloche(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
 PPP_PHOTO = 300
 
 
-def _lut_photo_primacy() -> list[int]:
-    """Écarte le noir et le blanc purs : le panneau K résine mangeait les visages."""
-    return [20 + (valeur * 232) // 255 for valeur in range(256)] * 3
-
-
 def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
-    """Recadre comme object-fit: cover, puis pose la photo à 300 ppp (résolution Primacy 2).
+    """Recadre comme object-fit: cover, puis pose la photo à 300 ppp sans retoucher les couleurs.
 
-    Un JPEG à 600 ppp était ensuite réduit par le pilote (lissage Evolis) : le visage
-    partait en bouillie. PNG sans perte, ombres relevées, netteté après le redimensionnement.
+    Luminosité / LUT décalaient le visage par rapport à l'atelier. Le noir des photos reste
+    en couleur (TEXTINBLACK) : on ne l'écarte plus vers le gris.
     """
-    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+    from PIL import Image, ImageFilter, ImageOps
 
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(photo)))
     image.load()
@@ -810,11 +807,7 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
     cible = (max(1, round(largeur / 72 * PPP_PHOTO)), max(1, round(hauteur / 72 * PPP_PHOTO)))
     if image.size != cible:
         image = image.resize(cible, Image.Resampling.LANCZOS)
-        image = image.filter(ImageFilter.UnsharpMask(radius=0.7, percent=110, threshold=1))
-    image = ImageEnhance.Brightness(image).enhance(1.10)
-    image = ImageEnhance.Contrast(image).enhance(1.08)
-    image = ImageEnhance.Color(image).enhance(1.04)
-    image = image.point(_lut_photo_primacy())
+        image = image.filter(ImageFilter.UnsharpMask(radius=0.6, percent=85, threshold=2))
     tampon = io.BytesIO()
     image.save(tampon, format="PNG", optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
