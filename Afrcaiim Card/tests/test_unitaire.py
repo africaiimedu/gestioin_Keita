@@ -568,18 +568,19 @@ def test_imprimantes_lues_en_francais_et_en_anglais():
     assert anglais[0]["primacy"] is False
 
 
-def test_petit_texte_fonce_part_en_resine():
+def test_couleurs_atelier_conservees_sur_le_pdf():
     from reportlab.lib.colors import HexColor
     from app.services.pdf_carte import _encre, _hex
 
-    petit_vert = _encre(_hex("#004C22"), 4.4)
-    grand_vert = _encre(_hex("#004C22"), 11.5)
+    vert = _encre(_hex("#004C22"), 4.4)
     or_couleur = _encre(_hex("#FEAB00"), 5.0)
     nom = _encre(_hex("#1A1A1A"), 10.5)
-    assert petit_vert.red < 0.02 and petit_vert.green < 0.02
-    assert grand_vert.green > 0.2
+    blanc = _encre(_hex("#FFFFFF"), 11.5)
+    assert abs(vert.green - HexColor("#004C22").green) < 0.01
+    assert vert.green > vert.red
     assert abs(or_couleur.red - HexColor("#FEAB00").red) < 0.01
-    assert nom.red < 0.02 and nom.green < 0.02 and nom.blue < 0.02
+    assert nom.red < 0.02 and nom.green < 0.02
+    assert blanc.red > 0.99
 
 
 def test_impression_recto_verso_et_couleurs():

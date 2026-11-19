@@ -223,8 +223,8 @@ def positions_lot() -> list[tuple[float, float]]:
 
 
 def _taille(c, texte: str, police: str, taille: float, largeur: float, approche: float = 0) -> float:
-    while taille > 5.2 and _largeur_texte(c, texte, police, taille, approche) > largeur:
-        taille -= 0.12
+    while taille > 3.3 and _largeur_texte(c, texte, police, taille, approche) > largeur:
+        taille -= 0.15
     return taille
 
 
@@ -539,25 +539,15 @@ def _hex(valeur, defaut="#000000"):
         return HexColor(defaut)
 
 
-# La Primacy 2 ne pose en résine (panneau K, trait net) que le noir pur.
-# Bandeau, or et grands titres restent en couleur. Sous 7,5 pt, un vert ou un gris
-# part en résine : en sublimation ces écritures sortaient floues / pointillées.
+# Couleurs identiques à l'atelier. Seul le quasi-noir (#1A1A1A) part en résine K
+# pour rester net comme un texte noir à l'écran. Le vert et l'or restent en couleur.
 NOIR_RESINE = HexColor("#000000")
-PETIT_TEXTE = 7.5
-TEXTE_GRAS_SOUS = 7.5
 POINT_IMPRIMANTE = 72 / 300
 
 
-def _luminance(couleur) -> float:
-    return 0.2126 * couleur.red + 0.7152 * couleur.green + 0.0722 * couleur.blue
-
-
 def _encre(couleur, taille: float | None = None):
-    """Noir résine pour le quasi-noir et pour tout texte foncé trop petit pour la couleur."""
-    r, g, b = couleur.red, couleur.green, couleur.blue
-    if max(r, g, b) < 0.18:
-        return NOIR_RESINE
-    if taille is not None and taille < PETIT_TEXTE and _luminance(couleur) < 0.45:
+    """Même teinte que l'atelier. Le gris très foncé devient noir résine."""
+    if max(couleur.red, couleur.green, couleur.blue) < 0.12:
         return NOIR_RESINE
     return couleur
 
@@ -864,17 +854,11 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     taille = float(obj.get("taille", 9))
     align = obj.get("align") or "left"
     approche = float(obj.get("approche") or 0)
+    # L'atelier montre la carte agrandie (~7,4 px/mm). Sous 8 pt, on remonte un peu
+    # pour que le PVC soit aussi lisible que l'écran, sans changer les couleurs ni le gras.
+    if obj.get("type") != "micro" and taille < 8:
+        taille = max(taille * 1.25, 6.8)
     police = _nom_police(obj)
-    if taille < TEXTE_GRAS_SOUS:
-        grasse = _nom_police({**obj, "gras": True})
-        en_paragraphe = obj.get("retour") or align == "justify"
-        tient = (
-            len(_couper(c, texte, grasse, taille, largeur, approche)) <= len(_couper(c, texte, police, taille, largeur, approche))
-            if en_paragraphe
-            else _largeur_texte(c, texte, grasse, taille, approche) <= largeur
-        )
-        if tient:
-            police = grasse
     couleur = _encre(_hex(obj.get("couleur"), "#1A1A1A"), taille)
     coef = float(obj.get("interligne") or 1.15)
     interligne = taille * coef
