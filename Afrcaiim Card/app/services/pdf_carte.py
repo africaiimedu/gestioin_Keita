@@ -775,16 +775,21 @@ def _guilloche(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
     c._setFillAlpha(1)
 
 
-PPP_PHOTO = 600
+PPP_PHOTO = 300
+
+
+def _lut_photo_primacy() -> list[int]:
+    """Écarte le noir et le blanc purs : le panneau K résine mangeait les visages."""
+    return [20 + (valeur * 232) // 255 for valeur in range(256)] * 3
 
 
 def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
-    """Recadre comme object-fit: cover, puis ramène la photo à 600 ppp à sa taille imprimée.
+    """Recadre comme object-fit: cover, puis pose la photo à 300 ppp (résolution Primacy 2).
 
-    La Primacy 2 imprime à 300 ppp : 600 ppp lui laisse de la marge sans alourdir le travail.
-    JPEG 97 sans sous-échantillonnage des couleurs, avec un léger renforcement de netteté.
+    Un JPEG à 600 ppp était ensuite réduit par le pilote (lissage Evolis) : le visage
+    partait en bouillie. PNG sans perte, ombres relevées, netteté après le redimensionnement.
     """
-    from PIL import Image, ImageFilter, ImageOps
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(photo)))
     image.load()
@@ -803,13 +808,15 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
         haut = (hauteur_px - garde) // 2
         image = image.crop((0, haut, largeur_px, haut + garde))
     cible = (max(1, round(largeur / 72 * PPP_PHOTO)), max(1, round(hauteur / 72 * PPP_PHOTO)))
-    if image.width > cible[0]:
+    if image.size != cible:
         image = image.resize(cible, Image.Resampling.LANCZOS)
-        image = image.filter(ImageFilter.UnsharpMask(radius=1.2, percent=55, threshold=2))
-    # Aucun pixel noir pur : il partirait en résine et ferait des taches mates sur le visage.
-    image = image.point(lambda valeur: max(valeur, 6))
+        image = image.filter(ImageFilter.UnsharpMask(radius=0.7, percent=110, threshold=1))
+    image = ImageEnhance.Brightness(image).enhance(1.10)
+    image = ImageEnhance.Contrast(image).enhance(1.08)
+    image = ImageEnhance.Color(image).enhance(1.04)
+    image = image.point(_lut_photo_primacy())
     tampon = io.BytesIO()
-    image.save(tampon, format="JPEG", quality=97, subsampling=0, optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
+    image.save(tampon, format="PNG", optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
     c.drawImage(ImageReader(tampon), x, y, largeur, hauteur, preserveAspectRatio=False, mask=None)
 

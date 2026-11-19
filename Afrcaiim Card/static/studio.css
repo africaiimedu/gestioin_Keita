@@ -314,7 +314,7 @@ body.atelier-personnel .commande {
 }
 .objet.choisi { outline: 1px dashed #128a45; outline-offset: 1px; }
 .objet img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
-.objet.photo img { object-fit: cover; }
+.objet.photo img { object-fit: cover; object-position: center 18%; image-rendering: auto; }
 .objet.texte, .objet.champ {
   display: flex;
   align-items: center;

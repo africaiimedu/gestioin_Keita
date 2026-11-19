@@ -6,7 +6,7 @@ import io
 import zipfile
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from app.config import ROOT
 
@@ -16,6 +16,9 @@ _DOSSIER = ROOT / "data" / "photos"
 _EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 _FORMATS = {"JPEG", "PNG", "WEBP", "MPO"}
 POIDS_MAX = 25_000_000
+# 3/4, assez pour 300 ppp sur un badge : on ne réduit plus tout à 1200×1600.
+_LARGEUR_MAX = 2400
+_HAUTEUR_MAX = 3200
 
 
 def _en_rgb(image: Image.Image) -> Image.Image:
@@ -62,9 +65,20 @@ def normaliser_photo(blob: bytes) -> bytes:
         haut = (hauteur - nouvelle) // 2
         image = image.crop((0, haut, largeur, haut + nouvelle))
 
-    image = image.resize((1200, 1600), Image.Resampling.LANCZOS)
+    if image.width > _LARGEUR_MAX or image.height > _HAUTEUR_MAX:
+        image.thumbnail((_LARGEUR_MAX, _HAUTEUR_MAX), Image.Resampling.LANCZOS)
+        image = image.filter(ImageFilter.UnsharpMask(radius=0.8, percent=70, threshold=2))
+
     sortie = io.BytesIO()
-    image.save(sortie, format="JPEG", quality=95, subsampling=0, optimize=True)
+    image.save(
+        sortie,
+        format="JPEG",
+        quality=98,
+        subsampling=0,
+        optimize=True,
+        progressive=False,
+        dpi=(300, 300),
+    )
     return sortie.getvalue()
 
 

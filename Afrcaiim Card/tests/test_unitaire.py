@@ -145,7 +145,9 @@ def test_photo_png_acceptee_sous_toutes_ses_formes():
 
     def proche(blob: bytes, attendu: tuple[int, int, int]) -> bool:
         sortie = Image.open(io.BytesIO(normaliser_photo(blob)))
-        assert sortie.format == "JPEG" and sortie.size == (1200, 1600)
+        assert sortie.format == "JPEG"
+        assert sortie.size[0] / sortie.size[1] == 3 / 4 or abs(sortie.size[0] / sortie.size[1] - 0.75) < 0.02
+        assert sortie.size[0] <= 2400 and sortie.size[1] <= 3200
         return all(abs(a - b) <= 3 for a, b in zip(sortie.getpixel((20, 20)), attendu))
 
     assert proche(_png(Image.new("RGB", (600, 800), (10, 120, 60))), (10, 120, 60))
@@ -164,6 +166,36 @@ def test_photo_png_acceptee_sous_toutes_ses_formes():
         raise AssertionError("aurait dû refuser")
     except ValueError as exc:
         assert "PNG" in str(exc)
+
+
+def test_photo_ne_est_plus_ecrasee_a_1200():
+    from PIL import Image
+    from app.services.photos import normaliser_photo
+
+    petite = io.BytesIO()
+    Image.new("RGB", (600, 800), (10, 120, 60)).save(petite, "JPEG", quality=95)
+    garde = Image.open(io.BytesIO(normaliser_photo(petite.getvalue())))
+    assert garde.size == (600, 800)
+
+    grande = io.BytesIO()
+    Image.new("RGB", (3600, 4800), (40, 80, 120)).save(grande, "JPEG", quality=95)
+    reduite = Image.open(io.BytesIO(normaliser_photo(grande.getvalue())))
+    assert reduite.size == (2400, 3200)
+
+
+def test_photo_pdf_a_la_resolution_primacy():
+    from PIL import Image
+    from reportlab.pdfgen.canvas import Canvas
+    from app.services.pdf_carte import PPP_PHOTO, _poser_couverture
+
+    assert PPP_PHOTO == 300
+    source = io.BytesIO()
+    Image.new("RGB", (1800, 2400), (80, 50, 40)).save(source, "JPEG", quality=95)
+    tampon = io.BytesIO()
+    c = Canvas(tampon, pagesize=(200, 120))
+    _poser_couverture(c, source.getvalue(), 10, 10, 72, 96)
+    c.save()
+    assert len(tampon.getvalue()) > 1000
 
 
 def test_liste_des_etudiants_en_pdf():

@@ -176,7 +176,7 @@ function rendreFace(carte, objets, ctx) {
       el.style.display = "grid";
       el.style.placeItems = "center";
       if (ctx.etu && ctx.etu.photo && ctx.urls && ctx.urls.photo) {
-        el.innerHTML = `<img alt="" src="${ctx.urls.photo}" style="width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit">`;
+        el.innerHTML = `<img alt="" src="${ctx.urls.photo}" decoding="sync" style="width:100%;height:100%;object-fit:cover;object-position:center 18%;pointer-events:none;border-radius:inherit;image-rendering:auto">`;
       } else if (obj.initiales !== false && ctx.etu) {
         const span = document.createElement("span");
         span.textContent = initialesCarte(ctx.etu);
