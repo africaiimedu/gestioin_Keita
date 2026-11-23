@@ -13,7 +13,7 @@ function noirNeutre(valeur, defaut = "#1A1A1A") {
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
   const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-  if (Math.max(r, g, b) <= 0.18 && chroma <= 0.045) return "#000000";
+  if (Math.max(r, g, b) <= 0.32 && chroma <= 0.055) return "#000000";
   return hex;
 }
 
@@ -146,7 +146,7 @@ function rendreFace(carte, objets, ctx) {
         ? encreResine(obj.couleur, "#000000")
         : (obj.couleur || "#0C4630");
       if (obj.rayon) el.style.borderRadius = `${obj.rayon * px}px`;
-      if (obj.contour) el.style.border = `${Math.max(1, (obj.epaisseur || 0.25) * px * 0.35)}px solid ${obj.contour}`;
+      if (obj.contour) el.style.border = `${Math.max(1, (obj.epaisseur || 0.25) * px)}px solid ${obj.contour}`;
     } else if (obj.type === "cercle") {
       el.style.background = obj.couleur || "#F0A020";
       el.style.borderRadius = "50%";
@@ -184,6 +184,8 @@ function rendreFace(carte, objets, ctx) {
       el.style.borderRadius = `${(obj.rayon || 0) * px}px`;
       el.style.display = "grid";
       el.style.placeItems = "center";
+      el.style.border = `${Math.max(1.5, (obj.epaisseur || 0.38) * px)}px solid ${obj.contour || "#FEAB00"}`;
+      el.style.boxSizing = "border-box";
       if (ctx.etu && ctx.etu.photo && ctx.urls && ctx.urls.photo) {
         el.innerHTML = `<img alt="" src="${ctx.urls.photo}" decoding="sync" style="width:100%;height:100%;object-fit:cover;object-position:center 18%;pointer-events:none;border-radius:inherit;image-rendering:auto">`;
       } else if (obj.initiales !== false && ctx.etu) {

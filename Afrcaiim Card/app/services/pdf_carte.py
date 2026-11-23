@@ -510,8 +510,25 @@ def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
     """Le modèle modifié dans l'atelier vit dans data/, hors Git, pour survivre aux mises à jour."""
     vivant, usine = _chemins_modele(fichier)
     vivant.parent.mkdir(parents=True, exist_ok=True)
-    if not vivant.is_file() and usine.is_file():
-        vivant.write_bytes(usine.read_bytes())
+    if usine.is_file():
+        usine_data = json.loads(usine.read_text(encoding="utf-8"))
+        try:
+            version_usine = int(usine_data.get("version") or 0)
+        except (TypeError, ValueError):
+            version_usine = 0
+        if not vivant.is_file():
+            vivant.write_bytes(usine.read_bytes())
+        elif version_usine:
+            try:
+                actuel = json.loads(vivant.read_text(encoding="utf-8"))
+                version_actuel = int(actuel.get("version") or 0)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                version_actuel = 0
+            if version_actuel < version_usine:
+                vivant.write_text(
+                    json.dumps(usine_data, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
     return vivant if vivant.is_file() else usine
 
 
@@ -546,13 +563,13 @@ POINT_IMPRIMANTE = 72 / 300
 
 
 def _est_noir_neutre(couleur) -> bool:
-    """#000, #111, #1A1A1A : noir. Pas le vert institution (chroma trop fort)."""
+    """#000, #1A1A1A, gris #3E4742 : résine K. Pas le vert institution (chroma trop fort)."""
     try:
         rouge, vert, bleu = float(couleur.red), float(couleur.green), float(couleur.blue)
     except AttributeError:
         return False
     chroma = max(rouge, vert, bleu) - min(rouge, vert, bleu)
-    return max(rouge, vert, bleu) <= 0.18 and chroma <= 0.045
+    return max(rouge, vert, bleu) <= 0.32 and chroma <= 0.055
 
 
 def _encre(couleur, taille: float | None = None):
@@ -781,12 +798,8 @@ PPP_PHOTO = 300
 
 
 def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
-    """Recadre comme object-fit: cover, puis pose la photo à 300 ppp sans retoucher les couleurs.
-
-    Luminosité / LUT décalaient le visage par rapport à l'atelier. Le noir des photos reste
-    en couleur (TEXTINBLACK) : on ne l'écarte plus vers le gris.
-    """
-    from PIL import Image, ImageFilter, ImageOps
+    """Recadre comme object-fit: cover, 300 ppp, contraste léger pour le ruban YMCK."""
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(photo)))
     image.load()
@@ -807,7 +820,9 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
     cible = (max(1, round(largeur / 72 * PPP_PHOTO)), max(1, round(hauteur / 72 * PPP_PHOTO)))
     if image.size != cible:
         image = image.resize(cible, Image.Resampling.LANCZOS)
-        image = image.filter(ImageFilter.UnsharpMask(radius=0.6, percent=85, threshold=2))
+    image = ImageEnhance.Contrast(image).enhance(1.08)
+    image = ImageEnhance.Color(image).enhance(1.04)
+    image = image.filter(ImageFilter.UnsharpMask(radius=0.4, percent=42, threshold=3))
     tampon = io.BytesIO()
     image.save(tampon, format="PNG", optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
@@ -863,6 +878,10 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     taille = float(obj.get("taille", 9))
     align = obj.get("align") or "left"
     approche = float(obj.get("approche") or 0)
+    if obj.get("type") == "micro":
+        taille = max(taille, 3.2)
+    elif taille < 6:
+        taille = 6.2
     police = _nom_police(obj)
     couleur = _encre(_hex(obj.get("couleur"), "#1A1A1A"), taille)
     coef = float(obj.get("interligne") or 1.15)
@@ -982,6 +1001,12 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
                     initiales,
                 )
             c.restoreState()
+            c.setStrokeColor(_hex(obj.get("contour") or "#FEAB00"))
+            c.setLineWidth(mm(max(0.28, float(obj.get("epaisseur") or 0.38))))
+            if rayon > 0.4:
+                c.roundRect(x, y, largeur, hauteur, rayon, fill=0, stroke=1)
+            else:
+                c.rect(x, y, largeur, hauteur, fill=0, stroke=1)
         elif type_objet == "qr":
             c.setFillColor(_hex(obj.get("fond"), "#FFFFFF"))
             c.rect(x, y, largeur, hauteur, fill=1, stroke=0)
