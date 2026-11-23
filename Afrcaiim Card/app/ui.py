@@ -16,7 +16,14 @@ from app.models import MessageApp
 from app.services.courrier import formater_francs
 from app.services.ecoles import ECOLES, annee_academique_courante
 from app.services.import_etudiants import validite_par_defaut
-from app.services.cantine import ABONNEMENT_MENSUEL, MOIS_MAX, est_abonne, libelle_abonnement
+from app.services.cantine import (
+    ABONNEMENT_ETUDIANT,
+    ABONNEMENT_MENSUEL,
+    ABONNEMENT_PERSONNEL,
+    MOIS_MAX,
+    est_abonne,
+    libelle_abonnement,
+)
 from app.services.menu_cantine import QTE_MAX, image_plat, prix_caisse
 from app.services.statut import libelle_action, libelle_role, libelle_statut
 
@@ -49,6 +56,8 @@ templates.env.globals["qte_max"] = QTE_MAX
 templates.env.globals["est_abonne"] = est_abonne
 templates.env.globals["libelle_abonnement"] = libelle_abonnement
 templates.env.globals["abonnement_mensuel"] = ABONNEMENT_MENSUEL
+templates.env.globals["abonnement_etudiant"] = ABONNEMENT_ETUDIANT
+templates.env.globals["abonnement_personnel"] = ABONNEMENT_PERSONNEL
 templates.env.globals["abonnement_mois_max"] = MOIS_MAX
 templates.env.globals["maison_de"] = maison
 

@@ -290,8 +290,9 @@ def test_page_menu_et_commande():
             assert "data-src=" in menu.text
             assert "CHAWARMA" in menu.text
             assert 'data-permanent="1"' in menu.text
-            assert "ABONNEMENT POUR LES ELEVES D’AFRICAIIM" in menu.text
-            assert "600 000 FG" in menu.text
+            assert "ÉTUDIANTS" in menu.text
+            assert "600.000 GNF" in menu.text
+            assert "800.000 GNF" in menu.text
             assert "Allergènes à signaler" in menu.text
             assert "Eau minérale" in menu.text
             assert "15 min" not in menu.text

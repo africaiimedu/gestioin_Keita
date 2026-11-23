@@ -84,26 +84,35 @@ def pdf_abonnes_cantine(etudiants) -> bytes:
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (0, 0), 12),
     ]))
-    colonnes = ["N°", "Nom", "Prénom", "Matricule", "École", "Niveau", "Mois", "Validité", "Montant"]
+    colonnes = ["N°", "Profil", "Nom", "Prénom", "Matricule", "École / fonction", "Mois", "Validité", "Montant"]
     donnees = [[Paragraph(nom, entete) for nom in colonnes]]
     for rang, etudiant in enumerate(etudiants, start=1):
         mois = int(getattr(etudiant, "abonnement_mois", 0) or 0)
         montant = montant_abonnement_etudiant(etudiant)
         fin = etudiant.abonnement_fin.strftime("%d/%m/%Y") if etudiant.abonnement_fin else "—"
+        profil = "Personnel" if getattr(etudiant, "qualite_abonne", "") == "personnel" else "Étudiant"
+        if profil == "Personnel":
+            ecole = etudiant.filiere
+        else:
+            niveau = libelle_niveau(
+                getattr(etudiant, "niveau", ""),
+                programme=getattr(etudiant, "programme", None) or etudiant.filiere,
+            )
+            ecole = " · ".join(p for p in (etudiant.filiere, niveau) if p)
         donnees.append([
             Paragraph(str(rang), cellule),
+            Paragraph(profil, cellule),
             Paragraph(_texte(etudiant.nom), cellule),
             Paragraph(_texte(etudiant.prenom), cellule),
             Paragraph(_texte(etudiant.matricule), cellule),
-            Paragraph(_texte(etudiant.filiere), cellule),
-            Paragraph(_texte(libelle_niveau(etudiant.niveau, programme=etudiant.programme or etudiant.filiere)), cellule),
+            Paragraph(_texte(ecole), cellule),
             Paragraph(str(mois or "—"), cellule),
             Paragraph(fin, cellule),
             Paragraph(formater_francs(montant), cellule),
         ])
     if len(donnees) == 1:
         donnees.append([Paragraph("Aucun abonné en cours.", cellule)] + [""] * (len(colonnes) - 1))
-    parts = [0.05, 0.12, 0.13, 0.13, 0.18, 0.12, 0.06, 0.10, 0.11]
+    parts = [0.05, 0.10, 0.12, 0.12, 0.13, 0.16, 0.07, 0.12, 0.13]
     tableau = Table(donnees, colWidths=[largeur * p for p in parts], repeatRows=1)
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), VERT),

@@ -33,6 +33,7 @@ class Etudiant(Base):
     abonne_cantine: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     abonnement_mois: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     abonnement_fin: Mapped[date | None] = mapped_column(Date, nullable=True)
+    abonnement_montant: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
 
     cartes: Mapped[list[Carte]] = relationship(back_populates="etudiant")
@@ -84,6 +85,11 @@ class Personnel(Base):
     date_validite: Mapped[date] = mapped_column(Date)
     photo_chemin: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str] = mapped_column(String(120), default="")
+    solde_cantine: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    abonne_cantine: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    abonnement_mois: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    abonnement_fin: Mapped[date | None] = mapped_column(Date, nullable=True)
+    abonnement_montant: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=maintenant)
 
     badges: Mapped[list["BadgePersonnel"]] = relationship(back_populates="personnel")
@@ -211,6 +217,7 @@ class RecuCantine(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     numero: Mapped[str] = mapped_column(String(16), unique=True)
     etudiant_id: Mapped[int | None] = mapped_column(ForeignKey("etudiants.id"), nullable=True, index=True)
+    personnel_id: Mapped[int | None] = mapped_column(ForeignKey("personnels.id"), nullable=True, index=True)
     commande_id: Mapped[int | None] = mapped_column(ForeignKey("commandes_cantine.id"), nullable=True, index=True)
     nom_etudiant: Mapped[str] = mapped_column(String(170), default="")
     matricule: Mapped[str] = mapped_column(String(40), default="")

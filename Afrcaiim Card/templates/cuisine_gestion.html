@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block titre %}Gestion cuisine{% endblock %}
+{% block tete %}
+<link rel="stylesheet" href="/static/cuisine-gestion.css?v=18">
+{% endblock %}
+{% block body_class %}cuisine-erp{% endblock %}
+{% block contenu %}
+<div class="erp" id="erp" data-csrf="{{ csrf }}">
+  <aside class="erp-menu" id="erp-menu">
+    <p class="erp-marque">Cuisine AFRICAIIM</p>
+    <p class="erp-devise">Montants en francs guinéens</p>
+    <nav class="erp-nav">
+      <p class="erp-nav-titre">Activité</p>
+      <button type="button" data-page="tableau" class="actif">Tableau de bord</button>
+      <button type="button" data-page="stock">Stocks</button>
+      <button type="button" data-page="achats">Achats</button>
+      <button type="button" data-page="ventes">Ventes</button>
+      <button type="button" data-page="plats">Plats</button>
+      <p class="erp-nav-titre">Finances</p>
+      <button type="button" data-page="depenses">Dépenses</button>
+      <button type="button" data-page="caisse">Caisse</button>
+      <button type="button" data-page="pertes">Pertes</button>
+      <button type="button" data-page="rapports">Rapports</button>
+    </nav>
+  </aside>
+  <section class="erp-corps">
+    <header class="erp-haut">
+      <div>
+        <h1 id="erp-titre">Tableau de bord</h1>
+        <p id="erp-sous">Vision financière de la cuisine</p>
+      </div>
+      <p class="erp-msg" id="erp-msg" hidden></p>
+    </header>
+    <div id="erp-page"></div>
+  </section>
+</div>
+<nav class="erp-bas" id="erp-bas">
+  <button type="button" data-page="tableau" class="actif">Accueil</button>
+  <button type="button" data-page="stock">Stocks</button>
+  <button type="button" data-page="achats">Achats</button>
+  <button type="button" data-page="ventes">Ventes</button>
+  <button type="button" id="erp-plus">Plus</button>
+</nav>
+<div class="erp-voile" id="erp-voile" hidden>
+  <div class="erp-modale" id="erp-modale" role="dialog" aria-modal="true"></div>
+</div>
+<script src="/static/cuisine-gestion.js?v=18" defer></script>
+{% endblock %}

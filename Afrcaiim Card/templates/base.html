@@ -2,15 +2,18 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
   <meta name="robots" content="noindex, nofollow">
   <title>{% block titre %}Cartes{% endblock %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/carte.css?v=35">
+  <link rel="stylesheet" href="/static/carte.css?v=41">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <script src="/static/mot-de-passe.js?v=2" defer></script>
   <script src="/static/impression-locale.js?v=2" defer></script>
+  <script src="/static/menus.js?v=4" defer></script>
+  <script src="/static/abonnement.js?v=1" defer></script>
   {% block tete %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}"{% if user %} data-accueil="{{ maison_de(user.role) }}"{% endif %}>
@@ -21,6 +24,9 @@
         <img class="logo-barre" src="/static/marque.png" alt="Université AFRICAIIM">
       </a>
     </div>
+    <button type="button" class="touche-menu" id="touche-menu" aria-expanded="false" aria-controls="nav-app" aria-label="Ouvrir le menu">
+      <span class="touche-menu-icon"></span>
+    </button>
     {% include "nav.html" %}
   </header>
   <main>

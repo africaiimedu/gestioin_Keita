@@ -24,10 +24,12 @@ h2 { margin: 1.6rem 0 0.6rem; font-size: 1.25rem; }
 
 .barre {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.5rem 0.85rem;
   align-items: center;
-  padding: 0.55rem 1.2rem;
+  padding: 0.4rem max(1rem, env(safe-area-inset-right)) 0.4rem max(1rem, env(safe-area-inset-left));
   background: #fffdf8;
   color: var(--vert);
   border-bottom: 3px solid var(--or);
@@ -35,8 +37,9 @@ h2 { margin: 1.6rem 0 0.6rem; font-size: 1.25rem; }
 .barre-gauche {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.55rem;
   min-width: 0;
+  flex: none;
 }
 .touche-retour {
   flex: none;
@@ -53,6 +56,42 @@ h2 { margin: 1.6rem 0 0.6rem; font-size: 1.25rem; }
 }
 .touche-retour:hover { background: #003918; }
 .touche-retour[hidden] { display: none !important; }
+.touche-menu {
+  display: none;
+  flex: none;
+  margin-left: auto;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  background: #0c3d24;
+  color: #F4F1EA;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+.touche-menu:hover { background: #082c1a; }
+.touche-menu[aria-expanded="true"] { background: #feab00; }
+.touche-menu-icon,
+.touche-menu-icon::before,
+.touche-menu-icon::after {
+  display: block;
+  width: 16px;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+.touche-menu-icon::before,
+.touche-menu-icon::after {
+  content: "";
+  position: absolute;
+  left: 0;
+}
+.touche-menu-icon::before { top: -5px; }
+.touche-menu-icon::after { top: 5px; }
+.touche-menu[aria-expanded="true"] { color: #1a1a1a; }
 .barre a, .barre button.lien { color: var(--vert); text-decoration: none; }
 .barre nav a.actif {
   background: var(--vert);
@@ -61,13 +100,20 @@ h2 { margin: 1.6rem 0 0.6rem; font-size: 1.25rem; }
   padding: 0.28rem 0.75rem;
   font-weight: 700;
 }
-.logo-barre { height: 52px; width: auto; display: block; }
+.logo-barre { height: 40px; width: auto; display: block; }
+.barre nav a,
+.barre nav .service-titre,
+.barre nav button.lien {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+}
 .logo-page { width: min(100%, 380px); height: auto; display: block; margin: 0 0 0.8rem; }
 .controle { color: var(--gris); }
 .controle strong { color: var(--vert); letter-spacing: 0.08em; }
-nav { display: flex; flex-wrap: wrap; gap: 0.8rem 1rem; align-items: center; }
+nav { display: flex; flex-wrap: wrap; gap: 0.35rem 0.7rem; align-items: center; flex: 1; min-width: 0; overflow: visible; }
 nav form { margin: 0; }
-.barre { position: relative; z-index: 30; }
+.barre { position: relative; z-index: 40; overflow: visible; }
 .service { position: relative; }
 .service-titre {
   background: none;
@@ -95,7 +141,7 @@ nav form { margin: 0; }
 .sous-menu {
   display: none;
   position: absolute;
-  top: 100%;
+  top: calc(100% - 2px);
   left: 0;
   min-width: 13.5rem;
   padding: 0.4rem;
@@ -104,13 +150,16 @@ nav form { margin: 0; }
   border-top: 3px solid var(--or);
   border-radius: 0 0 10px 10px;
   box-shadow: 0 10px 22px rgba(28, 36, 31, 0.12);
-  z-index: 40;
+  z-index: 50;
 }
-.service:hover > .sous-menu,
+.service.ouvert > .sous-menu,
 .service:focus-within > .sous-menu {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+}
+@media (hover: hover) and (pointer: fine) {
+  .service:hover > .sous-menu { display: flex; flex-direction: column; gap: 0.15rem; }
 }
 .sous-menu a {
   display: block;
@@ -711,11 +760,74 @@ body.page-verif main { padding: 0.4rem 1rem 2rem; }
   body:has(.login) main {
     padding: max(16px, env(safe-area-inset-top)) 0.85rem max(20px, env(safe-area-inset-bottom));
   }
-  .barre { flex-direction: column; align-items: stretch; padding: 0.6rem 0.85rem; }
+  .barre {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem max(0.8rem, env(safe-area-inset-right)) 0.4rem max(0.8rem, env(safe-area-inset-left));
+    overflow: visible;
+  }
+  .barre-gauche { width: auto; flex: 1; min-width: 0; }
   .marque { display: block; max-width: 100%; }
-  .logo-barre { height: 42px; max-width: min(240px, 78vw); object-fit: contain; }
-  nav { width: 100%; }
-  .sous-menu { min-width: min(13.5rem, 88vw); }
+  .logo-barre { height: 28px; max-width: 118px; object-fit: contain; }
+  .touche-retour { min-height: 36px; font-size: 0.78rem; padding: 0.22rem 0.65rem; }
+  .touche-menu { display: inline-flex; }
+  header.barre > nav {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(84vw, 320px);
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.2rem;
+    overflow: auto;
+    padding: 4.6rem 1rem calc(1.4rem + env(safe-area-inset-bottom));
+    background: #fffdf8;
+    box-shadow: -18px 0 50px rgba(8, 28, 18, 0.18);
+    transform: translateX(105%);
+    transition: transform 0.28s ease;
+    z-index: 55;
+  }
+  body.menu-ouvert header.barre > nav { transform: translateX(0); }
+  body.menu-ouvert::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 28, 18, 0.42);
+    z-index: 42;
+  }
+  .service { width: 100%; }
+  .sous-menu {
+    position: static;
+    left: auto;
+    right: auto;
+    width: 100%;
+    min-width: 0;
+    max-height: none;
+    margin: 0.2rem 0 0.4rem;
+    box-shadow: none;
+    border-radius: 12px;
+  }
+  .barre nav a,
+  .barre nav .service-titre,
+  .barre nav button.lien {
+    min-height: 46px;
+    font-size: 1rem;
+    flex: none;
+    white-space: normal;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 0.4rem 0.8rem;
+    border-radius: 12px;
+  }
+  .barre nav form { width: 100%; }
+  .barre nav button.lien { width: 100%; text-align: left; text-decoration: none; }
   main { padding: 1rem 0.85rem 5.5rem; }
   h1 { font-size: 1.6rem; }
+  body.cuisine-erp { overflow-x: hidden; }
+  body.menu-ouvert { overflow: hidden; }
 }

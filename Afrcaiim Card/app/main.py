@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import ROOT, base_url, charger_config, secret_session
 from app.deps import Redirection
 from app.routes.admin_routes import router as admin_router
+from app.cuisine.routes import router as cuisine_router
 from app.routes.cantine_routes import router as cantine_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.espace_routes import router as espace_router
@@ -76,6 +77,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(cantine_router)
+app.include_router(cuisine_router)
 app.include_router(menu_router)
 app.include_router(studio_router)
 app.include_router(admin_router)

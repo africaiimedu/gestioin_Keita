@@ -1,7 +1,7 @@
 {% set chemin = request.url.path %}
 {% set service_cartes = chemin == "/admin" or chemin.startswith("/admin/atelier-personnel") or chemin.startswith("/admin/etudiants") or chemin.startswith("/admin/personnel") or chemin.startswith("/admin/impression") or chemin.startswith("/admin/lot") or chemin.startswith("/admin/import") or chemin.startswith("/admin/journal") %}
 {% set service_cuisine = chemin == "/cantine" or chemin.startswith("/cantine/") %}
-<nav>
+<nav id="nav-app">
   {% if user and user.role in ["admin", "scolarite"] %}
     <div class="service">
       <button type="button" class="service-titre{% if service_cartes %} actif{% endif %}" aria-haspopup="true">Cartes</button>
@@ -26,6 +26,7 @@
           <a href="/cantine/recus" {% if chemin.startswith("/cantine/recus") %}class="actif" aria-current="page"{% endif %}>Reçus</a>
           <a href="/cantine/abonnes" {% if chemin.startswith("/cantine/abonnes") %}class="actif" aria-current="page"{% endif %}>Abonnés</a>
           <a href="/cantine/rapport" {% if chemin.startswith("/cantine/rapport") %}class="actif" aria-current="page"{% endif %}>Rapport</a>
+          <a href="/cantine/gestion" {% if chemin.startswith("/cantine/gestion") %}class="actif" aria-current="page"{% endif %}>Gestion cuisine</a>
         </div>
       </div>
       <a href="/securite" {% if chemin.startswith("/securite") %}class="actif" aria-current="page"{% endif %}>Contrôle</a>
@@ -38,6 +39,7 @@
     <a href="/cantine/recus" {% if chemin.startswith("/cantine/recus") %}class="actif" aria-current="page"{% endif %}>Reçus</a>
     <a href="/cantine/abonnes" {% if chemin.startswith("/cantine/abonnes") %}class="actif" aria-current="page"{% endif %}>Abonnés</a>
     <a href="/cantine/rapport" {% if chemin.startswith("/cantine/rapport") %}class="actif" aria-current="page"{% endif %}>Rapport</a>
+    <a href="/cantine/gestion" {% if chemin.startswith("/cantine/gestion") %}class="actif" aria-current="page"{% endif %}>Gestion cuisine</a>
   {% elif user and user.role == "securite" %}
     <a href="/securite" {% if chemin.startswith("/securite") %}class="actif" aria-current="page"{% endif %}>Contrôle</a>
   {% elif user and user.role == "etudiant" %}

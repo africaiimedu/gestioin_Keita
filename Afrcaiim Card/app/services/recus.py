@@ -11,6 +11,7 @@ from app.models import (
     CommandeCantine,
     Etudiant,
     LigneCommande,
+    Personnel,
     RecuCantine,
     TravailImpression,
     maintenant,
@@ -50,14 +51,21 @@ def emettre_recu(
     details: str = "",
     agent_id: int | None = None,
     nom_affiche: str = "",
+    personnel: Personnel | None = None,
 ) -> RecuCantine:
     """Ajoute le reçu dans la transaction en cours. Le numéro suit l'ordre d'émission."""
     if nature not in NATURES or mode not in MODES:
         raise ValueError("Reçu cantine : nature ou mode inconnu.")
+    personnel_id = None
     if etudiant is not None:
         nom = f"{etudiant.prenom} {etudiant.nom}".strip()[:170]
         matricule = etudiant.matricule
         etudiant_id = etudiant.id
+    elif personnel is not None:
+        nom = f"{personnel.prenom} {personnel.nom}".strip()[:170]
+        matricule = personnel.numero
+        etudiant_id = None
+        personnel_id = personnel.id
     else:
         nom = (nom_affiche or (commande.nom_client if commande is not None else "") or "Client")[:170]
         matricule = ""
@@ -65,6 +73,7 @@ def emettre_recu(
     recu = RecuCantine(
         numero=f"T{secrets.token_hex(6)}",
         etudiant_id=etudiant_id,
+        personnel_id=personnel_id,
         commande_id=commande.id if commande is not None else None,
         nom_etudiant=nom,
         matricule=matricule,

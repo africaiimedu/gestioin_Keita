@@ -19,6 +19,7 @@ const CFG = (() => {
     impression: (id) => (personnel ? `/admin/impression?personnel=${id}` : `/admin/impression?etudiant=${id}`),
     labelFiche: personnel ? "personne" : "étudiant",
     orientationDefaut: personnel ? "portrait" : "paysage",
+    tarifMensuel: personnel ? Number(brut.tarifPersonnel || 800000) : Number(brut.tarifEtudiant || 600000),
   };
 })();
 let etudiants = [];
@@ -667,7 +668,9 @@ function dessinerGrille() {
       ${CFG.personnel ? "" : `<td data-champ="programme"></td>`}
       <td data-champ="annee_academique"></td>
       <td data-champ="date_validite"></td>
-      ${CFG.personnel ? "" : `<td>${francs(etu.solde_cantine)}</td>`}
+      <td>${etu.abonne_cantine
+        ? `Abonné · ${etu.abonnement_mois || "—"} mois · ${francs(etu.abonnement_montant || CFG.tarifMensuel * (etu.abonnement_mois || 1))}`
+        : francs(etu.solde_cantine)}</td>
       <td>${etu.statut === "active" ? "Valide" : etu.statut || "—"}</td>
     `;
     tr.querySelectorAll("[data-champ]").forEach((td) => {
@@ -716,7 +719,12 @@ function dessinerGrille() {
   document.getElementById("info-matricule").textContent = etu ? etu.matricule : "—";
   document.getElementById("info-validite").textContent = etu ? dateCarte(etu.date_validite) : "—";
   const cantine = document.getElementById("info-cantine");
-  if (cantine) cantine.textContent = etu ? francs(etu.solde_cantine) : "—";
+  if (cantine) {
+    if (!etu) cantine.textContent = "—";
+    else if (etu.abonne_cantine) {
+      cantine.textContent = `Abonné · ${etu.abonnement_mois || "—"} mois · ${francs(etu.abonnement_montant || CFG.tarifMensuel)}`;
+    } else cantine.textContent = francs(etu.solde_cantine);
+  }
 }
 
 function poserRegles() {
@@ -1002,16 +1010,17 @@ function francs(montant) {
   return `${nombre} GNF`;
 }
 document.getElementById("recharger").onclick = () => {
-  if (CFG.personnel) return;
   const etu = courant();
   if (!etu) {
-    message("Choisissez un étudiant dans la base.");
+    message(`Choisissez un ${CFG.labelFiche} dans la base.`);
     return;
   }
   document.getElementById("recharge-qui").textContent = `${etu.prenom} ${etu.nom} · ${etu.matricule}`;
+  const mensuel = document.getElementById("abonnement-mensuel");
+  if (mensuel && !etu.abonne_cantine) mensuel.value = String(CFG.tarifMensuel);
   document.getElementById("recharge-solde").textContent = etu.abonne_cantine
-    ? `Abonné${etu.abonnement_mois ? ` · ${etu.abonnement_mois} mois` : ""} · 600 000 GNF / mois${etu.abonnement_fin ? ` · jusqu'au ${etu.abonnement_fin.split("-").reverse().join("/")}` : ""} · aucun débit`
-    : `Non abonné · compte actuel : ${francs(etu.solde_cantine)}`;
+    ? `Abonné${etu.abonnement_mois ? ` · ${etu.abonnement_mois} mois` : ""} · ${francs(etu.abonnement_montant || CFG.tarifMensuel)}${etu.abonnement_fin ? ` · jusqu'au ${etu.abonnement_fin.split("-").reverse().join("/")}` : ""} · aucun débit`
+    : `Non abonné · ${CFG.personnel ? `tarif ${francs(CFG.tarifMensuel)} / mois` : `compte actuel : ${francs(etu.solde_cantine)}`}`;
   document.getElementById("recharge").showModal();
 };
 
@@ -1051,10 +1060,14 @@ document.getElementById("poser-abonnement")?.addEventListener("click", async () 
   const etu = courant();
   if (!etu) return;
   const mois = document.getElementById("abonnement-mois")?.value || "1";
-  const reponse = await fetch(`/admin/api/etudiants/${etu.id}/abonnement`, {
+  const mensuel = document.getElementById("abonnement-mensuel")?.value || String(CFG.tarifMensuel);
+  const url = CFG.personnel
+    ? `/admin/api/personnel/${etu.id}/abonnement`
+    : `/admin/api/etudiants/${etu.id}/abonnement`;
+  const reponse = await fetch(url, {
     method: "POST",
     headers: entetes(),
-    body: JSON.stringify({ mois }),
+    body: JSON.stringify({ mois, mensuel }),
   });
   const corps = await reponse.json();
   if (!reponse.ok) {
@@ -1071,6 +1084,7 @@ document.getElementById("poser-abonnement")?.addEventListener("click", async () 
 document.getElementById("fermer-recharge").onclick = () => document.getElementById("recharge").close();
 document.getElementById("form-recharge").addEventListener("submit", async (ev) => {
   ev.preventDefault();
+  if (CFG.personnel) return;
   const etu = courant();
   if (!etu) return;
   const montant = new FormData(ev.target).get("montant");

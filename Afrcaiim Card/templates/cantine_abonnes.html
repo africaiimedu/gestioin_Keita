@@ -14,10 +14,11 @@
     <thead>
       <tr>
         <th>N°</th>
+        <th>Profil</th>
         <th>Nom</th>
         <th>Prénom</th>
-        <th>Matricule</th>
-        <th>École</th>
+        <th>Matricule / n°</th>
+        <th>École / fonction</th>
         <th>Mois</th>
         <th>Validité</th>
         <th>Montant</th>
@@ -27,6 +28,7 @@
       {% for etudiant in abonnes %}
         <tr>
           <td>{{ loop.index }}</td>
+          <td>{% if etudiant.qualite_abonne == "personnel" %}Personnel{% else %}Étudiant{% endif %}</td>
           <td>{{ etudiant.nom }}</td>
           <td>{{ etudiant.prenom }}</td>
           <td>{{ etudiant.matricule }}</td>
@@ -36,7 +38,7 @@
           <td>{{ montant_abonnement_etudiant(etudiant)|gnf }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="8">Aucun abonné en cours.</td></tr>
+        <tr><td colspan="9">Aucun abonné en cours.</td></tr>
       {% endfor %}
     </tbody>
   </table>

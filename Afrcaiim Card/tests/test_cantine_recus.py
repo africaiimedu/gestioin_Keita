@@ -319,6 +319,7 @@ def test_abonnement_plusieurs_mois_recu():
             assert etudiant.solde_cantine == 5000
             assert est_abonne(etudiant)
             assert etudiant.abonnement_mois == 3
+            assert etudiant.abonnement_montant == 1_800_000
             assert etudiant.abonnement_fin == ajouter_mois(date.today(), 3)
             try:
                 poser_abonnement(db, etudiant, utilisateur.id, 1)

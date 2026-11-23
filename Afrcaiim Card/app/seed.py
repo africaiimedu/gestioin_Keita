@@ -23,6 +23,8 @@ def verifier_base() -> None:
 
 
 def initialiser() -> None:
+    from app.cuisine import models as _cuisine_models  # noqa: F401 — tables cuisine_*
+
     Base.metadata.create_all(bind=engine)
     _colonnes_cantine()
     from app.services.pdf_carte import assurer_modele_vivant
@@ -37,6 +39,8 @@ def initialiser() -> None:
         _assurer_menu(db)
         _retirer_ecoles_hors_liste(db)
         _assurer_comptes_atelier(db)
+        from app.cuisine.seed import assurer_demo
+        assurer_demo(db)
 
 
 def _colonnes_cantine() -> None:
@@ -85,27 +89,35 @@ def _colonnes_cantine() -> None:
         )
         connexion.execute(text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS abonnement_fin DATE"))
         connexion.execute(
+            text("ALTER TABLE etudiants ADD COLUMN IF NOT EXISTS abonnement_montant INTEGER NOT NULL DEFAULT 0")
+        )
+        connexion.execute(
+            text("ALTER TABLE personnels ADD COLUMN IF NOT EXISTS solde_cantine INTEGER NOT NULL DEFAULT 0")
+        )
+        connexion.execute(
+            text("ALTER TABLE personnels ADD COLUMN IF NOT EXISTS abonne_cantine BOOLEAN NOT NULL DEFAULT FALSE")
+        )
+        connexion.execute(
+            text("ALTER TABLE personnels ADD COLUMN IF NOT EXISTS abonnement_mois INTEGER NOT NULL DEFAULT 0")
+        )
+        connexion.execute(text("ALTER TABLE personnels ADD COLUMN IF NOT EXISTS abonnement_fin DATE"))
+        connexion.execute(
+            text("ALTER TABLE personnels ADD COLUMN IF NOT EXISTS abonnement_montant INTEGER NOT NULL DEFAULT 0")
+        )
+        connexion.execute(text("ALTER TABLE recus_cantine ADD COLUMN IF NOT EXISTS personnel_id INTEGER"))
+        connexion.execute(
+            text(
+                "UPDATE etudiants SET abonnement_montant = abonnement_mois * 600000 "
+                "WHERE abonne_cantine IS TRUE AND abonnement_mois > 0 AND abonnement_montant = 0"
+            )
+        )
+        connexion.execute(
             text(
                 "CREATE TABLE IF NOT EXISTS taches_cartes ("
                 "nom VARCHAR(80) PRIMARY KEY, "
                 "faite_le TIMESTAMPTZ NOT NULL)"
             )
         )
-        pose = connexion.execute(
-            text(
-                "INSERT INTO taches_cartes (nom, faite_le) "
-                "VALUES ('raz_abonnements_cantine', NOW()) "
-                "ON CONFLICT (nom) DO NOTHING "
-                "RETURNING nom"
-            )
-        ).fetchone()
-        if pose is not None:
-            connexion.execute(
-                text(
-                    "UPDATE etudiants SET abonne_cantine = FALSE, "
-                    "abonnement_mois = 0, abonnement_fin = NULL"
-                )
-            )
 
 
 def _assurer_cantine_exemple(db) -> None:

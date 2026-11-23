@@ -39,6 +39,27 @@
     </form>
   </div>
 
+  <h2>Cantine</h2>
+  <p>{{ libelle_abonnement(personne) }}</p>
+  <p class="aide">Tarif de référence personnel : {{ abonnement_personnel|gnf }} / mois (étudiants : {{ abonnement_etudiant|gnf }}). Vous choisissez le montant mensuel et la durée. Le total est enregistré et sert aux calculs.</p>
+  {% if not est_abonne(personne) %}
+  <form method="post" action="/admin/personnel/{{ personne.id }}/abonnement" class="panneau etroit" data-abo>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Montant mensuel (GNF)
+      <input name="mensuel" inputmode="numeric" required value="{{ abonnement_personnel }}" data-abo-mensuel>
+    </label>
+    <label>Durée
+      <select name="mois" data-abo-mois>
+        {% for n in range(1, abonnement_mois_max + 1) %}
+          <option value="{{ n }}" {% if n == 1 %}selected{% endif %}>{{ n }} mois</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="aide" data-abo-total>Total : {{ abonnement_personnel|gnf }}</p>
+    <button type="submit">Poser l'abonnement et ouvrir le reçu</button>
+  </form>
+  {% endif %}
+
   <h2>Badge (portrait)</h2>
   {% if badge %}
     <p>Édition {{ badge.numero_edition }} ·

@@ -64,17 +64,21 @@
 
   <h2>Cantine</h2>
   <p>{{ libelle_abonnement(etudiant) }}</p>
-  <p class="aide">600 000 FG par mois, de 1 à 12 mois : plat du jour et une bouteille d'eau. L'abonné n'est pas débité à chaque repas. Poser l'abonnement ne modifie que cette fiche, puis ouvre le reçu à imprimer.</p>
+  <p class="aide">Tarif de référence étudiant : {{ abonnement_etudiant|gnf }} / mois (personnel : {{ abonnement_personnel|gnf }}). Vous choisissez le montant mensuel et la durée (1 à 12 mois). Le total (montant × durée) est enregistré et sert aux calculs. Plat du jour et une bouteille d'eau, sans débit à chaque repas.</p>
   {% if not est_abonne(etudiant) %}
-  <form method="post" action="/admin/etudiants/{{ etudiant.id }}/abonnement" class="panneau etroit">
+  <form method="post" action="/admin/etudiants/{{ etudiant.id }}/abonnement" class="panneau etroit" data-abo>
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Montant mensuel (GNF)
+      <input name="mensuel" inputmode="numeric" required value="{{ abonnement_etudiant }}" data-abo-mensuel>
+    </label>
     <label>Durée
-      <select name="mois">
+      <select name="mois" data-abo-mois>
         {% for n in range(1, abonnement_mois_max + 1) %}
-          <option value="{{ n }}" {% if n == 1 %}selected{% endif %}>{{ n }} mois — {{ (n * abonnement_mensuel)|gnf }}</option>
+          <option value="{{ n }}" {% if n == 1 %}selected{% endif %}>{{ n }} mois</option>
         {% endfor %}
       </select>
     </label>
+    <p class="aide" data-abo-total>Total : {{ abonnement_etudiant|gnf }}</p>
     <button type="submit">Poser l'abonnement et ouvrir le reçu</button>
   </form>
   {% endif %}

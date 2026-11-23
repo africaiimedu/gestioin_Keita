@@ -158,7 +158,9 @@ def _ligne(etudiant: Etudiant) -> dict:
         "solde_cantine": int(etudiant.solde_cantine or 0),
         "abonne_cantine": est_abonne(etudiant),
         "abonnement_mois": int(getattr(etudiant, "abonnement_mois", 0) or 0),
+        "abonnement_montant": int(getattr(etudiant, "abonnement_montant", 0) or 0),
         "abonnement_fin": etudiant.abonnement_fin.isoformat() if getattr(etudiant, "abonnement_fin", None) else "",
+        "qualite": "etudiant",
         "url": url_affichee(base_url(), etudiant.matricule),
         "controle": code_controle(carte.jeton) if carte else "",
     }
@@ -184,6 +186,11 @@ def _ligne_personnel(personne: Personnel, db: Session) -> dict:
         "url": url_affichee(base_url(), personne.numero),
         "controle": code_controle(badge.jeton) if badge else "",
         "qualite": "Collaboratrice" if sexe == "F" else "Collaborateur",
+        "solde_cantine": int(personne.solde_cantine or 0),
+        "abonne_cantine": est_abonne(personne),
+        "abonnement_mois": int(getattr(personne, "abonnement_mois", 0) or 0),
+        "abonnement_montant": int(getattr(personne, "abonnement_montant", 0) or 0),
+        "abonnement_fin": personne.abonnement_fin.isoformat() if getattr(personne, "abonnement_fin", None) else "",
     }
 
 
@@ -485,13 +492,44 @@ async def abonner(
     except Exception:
         corps = {}
     try:
-        recu = poser_abonnement(db, etudiant, admin.id, (corps or {}).get("mois", 1))
+        recu = poser_abonnement(
+            db, etudiant, admin.id, (corps or {}).get("mois", 1), (corps or {}).get("mensuel")
+        )
     except ValueError as exc:
         return JSONResponse({"message": str(exc)}, status_code=400)
     etudiant = db.scalar(
         select(Etudiant).options(selectinload(Etudiant.cartes)).where(Etudiant.id == etudiant_id)
     )
     ligne = _ligne(etudiant)
+    ligne["recu_id"] = recu.id
+    ligne["recu_url"] = f"/admin/recus-cantine/{recu.id}"
+    return ligne
+
+
+@router.post("/personnel/{personnel_id}/abonnement")
+async def abonner_personnel(
+    personnel_id: int,
+    request: Request,
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    if not _verifier_csrf(request):
+        return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
+    personne = db.get(Personnel, personnel_id)
+    if personne is None:
+        return JSONResponse({"message": "Personnel introuvable."}, status_code=404)
+    try:
+        corps = await request.json()
+    except Exception:
+        corps = {}
+    try:
+        recu = poser_abonnement(
+            db, personne, admin.id, (corps or {}).get("mois", 1), (corps or {}).get("mensuel")
+        )
+    except ValueError as exc:
+        return JSONResponse({"message": str(exc)}, status_code=400)
+    personne = db.get(Personnel, personnel_id)
+    ligne = _ligne_personnel(personne, db)
     ligne["recu_id"] = recu.id
     ligne["recu_url"] = f"/admin/recus-cantine/{recu.id}"
     return ligne

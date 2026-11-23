@@ -258,7 +258,9 @@ async def abonner_cantine_api(matricule: str, request: Request, db: Session = De
     except Exception:
         corps = {}
     try:
-        recu = poser_abonnement(db, etudiant, None, (corps or {}).get("mois", 1))
+        recu = poser_abonnement(
+            db, etudiant, None, (corps or {}).get("mois", 1), (corps or {}).get("mensuel")
+        )
     except ValueError as exc:
         return JSONResponse({"message": str(exc)}, status_code=400)
     etudiant = db.get(Etudiant, etudiant.id)

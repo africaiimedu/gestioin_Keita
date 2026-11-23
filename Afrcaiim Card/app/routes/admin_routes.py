@@ -449,13 +449,14 @@ def abonner_cantine(
     request: Request,
     csrf: str = Form(""),
     mois: str = Form("1"),
+    mensuel: str = Form(""),
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
     etudiant = _etudiant(db, etudiant_id)
     _exiger_csrf(request, csrf, f"/admin/etudiants/{etudiant_id}")
     try:
-        recu = poser_abonnement(db, etudiant, admin.id, mois)
+        recu = poser_abonnement(db, etudiant, admin.id, mois, mensuel or None)
     except ValueError as exc:
         flash(request, "erreur", str(exc))
         raise Redirection(f"/admin/etudiants/{etudiant_id}") from exc
@@ -495,7 +496,13 @@ def recu_cantine_bureau(
         db,
         admin,
         recu_vu,
-        f"/admin/etudiants/{recu_vu.etudiant_id}" if recu_vu.etudiant_id else "/admin",
+        (
+            f"/admin/etudiants/{recu_vu.etudiant_id}"
+            if recu_vu.etudiant_id
+            else f"/admin/personnel/{recu_vu.personnel_id}"
+            if getattr(recu_vu, "personnel_id", None)
+            else "/admin"
+        ),
         f"/admin/recus-cantine/{recu_vu.id}.pdf",
     )
 

@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.config import base_url
 from app.deps import Redirection, exiger_bureau, get_db
 from app.models import BadgePersonnel, Personnel, Utilisateur
+from app.services.cantine import poser_abonnement
+from app.services.courrier import formater_francs
 from app.services.metier import (
     badge_courant,
     creer_personnel,
@@ -184,6 +186,31 @@ def modifier(
         raise Redirection(f"/admin/personnel/{personnel_id}") from exc
     flash(request, "ok", "Fiche enregistrée.")
     raise Redirection(f"/admin/personnel/{personnel_id}")
+
+
+@router.post("/{personnel_id}/abonnement")
+def abonner_cantine(
+    personnel_id: int,
+    request: Request,
+    csrf: str = Form(""),
+    mois: str = Form("1"),
+    mensuel: str = Form(""),
+    admin: Utilisateur = Depends(exiger_bureau),
+    db: Session = Depends(get_db),
+):
+    personne = _personne(db, personnel_id)
+    _exiger_csrf(request, csrf, f"/admin/personnel/{personnel_id}")
+    try:
+        recu = poser_abonnement(db, personne, admin.id, mois, mensuel or None)
+    except ValueError as exc:
+        flash(request, "erreur", str(exc))
+        raise Redirection(f"/admin/personnel/{personnel_id}") from exc
+    flash(
+        request,
+        "ok",
+        f"Abonnement personnel posé : {formater_francs(recu.montant)}. Imprimez le reçu.",
+    )
+    raise Redirection(f"/admin/recus-cantine/{recu.id}")
 
 
 @router.post("/{personnel_id}/photo")

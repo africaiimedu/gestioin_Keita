@@ -170,7 +170,7 @@
     if (!connecte) {
       texte = "Connectez-vous pour valider. Abonné : aucun débit. Sinon : paiement à la caisse.";
     } else if (parAbonnement()) {
-      texte = "Abonnement mensuel 600 000 FG : la cuisine prépare tout de suite. Rien ne sera débité à la validation.";
+      texte = "Abonnement cantine : la cuisine prépare tout de suite. Rien ne sera débité à la validation.";
     } else if (estEtudiant) {
       texte = "Commande envoyée à la cuisine. Payez à la caisse seulement quand le repas est marqué prêt.";
     } else {
@@ -272,7 +272,7 @@
       avis.textContent = "Vous pouvez composer le plateau sans compte. Pour valider, vous serez invité à vous connecter.";
     } else if (parAbonnement()) {
       avis.hidden = false;
-      avis.textContent = "Abonnement mensuel 600 000 FG : aucun débit à chaque validation.";
+      avis.textContent = "Abonnement cantine : aucun débit à chaque validation.";
     } else if (!estEtudiant) {
       avis.hidden = false;
       avis.textContent = "Personnel / professeur : la cuisine prépare d'abord. Passez à la caisse quand le repas est prêt.";

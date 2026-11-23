@@ -10,11 +10,11 @@
   display: flex; align-items: center; gap: 0.7rem; flex: 1; min-width: 0;
   color: inherit; text-decoration: none;
 }
-.ligne-jour img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; flex: none; background: #efe8dc; }
-.ligne-jour strong { overflow-wrap: anywhere; font-size: 1rem; }
+.ligne-jour img { width: 96px; height: 96px; object-fit: cover; object-position: center; border-radius: 12px; flex: none; background: #efe8dc; image-rendering: auto; }
+.ligne-jour strong { overflow-wrap: anywhere; font-size: 1.12rem; font-weight: 700; color: #1A1A1A; }
 .ligne-jour form { flex: none; margin: 0; }
 .ligne-jour .bouton-danger { min-height: 44px; padding: 0.4rem 0.7rem; }
-.apercu-plat { width: min(100%, 280px); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 14px; display: block; }
+.apercu-plat { width: min(100%, 420px); height: auto; aspect-ratio: 1; object-fit: cover; object-position: center; border-radius: 14px; display: block; image-rendering: auto; }
 .fiche-plat { min-width: 0; }
 .fiche-plat form { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 .fiche-plat input, .fiche-plat select { width: 100%; min-width: 0; max-width: 100%; }
@@ -216,19 +216,21 @@ body.menu-barre-cachee .menu-haut {
 .plat img {
   width: 100%;
   height: auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
+  object-position: center;
   display: block;
   background: #efe8dc;
+  image-rendering: auto;
 }
 .plat.epuise img { filter: grayscale(0.7); }
 .fiche { padding: 0.85rem 0.95rem 1rem; min-width: 0; }
-.fiche h3 { margin: 0.2rem 0; font-size: 1.15rem; overflow-wrap: anywhere; }
-.fiche p { margin: 0.2rem 0; color: #3d3d3d; overflow-wrap: anywhere; }
+.fiche h3 { margin: 0.2rem 0; font-size: 1.28rem; font-weight: 700; color: #1A1A1A; overflow-wrap: anywhere; }
+.fiche p { margin: 0.2rem 0; color: #1A1A1A; font-size: 1.02rem; overflow-wrap: anywhere; }
 .badge { display: inline-block; background: #FEAB00; color: #1A1A1A; border-radius: 999px; font-size: 0.75rem; font-weight: 700; padding: 0.15rem 0.5rem; }
 .meta { font-size: 0.85rem; color: #6b675f; }
 .ligne-prix { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.55rem; }
-.ligne-prix strong { font-size: 1.05rem; }
+.ligne-prix strong { font-size: 1.18rem; color: #004C22; }
 .plus { width: 48px; height: 48px; flex: none; border: 0; border-radius: 50%; background: #004C22; color: #fff; font-size: 1.7rem; line-height: 1; }
 .ferme { color: #8a3b2a; font-size: 0.9rem; font-weight: 700; }
 .barre-panier {

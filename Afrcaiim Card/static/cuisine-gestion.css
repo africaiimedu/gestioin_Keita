@@ -1,0 +1,331 @@
+body.cuisine-erp main { padding: 0; max-width: none; background: #f6f3ec; }
+body.cuisine-erp .avis-app { display: none; }
+.erp {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: calc(100vh - 64px);
+  background: #f6f3ec;
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+}
+.erp-menu {
+  background: #0a3320;
+  color: #f4f1ea;
+  padding: 1.25rem 0.75rem 2rem;
+  text-align: left;
+}
+.erp-marque { margin: 0; font-weight: 800; letter-spacing: 0.04em; color: #feab00; font-size: 0.88rem; text-align: left; }
+.erp-devise { margin: 0.2rem 0 1.1rem; font-size: 0.72rem; opacity: 0.65; text-align: left; }
+.erp-menu-ouvrir { display: none; }
+.erp-bas { display: none; }
+.erp-only-phone { display: none; }
+.erp-liste { display: none; }
+.erp-nav { display: flex; flex-direction: column; gap: 0.12rem; align-items: stretch; }
+.erp-nav-titre {
+  margin: 0.85rem 0.7rem 0.25rem; font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #c9b48a; font-weight: 700;
+}
+.erp-nav-titre:first-child { margin-top: 0.15rem; }
+.erp-nav button {
+  display: flex; align-items: center; justify-content: flex-start; width: 100%;
+  text-align: left !important; border: 0; background: transparent; color: #e8efe8;
+  padding: 0.52rem 0.75rem; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 0.9rem; font-weight: 500; border-left: 3px solid transparent;
+}
+.erp-nav button.actif { background: rgba(254, 171, 0, 0.95); color: #0a3320; font-weight: 700; border-left-color: #feab00; }
+.erp-nav button:hover:not(.actif) { background: rgba(255,255,255,0.07); }
+.erp-corps { padding: 1.35rem 1.6rem 2.4rem; min-width: 0; }
+.erp-haut { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 1rem; }
+.erp-haut h1 { margin: 0; color: #004c22; font-size: 1.7rem; letter-spacing: -0.02em; }
+.erp-haut p { margin: 0.28rem 0 0; color: #6b675f; font-size: 0.95rem; }
+.erp-msg {
+  background: #fff; border: 1px solid #eadfca; padding: 0.55rem 0.85rem; border-radius: 10px;
+  font-size: 0.9rem; color: #004c22; max-width: 28rem;
+}
+.erp-msg.erreur { border-color: #e8c4b3; color: #8a3b1a; }
+.erp-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 0.7rem; margin: 0 0 1.1rem; }
+.erp-carte {
+  background: #fff; border-radius: 12px; padding: 0.95rem 1rem 1rem;
+  border: 1px solid #ece6da;
+}
+.erp-carte span { display: block; font-size: 0.74rem; color: #7a756c; letter-spacing: 0.02em; text-transform: uppercase; }
+.erp-carte strong { display: block; margin-top: 0.4rem; font-size: 1.08rem; color: #004c22; font-variant-numeric: tabular-nums; }
+.erp-carte.alerte { border-color: #e8c4b3; background: #fff8f4; }
+.erp-carte.alerte strong { color: #b85c2a; }
+.erp-2 { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 0.9rem; }
+.erp-panneau {
+  background: #fff; border-radius: 14px; padding: 1.05rem 1.1rem 1.15rem;
+  border: 1px solid #ece6da; margin-bottom: 0.9rem;
+}
+.erp-panneau h2 { margin: 0 0 0.9rem; font-size: 1rem; color: #004c22; font-weight: 700; }
+.erp-ajout summary {
+  cursor: pointer; font-weight: 700; color: #004c22; font-size: 1rem;
+  list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  min-height: 44px;
+}
+.erp-ajout summary::-webkit-details-marker { display: none; }
+.erp-ajout summary::after { content: "+"; font-size: 1.3rem; font-weight: 500; color: #7a756c; }
+.erp-ajout[open] summary::after { content: "–"; }
+.erp-ajout[open] summary { margin-bottom: 0.75rem; }
+.erp-table-wrap { overflow-x: auto; }
+table.erp-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.erp-table th, .erp-table td { text-align: left; padding: 0.62rem 0.55rem; border-bottom: 1px solid #f0ebe1; }
+.erp-table th { color: #7a756c; font-weight: 650; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.erp-table tbody tr:hover { background: #fbfaf6; }
+.erp-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.erp-table .centre { text-align: center; }
+.erp-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 0.9rem; align-items: center; }
+.erp-tout {
+  display: inline-flex; flex-direction: row; align-items: center; gap: 0.45rem;
+  font-size: 0.88rem; color: #004c22; font-weight: 650; white-space: nowrap;
+}
+.erp-tout input { width: 1.15rem; height: 1.15rem; margin: 0; flex: none; accent-color: #004c22; }
+.erp-btn, .erp-form button, .lien-export {
+  border: 0; border-radius: 9px; background: #004c22; color: #fff; padding: 0.52rem 0.95rem;
+  cursor: pointer; font: inherit; font-size: 0.9rem; font-weight: 650; text-decoration: none; display: inline-block;
+}
+.erp-btn.or, .lien-export.or { background: #feab00; color: #1a1a1a; }
+.erp-btn.clair, .erp-form .clair { background: #eef2ee; color: #004c22; }
+.erp-btn.fin { background: transparent; color: #004c22; border: 1px solid #c9d6cc; padding: 0.35rem 0.7rem; font-weight: 600; }
+.erp-btn.danger { background: #9a431c; color: #fff; }
+.erp-table tr.clicable { cursor: pointer; }
+.erp-table tr.clicable:hover { background: #f4f8f4; }
+.erp-form {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 0.7rem 0.65rem; align-items: end;
+}
+.erp-form .total { font-size: 1.05rem; color: #004c22; font-weight: 800; }
+.erp-form .avec-action { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; align-items: end; }
+.erp-form .avec-action select { width: 100%; }
+.erp-form label { display: flex; flex-direction: column; gap: 0.28rem; font-size: 0.78rem; color: #5f6b66; font-weight: 600; }
+.erp-form input, .erp-form select, .erp-form textarea, .erp-modale input, .erp-modale select {
+  border: 1px solid #ddd6c8; border-radius: 8px; padding: 0.5rem 0.6rem; font: inherit; background: #fff; color: #1c241e;
+}
+.erp-form input:focus, .erp-form select:focus, .erp-modale input:focus, .erp-modale select:focus {
+  outline: 2px solid #feab00; border-color: #feab00;
+}
+.tag { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 700; padding: 0.12rem 0.4rem; border-radius: 999px; vertical-align: middle; }
+.tag-alerte { background: #fbe8dc; color: #9a431c; }
+.tag-ok { background: #dff3e6; color: #004c22; }
+.tag-off { background: #eee; color: #666; }
+.barres { display: flex; align-items: flex-end; gap: 0.4rem; height: 168px; padding: 0.2rem 0 0; }
+.erp-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; min-width: 0; }
+.erp-col i { display: block; width: 70%; max-width: 22px; border-radius: 5px 5px 0 0; min-height: 0; background: #004c22; }
+.erp-col span { font-size: 0.62rem; color: #8a857c; margin-top: 0.28rem; }
+.erp-vide { margin: 0; color: #7a756c; padding: 0.4rem 0; }
+.erp-voile {
+  position: fixed; inset: 0; background: rgba(10, 40, 24, 0.45); z-index: 80;
+  display: flex; align-items: center; justify-content: center; padding: 1.2rem;
+}
+.erp-voile[hidden] { display: none; }
+.erp-modale {
+  background: #fff; border-radius: 16px; width: min(520px, 100%);
+  box-shadow: 0 24px 60px rgba(10, 40, 24, 0.22); padding: 1.2rem 1.25rem 1.3rem;
+  max-height: min(86vh, 720px); overflow: auto;
+}
+.erp-modale.large { width: min(720px, 100%); }
+.erp-modale h2 { margin: 0 0 0.35rem; color: #004c22; font-size: 1.15rem; }
+.erp-modale .aide { margin: 0 0 1rem; color: #6b675f; font-size: 0.88rem; }
+.erp-modale .champs { display: grid; gap: 0.7rem; }
+.erp-modale label { display: flex; flex-direction: column; gap: 0.28rem; font-size: 0.8rem; color: #5f6b66; font-weight: 600; }
+.erp-modale .pied { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.1rem; }
+.erp-sens { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+.erp-sens label { flex-direction: row; align-items: center; gap: 0.45rem; border: 1px solid #ddd6c8; border-radius: 8px; padding: 0.55rem 0.7rem; cursor: pointer; }
+.erp-sens input { accent-color: #004c22; }
+.lignes-recette { display: grid; gap: 0.4rem; margin-bottom: 0.6rem; }
+.ligne-recette { display: grid; grid-template-columns: 1fr 90px 32px; gap: 0.4rem; align-items: center; }
+@media (max-width: 1024px) {
+  html, body.cuisine-erp { overflow-x: hidden; background: #f3efe6; }
+  .erp, .erp-menu, .erp-nav, .erp-corps { min-width: 0; max-width: 100%; }
+  .erp { grid-template-columns: 1fr; min-height: 0; overflow-x: hidden; background: #f3efe6; }
+  .erp-2 { grid-template-columns: 1fr; }
+  .erp-only-desk { display: none !important; }
+  .erp-ajout:not([open]) { display: none !important; }
+  .erp-ajout[open] { display: block; }
+  .erp-only-phone, .erp-liste { display: block; }
+  .erp-menu {
+    position: fixed;
+    left: 0.7rem;
+    right: 0.7rem;
+    bottom: calc(4.6rem + env(safe-area-inset-bottom));
+    z-index: 35;
+    padding: 1rem 0.8rem 1.1rem;
+    border-radius: 20px;
+    overflow: auto;
+    max-height: min(68vh, 420px);
+    transform: translateY(24px);
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 24px 60px rgba(8, 28, 18, 0.28);
+    transition: transform 0.22s ease, opacity 0.22s ease;
+  }
+  .erp-menu.ouvert {
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .erp-marque, .erp-devise { display: block; }
+  .erp-nav { display: flex; flex-direction: column; gap: 0.1rem; }
+  .erp-nav-titre { display: block; }
+  .erp-nav button {
+    width: 100%; min-height: 44px; border-left: 3px solid transparent;
+    padding: 0.5rem 0.75rem; font-size: 0.95rem;
+  }
+  .erp-bas {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 32;
+    background: rgba(255, 253, 248, 0.96);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid #eadfca;
+    padding: 0.3rem 0.15rem calc(0.35rem + env(safe-area-inset-bottom));
+    justify-content: space-around;
+  }
+  .erp-bas button {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: #7a756c;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    min-height: 44px;
+    padding: 0.25rem 0.1rem;
+    border-radius: 12px;
+  }
+  .erp-bas button.actif { color: #0c3d24; background: #efe6d2; }
+  .erp-corps {
+    padding: 0.9rem max(0.9rem, env(safe-area-inset-right)) calc(5.6rem + env(safe-area-inset-bottom)) max(0.9rem, env(safe-area-inset-left));
+  }
+  .erp-haut { margin-bottom: 0.85rem; }
+  .erp-haut h1 { font-size: 1.55rem; letter-spacing: -0.03em; }
+  .erp-haut p { display: none; }
+  .erp-form { grid-template-columns: 1fr; }
+  .erp-form input, .erp-form select, .erp-modale input, .erp-modale select { font-size: 16px; min-height: 44px; }
+  .erp-btn, .erp-form button { min-height: 44px; border-radius: 12px; }
+  .erp-panneau {
+    padding: 1rem 1rem 1.1rem;
+    border-radius: 18px;
+    border: 0;
+    box-shadow: 0 10px 30px rgba(12, 40, 24, 0.05);
+  }
+  .erp-grille { grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+  .erp-carte {
+    padding: 0.85rem 0.9rem 0.95rem;
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 10px 28px rgba(12, 40, 24, 0.05);
+  }
+  .erp-carte span {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: #8a847a;
+  }
+  .erp-carte strong { font-size: 1.02rem; margin-top: 0.35rem; }
+  .erp-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.9rem;
+    flex-wrap: wrap;
+  }
+  .erp-ajouter {
+    flex: 1;
+    min-height: 46px;
+    border: 0;
+    border-radius: 14px;
+    background: #0c3d24;
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    padding: 0.55rem 1rem;
+  }
+  .erp-liste { display: grid; gap: 0.7rem; }
+  .erp-fiche {
+    background: #fff;
+    border-radius: 18px;
+    padding: 0.95rem 1rem 1rem;
+    box-shadow: 0 10px 28px rgba(12, 40, 24, 0.05);
+  }
+  .erp-fiche-haut {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.65rem;
+    align-items: start;
+  }
+  .erp-fiche-titre strong {
+    display: block;
+    color: #0c3d24;
+    font-size: 1.05rem;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+  .erp-pill {
+    display: inline-block;
+    margin-top: 0.28rem;
+    background: #f3eee4;
+    color: #6b675f;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+  }
+  .erp-check { display: flex; padding-top: 0.15rem; }
+  .erp-check input { width: 1.05rem; height: 1.05rem; accent-color: #0c3d24; }
+  .erp-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.45rem;
+    margin-top: 0.8rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f0ebe1;
+  }
+  .erp-stats div { min-width: 0; }
+  .erp-stats span {
+    display: block;
+    font-size: 0.68rem;
+    color: #8a847a;
+    font-weight: 650;
+  }
+  .erp-stats b {
+    display: block;
+    margin-top: 0.18rem;
+    color: #0c3d24;
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .erp-lien {
+    border: 0;
+    background: #eef6ef;
+    color: #0c3d24;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.38rem 0.65rem;
+    white-space: nowrap;
+  }
+  .erp-fiche-ligne {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.8rem;
+    align-items: baseline;
+  }
+  .erp-fiche-ligne strong { color: #0c3d24; }
+  .erp-fiche-ligne b { color: #0c3d24; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .erp-fiche-meta { margin: 0.3rem 0 0; color: #8a847a; font-size: 0.8rem; }
+  .erp-actions { margin-bottom: 0.75rem; }
+  .erp-btn.danger { background: #efe4dc; color: #8a3b1a; }
+  .barres { height: 120px; }
+  .erp-voile { padding: 0; align-items: flex-end; }
+  .erp-modale {
+    width: 100%;
+    border-radius: 22px 22px 0 0;
+    max-height: 88vh;
+    padding: 1.15rem 1.15rem calc(1.15rem + env(safe-area-inset-bottom));
+  }
+}

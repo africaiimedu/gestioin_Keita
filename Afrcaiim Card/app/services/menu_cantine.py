@@ -637,15 +637,15 @@ def retirer_plat(db, plat_id: int) -> str:
 
 
 def preparer_image_plat(blob: bytes) -> bytes:
-    """Recadre une photo de plat en carré. N'accepte qu'une vraie image."""
+    """Recadre une photo de plat en carré, sans l'écraser à 900 px."""
     import io
 
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageFilter, ImageOps
 
     if not blob:
         raise RefusCommande("Choisissez une image.")
-    if len(blob) > 4_000_000:
-        raise RefusCommande("L'image dépasse 4 Mo.")
+    if len(blob) > 12_000_000:
+        raise RefusCommande("L'image dépasse 12 Mo.")
     try:
         Image.open(io.BytesIO(blob)).verify()
         image = Image.open(io.BytesIO(blob))
@@ -665,9 +665,11 @@ def preparer_image_plat(blob: bytes) -> bytes:
     gauche = (image.width - cote) // 2
     haut = (image.height - cote) // 2
     image = image.crop((gauche, haut, gauche + cote, haut + cote))
-    image = image.resize((900, 900), Image.Resampling.LANCZOS)
+    if image.width > 1600:
+        image = image.resize((1600, 1600), Image.Resampling.LANCZOS)
+        image = image.filter(ImageFilter.UnsharpMask(radius=0.8, percent=70, threshold=2))
     sortie = io.BytesIO()
-    image.save(sortie, format="JPEG", quality=90, optimize=True)
+    image.save(sortie, format="JPEG", quality=98, subsampling=0, optimize=True, progressive=False)
     return sortie.getvalue()
 
 

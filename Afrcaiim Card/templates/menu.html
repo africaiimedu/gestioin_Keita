@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Cantine{% endblock %}
 {% block tete %}
-<link rel="stylesheet" href="/static/menu.css?v=20">
+<link rel="stylesheet" href="/static/menu.css?v=21">
 {% endblock %}
 {% block contenu %}
 <div class="salle">
@@ -51,8 +51,8 @@
   {% endif %}
 
   <details class="engagements">
-    <summary>Abonnement 600 000 FG / mois · plat du jour + eau</summary>
-    <p>ABONNEMENT POUR LES ELEVES D’AFRICAIIM ; 600 000 FG PAR MOIS, 1 À 12 MOIS, AVEC LE PLAT DU JOUR ET UNE BOUTEILLE D’EAU</p>
+    <summary>Abonnement cantine · plat du jour + eau</summary>
+    <p>ÉTUDIANTS : {{ abonnement_etudiant|gnf }} PAR MOIS. PERSONNEL : {{ abonnement_personnel|gnf }} PAR MOIS. DURÉE DE 1 À 12 MOIS, PLAT DU JOUR ET UNE BOUTEILLE D’EAU. L’ADMINISTRATEUR PEUT AJUSTER LE MONTANT ET LA DURÉE.</p>
     <p>Une bouteille d’eau est recommandée à chaque repas.</p>
     <ul>
       <li>Portions adaptées aux besoins des étudiants.</li>
@@ -67,7 +67,7 @@
       <div class="grille">
         {% for plat in groupe.plats %}
           <article class="plat {% if not plat.disponible %}epuise{% endif %}" data-jour="{{ plat.badge or '' }}" data-permanent="{{ 0 if plat.badge in jours else 1 }}">
-            <img alt="{{ plat.nom }}" width="640" height="480" decoding="async" loading="lazy" data-src="{{ image_plat(plat) }}">
+            <img alt="{{ plat.nom }}" width="800" height="800" decoding="async" loading="lazy" data-src="{{ image_plat(plat) }}">
             <div class="fiche">
               {% if plat.badge %}<span class="badge">{{ plat.badge }}</span>{% endif %}
               <h3>{{ plat.nom }}</h3>
@@ -143,5 +143,5 @@
       </div>
     </form>
   </section>
-<script src="/static/menu.js?v=14"></script>
+<script src="/static/menu.js?v=15"></script>
 {% endblock %}
