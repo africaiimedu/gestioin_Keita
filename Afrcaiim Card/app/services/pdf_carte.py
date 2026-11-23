@@ -512,6 +512,14 @@ def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
     vivant.parent.mkdir(parents=True, exist_ok=True)
     if not vivant.is_file() and usine.is_file():
         vivant.write_bytes(usine.read_bytes())
+    elif vivant.is_file() and usine.is_file() and Path(fichier).name == "modele.json":
+        try:
+            actuel = json.loads(vivant.read_text(encoding="utf-8"))
+            version_actuel = int(actuel.get("version") or 0)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            version_actuel = 0
+        if version_actuel == 3:
+            vivant.write_bytes(usine.read_bytes())
     return vivant if vivant.is_file() else usine
 
 
