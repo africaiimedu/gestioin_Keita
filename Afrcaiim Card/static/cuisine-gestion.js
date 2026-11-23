@@ -27,6 +27,9 @@
   let stock = [];
   let plats = [];
   let categories = [];
+  let refsPret = false;
+  let seq = 0;
+  const dernier = {};
 
   function entier(n) { return Math.max(0, Math.round(Number(n) || 0)); }
   function gnf(n) {
@@ -181,11 +184,25 @@
     if (champ) champ.focus();
   }
 
-  async function chargerRefs() {
-    constantes = await api("/cantine/gestion/api/constantes");
-    stock = (await api("/cantine/gestion/api/stock")).articles || [];
-    plats = (await api("/cantine/gestion/api/plats")).plats || [];
-    categories = (await api("/cantine/gestion/api/categories")).categories || [];
+  async function chargerRefs(forcer) {
+    if (refsPret && !forcer) return;
+    const data = await api("/cantine/gestion/api/refs");
+    constantes = {
+      unites: data.unites || [],
+      categories_articles: data.categories_articles || [],
+      categories_depenses: data.categories_depenses || [],
+      natures: data.natures || [],
+      modes: data.modes || [],
+      motifs_perte: data.motifs_perte || [],
+      role: data.role,
+    };
+    stock = data.articles || [];
+    plats = data.plats || [];
+    categories = data.categories || [];
+    refsPret = true;
+  }
+  function encore(id) {
+    return id === seq;
   }
   function idsCoches(selecteur) {
     return [...new Set([...pageEl.querySelectorAll(selecteur)].map((c) => Number(c.value)))];
@@ -217,8 +234,7 @@
     }).join("");
   }
 
-  async function pageTableau() {
-    const t = await api("/cantine/gestion/api/tableau");
+  function peindreTableau(t) {
     const s = t.series || {};
     pageEl.innerHTML = `
       <div class="erp-grille">
@@ -251,9 +267,15 @@
     barres("g-ca", (s.ca || []).map((x) => ({ label: x.date.slice(5), valeur: x.valeur })));
     barres("g-dep", (s.depenses_cat || []).map((c) => ({ label: c.categorie, valeur: c.valeur })));
   }
+  async function pageTableau(id) {
+    if (dernier.tableau) peindreTableau(dernier.tableau);
+    const t = await api("/cantine/gestion/api/tableau");
+    if (!encore(id)) return;
+    dernier.tableau = t;
+    peindreTableau(t);
+  }
 
-  async function pageStock() {
-    await chargerRefs();
+  function pageStock() {
     pageEl.innerHTML = `
       ${formCarte("Nouveau produit", `
         <label>Nom<input name="nom" required></label>
@@ -306,6 +328,7 @@
       try {
         await post("/cantine/gestion/api/stock", f);
         dire("Produit enregistré.", true);
+        await chargerRefs(true);
         afficher("stock");
       } catch (e) { dire(e.message, false); }
     });
@@ -393,9 +416,8 @@
     }));
   }
 
-  async function pageAchats() {
-    await chargerRefs();
-    const data = await api("/cantine/gestion/api/achats");
+  async function pageAchats(id) {
+    const peindre = (data) => {
     pageEl.innerHTML = `
       ${formCarte("Nouvel achat", `
         <label>Date<input name="date_achat" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
@@ -477,10 +499,16 @@
         } catch (e) { dire(e.message, false); fermerModale(); }
       });
     }));
+    };
+    if (dernier.achats) peindre(dernier.achats);
+    const recu = await api("/cantine/gestion/api/achats");
+    if (!encore(id)) return;
+    dernier.achats = recu;
+    peindre(recu);
   }
 
-  async function pageDepenses() {
-    const data = await api("/cantine/gestion/api/depenses");
+  async function pageDepenses(id, dataImposee) {
+    const data = dataImposee || dernier.depenses || { depenses: [] };
     pageEl.innerHTML = `
       ${formCarte("Nouvelle dépense", `
         <label>Date<input name="date_depense" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
@@ -507,14 +535,19 @@
       try {
         await post("/cantine/gestion/api/depenses", Object.fromEntries(new FormData(ev.target).entries()));
         dire("Dépense enregistrée.", true);
+        dernier.depenses = null;
         afficher("depenses");
       } catch (e) { dire(e.message, false); }
     });
+    if (dataImposee) return;
+    const recu = await api("/cantine/gestion/api/depenses");
+    if (!encore(id)) return;
+    dernier.depenses = recu;
+    return pageDepenses(id, recu);
   }
 
-  async function pageVentes() {
-    await chargerRefs();
-    const data = await api("/cantine/gestion/api/entrees");
+  async function pageVentes(id, dataImposee) {
+    const data = dataImposee || dernier.entrees || { entrees: [] };
     const optionsPlats = plats.map((p) => `<option value="${p.id}" data-prix="${p.prix}">${p.nom}</option>`).join("");
     pageEl.innerHTML = `
       ${formCarte("Nouvelle vente", `
@@ -585,13 +618,19 @@
           description: (f.description || "").trim() || (qte > 1 ? nomPlat + " × " + qte : nomPlat),
         });
         dire("Vente enregistrée.", true);
+        dernier.entrees = null;
+        await chargerRefs(true);
         afficher("ventes");
       } catch (e) { dire(e.message, false); }
     });
+    if (dataImposee) return;
+    const recu = await api("/cantine/gestion/api/entrees");
+    if (!encore(id)) return;
+    dernier.entrees = recu;
+    return pageVentes(id, recu);
   }
 
-  async function pagePlats() {
-    await chargerRefs();
+  function pagePlats() {
     pageEl.innerHTML = `
       <div class="erp-panneau">
         <h2>Catégories</h2>
@@ -641,8 +680,9 @@
       ev.preventDefault();
       try {
         await post("/cantine/gestion/api/categories", { nom: new FormData(ev.target).get("nom") });
-        dire("Catégorie ajoutée.", true);
-        afficher("plats");
+          dire("Catégorie ajoutée.", true);
+          await chargerRefs(true);
+          afficher("plats");
       } catch (e) { dire(e.message, false); }
     });
     const toutCat = pageEl.querySelector("#tout-cat");
@@ -657,6 +697,7 @@
           await post("/cantine/gestion/api/categories/supprimer", { ids });
           fermerModale();
           dire("Catégories supprimées.", true);
+          await chargerRefs(true);
           afficher("plats");
         } catch (e) { dire(e.message, false); fermerModale(); }
       });
@@ -669,6 +710,7 @@
           await post("/cantine/gestion/api/plats/supprimer", { ids });
           fermerModale();
           dire("Plats supprimés.", true);
+          await chargerRefs(true);
           afficher("plats");
         } catch (e) { dire(e.message, false); fermerModale(); }
       });
@@ -701,14 +743,21 @@
           await post(`/cantine/gestion/api/plats/${p.id}`, { nom: f.nom, categorie_id: f.categorie_id, prix: entier(f.prix), description: f.description });
           fermerModale();
           dire("Plat mis à jour.", true);
+          await chargerRefs(true);
           afficher("plats");
         } catch (e) { dire(e.message, false); fermerModale(); }
       });
     }));
   }
 
-  async function pageCaisse() {
-    const c = await api("/cantine/gestion/api/caisse");
+  async function pageCaisse(id, dataImposee) {
+    const c = dataImposee || dernier.caisse;
+    if (!c) {
+      const recu = await api("/cantine/gestion/api/caisse");
+      if (!encore(id)) return;
+      dernier.caisse = recu;
+      return pageCaisse(id, recu);
+    }
     pageEl.innerHTML = `
       <div class="erp-grille">
         ${carte("État", c.ouverte ? "Ouverte" : "Fermée", !c.ouverte)}
@@ -742,6 +791,7 @@
         try {
           await post("/cantine/gestion/api/caisse/ouvrir", { solde: entier(new FormData(ev.target).get("solde")) });
           fermerModale();
+          dernier.caisse = null;
           afficher("caisse");
         } catch (e) { dire(e.message, false); fermerModale(); }
       });
@@ -765,15 +815,15 @@
           const r = await post("/cantine/gestion/api/caisse/cloturer", { solde_physique: entier(new FormData(ev.target).get("solde_physique")) });
           fermerModale();
           dire("Caisse clôturée. Écart : " + gnf(r.ecart), true);
+          dernier.caisse = null;
           afficher("caisse");
         } catch (e) { dire(e.message, false); fermerModale(); }
       });
     });
   }
 
-  async function pagePertes() {
-    await chargerRefs();
-    const data = await api("/cantine/gestion/api/pertes");
+  async function pagePertes(id, dataImposee) {
+    const data = dataImposee || dernier.pertes || { pertes: [] };
     pageEl.innerHTML = `
       ${formCarte("Enregistrer une perte", `
         <label>Date<input name="date_perte" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
@@ -832,10 +882,16 @@
           await post("/cantine/gestion/api/inventaire", { lignes, observation: "Inventaire" });
           fermerModale();
           dire("Inventaire enregistré.", true);
+          await chargerRefs(true);
           afficher("stock");
         } catch (e) { dire(e.message, false); fermerModale(); }
       });
     });
+    if (dataImposee) return;
+    const recu = await api("/cantine/gestion/api/pertes");
+    if (!encore(id)) return;
+    dernier.pertes = recu;
+    return pagePertes(id, recu);
   }
 
   function pageRapports() {
@@ -868,6 +924,7 @@
     if (boutonPlus) boutonPlus.classList.toggle("actif", tabs.indexOf(nom) === -1);
   }
   async function afficher(nom) {
+    const id = ++seq;
     fermerModale();
     fermerMenuErp();
     dire("");
@@ -875,10 +932,12 @@
     sous.textContent = titres[nom][1];
     marquerOnglets(nom);
     try {
-      await (pages[nom] || pageTableau)();
+      const r = (pages[nom] || pageTableau)(id);
       etiqueterTableaux();
+      if (r && r.then) await r;
+      if (encore(id)) etiqueterTableaux();
     } catch (e) {
-      pageEl.innerHTML = `<div class="erp-panneau"><p>Impossible de charger ce module : ${e.message}</p></div>`;
+      if (encore(id)) pageEl.innerHTML = `<div class="erp-panneau"><p>Impossible de charger ce module : ${e.message}</p></div>`;
     }
   }
 

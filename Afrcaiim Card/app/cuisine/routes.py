@@ -73,8 +73,7 @@ def page_gestion(request: Request, user: Utilisateur = Depends(exiger_cuisiniere
     return render(request, "cuisine_gestion.html", user=user)
 
 
-@router.get("/cantine/gestion/api/constantes")
-def api_constantes(user: Utilisateur = Depends(exiger_cuisiniere)):
+def _constantes(user: Utilisateur) -> dict:
     return {
         "unites": UNITES,
         "categories_articles": CATEGORIES_ARTICLES,
@@ -83,6 +82,22 @@ def api_constantes(user: Utilisateur = Depends(exiger_cuisiniere)):
         "modes": MODES,
         "motifs_perte": MOTIFS_PERTE,
         "role": user.role,
+    }
+
+
+@router.get("/cantine/gestion/api/constantes")
+def api_constantes(user: Utilisateur = Depends(exiger_cuisiniere)):
+    return _constantes(user)
+
+
+@router.get("/cantine/gestion/api/refs")
+def api_refs(user: Utilisateur = Depends(exiger_cuisiniere), db: Session = Depends(get_db)):
+    return {
+        "ok": True,
+        **_constantes(user),
+        "articles": api_stock(user, db)["articles"],
+        "plats": api_plats(user, db)["plats"],
+        "categories": api_categories(user, db)["categories"],
     }
 
 
