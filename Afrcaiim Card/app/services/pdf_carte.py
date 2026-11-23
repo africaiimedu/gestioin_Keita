@@ -518,7 +518,7 @@ def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
             version_actuel = int(actuel.get("version") or 0)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             version_actuel = 0
-        if version_actuel == 3:
+        if version_actuel in (3, 4):
             vivant.write_bytes(usine.read_bytes())
     return vivant if vivant.is_file() else usine
 
@@ -554,13 +554,13 @@ POINT_IMPRIMANTE = 72 / 300
 
 
 def _est_noir_neutre(couleur) -> bool:
-    """#000, #111, #1A1A1A : noir. Pas le vert institution (chroma trop fort)."""
+    """#000, #1A1A1A, gris #3E4742 : résine K. Le vert institution reste vert."""
     try:
         rouge, vert, bleu = float(couleur.red), float(couleur.green), float(couleur.blue)
     except AttributeError:
         return False
     chroma = max(rouge, vert, bleu) - min(rouge, vert, bleu)
-    return max(rouge, vert, bleu) <= 0.18 and chroma <= 0.045
+    return max(rouge, vert, bleu) <= 0.32 and chroma <= 0.055
 
 
 def _encre(couleur, taille: float | None = None):
@@ -827,8 +827,8 @@ def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> No
     if not texte:
         return
     police = _nom_police(obj)
-    taille = float(obj.get("taille") or 2.5)
-    c.setFillColor(_hex(obj.get("couleur"), "#FEAB00"))
+    taille = max(3.4, float(obj.get("taille") or 2.5))
+    c.setFillColor(_encre(_hex(obj.get("couleur"), "#FEAB00")))
     c.setFont(police, taille)
     motif = f"{texte} · "
     ligne = ""
@@ -871,6 +871,8 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     taille = float(obj.get("taille", 9))
     align = obj.get("align") or "left"
     approche = float(obj.get("approche") or 0)
+    if taille < 6:
+        taille = 6.2
     police = _nom_police(obj)
     couleur = _encre(_hex(obj.get("couleur"), "#1A1A1A"), taille)
     coef = float(obj.get("interligne") or 1.15)

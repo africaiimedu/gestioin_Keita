@@ -575,12 +575,14 @@ def test_couleurs_atelier_conservees_sur_le_pdf():
     vert = _encre(_hex("#004C22"), 4.4)
     or_couleur = _encre(_hex("#FEAB00"), 5.0)
     nom = _encre(_hex("#1A1A1A"), 10.5)
+    gris = _encre(_hex("#3E4742"), 5.1)
     blanc = _encre(_hex("#FFFFFF"), 11.5)
     assert abs(vert.green - HexColor("#004C22").green) < 0.01
     assert vert.green > vert.red
     assert abs(or_couleur.red - HexColor("#FEAB00").red) < 0.01
     assert isinstance(nom, CMYKColor)
     assert nom.cyan == 0 and nom.magenta == 0 and nom.yellow == 0 and nom.black == 1
+    assert isinstance(gris, CMYKColor) and gris.black == 1
     assert blanc.red > 0.99
 
 
