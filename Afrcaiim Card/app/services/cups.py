@@ -168,7 +168,7 @@ def commande_lp(
     for cle in ("FHalftoning", "BHalftoning"):
         _poser_option(commande, choix, cle, "FLOYD")
     for cle in ("FBlackManagement", "BBlackManagement"):
-        _poser_option(commande, choix, cle, "TEXTINBLACK")
+        _poser_option(commande, choix, cle, "NOBLACKPOINT")
     for cle in ("IFColorProfileMode", "IBColorProfileMode"):
         _poser_option(commande, choix, cle, "NOPROFILE")
     _poser_option(commande, choix, "GSmoothing", "NOSMOOTH")

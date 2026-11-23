@@ -518,7 +518,7 @@ def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
             version_actuel = int(actuel.get("version") or 0)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             version_actuel = 0
-        if version_actuel in (3, 4):
+        if version_actuel in (3, 4, 5):
             vivant.write_bytes(usine.read_bytes())
     return vivant if vivant.is_file() else usine
 
@@ -547,27 +547,40 @@ def _hex(valeur, defaut="#000000"):
         return HexColor(defaut)
 
 
-# Noir 100 % K : la Primacy n'y pose ni jaune, ni magenta, ni cyan.
-# Vert #004C22 et or #FEAB00 restent en RVB, comme à l'atelier.
+# Noir 100 % K. Vert et or en CMJN avec peu de noir, sinon la Primacy les sort gris.
 NOIR_RESINE = CMYKColor(0, 0, 0, 1)
 POINT_IMPRIMANTE = 72 / 300
 
 
 def _est_noir_neutre(couleur) -> bool:
-    """#000, #1A1A1A, gris #3E4742 : résine K. Le vert institution reste vert."""
+    """#000 et #1A1A1A : résine K. Gris, vert et or restent tels que dans l'atelier."""
     try:
         rouge, vert, bleu = float(couleur.red), float(couleur.green), float(couleur.blue)
     except AttributeError:
         return False
     chroma = max(rouge, vert, bleu) - min(rouge, vert, bleu)
-    return max(rouge, vert, bleu) <= 0.32 and chroma <= 0.055
+    return max(rouge, vert, bleu) <= 0.18 and chroma <= 0.045
 
 
 def _encre(couleur, taille: float | None = None):
-    """Même teinte que l'atelier. Le noir neutre part en résine K seule."""
+    """Même teinte que l'atelier. Le vert ne part plus en noir du ruban."""
+    if isinstance(couleur, str):
+        couleur = _hex(couleur)
     if _est_noir_neutre(couleur):
         return NOIR_RESINE
-    return couleur
+    rouge, vert, bleu = float(couleur.red), float(couleur.green), float(couleur.blue)
+    chroma = max(rouge, vert, bleu) - min(rouge, vert, bleu)
+    k_nat = 1.0 - max(rouge, vert, bleu)
+    noir = min(k_nat, 0.28) if chroma >= 0.12 else k_nat
+    reste = 1.0 - noir
+    if reste < 1e-6:
+        return NOIR_RESINE
+    return CMYKColor(
+        max(0.0, min(1.0, (1.0 - rouge - noir) / reste)),
+        max(0.0, min(1.0, (1.0 - vert - noir) / reste)),
+        max(0.0, min(1.0, (1.0 - bleu - noir) / reste)),
+        noir,
+    )
 
 
 def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
@@ -734,7 +747,7 @@ def _rosette(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
     rayon = min(largeur, hauteur) * 0.46
     c.saveState()
     c.translate(mm(0.12), mm(-0.15))
-    c.setStrokeColor(HexColor("#004C22"))
+    c.setStrokeColor(_encre(_hex("#004C22")))
     c._setStrokeAlpha(0.35)
     tracer(centre_x, centre_y, rayon)
     c.restoreState()
@@ -827,7 +840,7 @@ def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> No
     if not texte:
         return
     police = _nom_police(obj)
-    taille = max(3.4, float(obj.get("taille") or 2.5))
+    taille = float(obj.get("taille") or 2.5)
     c.setFillColor(_encre(_hex(obj.get("couleur"), "#FEAB00")))
     c.setFont(police, taille)
     motif = f"{texte} · "
@@ -871,8 +884,6 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     taille = float(obj.get("taille", 9))
     align = obj.get("align") or "left"
     approche = float(obj.get("approche") or 0)
-    if taille < 6:
-        taille = 6.2
     police = _nom_police(obj)
     couleur = _encre(_hex(obj.get("couleur"), "#1A1A1A"), taille)
     coef = float(obj.get("interligne") or 1.15)
@@ -937,13 +948,13 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
             elif obj.get("id") == "fond" and face == "recto":
                 _filigrane(c, True, page_w, page_h)
         elif type_objet == "cercle":
-            c.setFillColor(_hex(obj.get("couleur"), "#F0A020"))
+            c.setFillColor(_encre(_hex(obj.get("couleur"), "#F0A020")))
             trait = _trace(c, obj)
             c.ellipse(x, y, x + largeur, y + hauteur, fill=1, stroke=trait)
         elif type_objet == "guilloche":
-            _guilloche(c, x, y, largeur, hauteur, _hex(obj.get("couleur"), "#FEAB00"), jeton)
+            _guilloche(c, x, y, largeur, hauteur, _encre(_hex(obj.get("couleur"), "#FEAB00")), jeton)
         elif type_objet == "rosette":
-            _rosette(c, x, y, largeur, hauteur, _hex(obj.get("couleur"), "#FFFFFF"), jeton)
+            _rosette(c, x, y, largeur, hauteur, _encre(_hex(obj.get("couleur"), "#FFFFFF")), jeton)
         elif type_objet == "micro":
             _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur)
         elif type_objet == "ligne":
@@ -976,14 +987,14 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
                 chemin.roundRect(x, y, largeur, hauteur, rayon)
                 c.clipPath(chemin, stroke=0, fill=0)
             c._setFillAlpha(1)
-            c.setFillColor(_hex(obj.get("couleur"), "#C5F0DC"))
+            c.setFillColor(_encre(_hex(obj.get("couleur"), "#C5F0DC")))
             c.rect(x, y, largeur, hauteur, fill=1, stroke=0)
             if photo:
                 _poser_couverture(c, photo, x, y, largeur, hauteur)
             elif obj.get("initiales", True):
                 initiales = f"{(etu.prenom or ' ')[:1]}{(etu.nom or ' ')[:1]}".upper()
                 taille_ini = min(hauteur * 0.38, 32)
-                c.setFillColor(_hex(obj.get("couleur_texte"), "#0C4630"))
+                c.setFillColor(_encre(_hex(obj.get("couleur_texte"), "#0C4630")))
                 c._setFillAlpha(1)
                 c.setFont("DejaVu-Bold", taille_ini)
                 c.drawCentredString(
@@ -1005,7 +1016,7 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
                 obj.get("couleur") or "#111111",
             )
             if obj.get("cadre", True):
-                c.setStrokeColor(HexColor("#FEAB00"))
+                c.setStrokeColor(_encre(_hex("#FEAB00")))
                 c.setLineWidth(1.15)
                 c.roundRect(x - mm(0.55), y - mm(0.55), largeur + mm(1.1), hauteur + mm(1.1), mm(0.7), fill=0, stroke=1)
         elif type_objet == "codebarres":

@@ -13,7 +13,7 @@ function noirNeutre(valeur, defaut = "#1A1A1A") {
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
   const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-  if (Math.max(r, g, b) <= 0.32 && chroma <= 0.055) return "#000000";
+  if (Math.max(r, g, b) <= 0.18 && chroma <= 0.045) return "#000000";
   return hex;
 }
 

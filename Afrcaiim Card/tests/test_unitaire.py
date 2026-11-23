@@ -582,7 +582,7 @@ def test_couleurs_atelier_conservees_sur_le_pdf():
     assert abs(or_couleur.red - HexColor("#FEAB00").red) < 0.01
     assert isinstance(nom, CMYKColor)
     assert nom.cyan == 0 and nom.magenta == 0 and nom.yellow == 0 and nom.black == 1
-    assert isinstance(gris, CMYKColor) and gris.black == 1
+    assert abs(gris.red - HexColor("#3E4742").red) < 0.01
     assert blanc.red > 0.99
 
 
