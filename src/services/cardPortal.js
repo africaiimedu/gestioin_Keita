@@ -27,8 +27,11 @@ function rewriteLocation(value) {
   return value;
 }
 
-function rewriteText(text) {
-  return text.replace(/(["'`])\/(?!portail\/cartes\/|static\/|fonts\/|theme\.css)/g, "$1/portail/cartes/");
+export function rewriteText(text) {
+  return text.replace(
+    /(["'`])\/(?!portail\/cartes\/|static\/|fonts\/|theme\.css)(?=[A-Za-z]{2,})/g,
+    "$1/portail/cartes/",
+  );
 }
 
 const EMBED_STYLE = `<style>

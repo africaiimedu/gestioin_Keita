@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
-import { attachCardPortal } from "../src/services/cardPortal.js";
+import { attachCardPortal, rewriteText } from "../src/services/cardPortal.js";
 
 const admin = { id: 1, role: "super_admin", permissions: [] };
 
@@ -46,4 +46,19 @@ test("matricule changé depuis la fiche carte : la scolarité renomme, puis reto
     const cardOnly = await post(url, { ancien: "INCONNU", matricule: "UA26AT0050" });
     assert.notEqual(cardOnly.status, 303);
   });
+});
+
+test("la réécriture du portail ne casse pas le JavaScript de la cuisine", () => {
+  const source = `
+    const d = p[2] + "/" + p[1] + "/" + p[0];
+    nom.replace(/"/g, "&quot;");
+    fetch("/cantine/gestion/api/tableau");
+    fetch("/admin/api/atelier");
+  `;
+  const out = rewriteText(source);
+  new Function(out);
+  assert.match(out, /\/portail\/cartes\/cantine\/gestion\/api\/tableau/);
+  assert.match(out, /\/portail\/cartes\/admin\/api\/atelier/);
+  assert.equal(out.includes('p[2] + "/" + p[1] + "/" + p[0]'), true);
+  assert.equal(out.includes('replace(/"/g, "&quot;")'), true);
 });
