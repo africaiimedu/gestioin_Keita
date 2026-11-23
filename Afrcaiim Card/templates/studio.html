@@ -7,7 +7,7 @@
   {% set personnel = atelier_cible == "personnel" %}
   <title>{% if personnel %}Atelier badges personnel{% else %}Atelier cartes{% endif %} — Université AFRICAIIM</title>
   <link rel="stylesheet" href="/static/polices.css">
-  <link rel="stylesheet" href="/static/studio.css?v=26">
+  <link rel="stylesheet" href="/static/studio.css?v=27">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 </head>
 <body class="{% if personnel %}atelier-personnel{% endif %}">
@@ -235,7 +235,7 @@
     "tarifPersonnel": abonnement_personnel
   } | tojson }}</script>
   <script id="ecoles-officielles" type="application/json">{{ ecoles | tojson }}</script>
-  <script src="/static/rendu-carte.js?v=39"></script>
+  <script src="/static/rendu-carte.js?v=40"></script>
   <script src="/static/studio.js?v=39"></script>
   <script src="/static/abonnement.js?v=1" defer></script>
 </body>

@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import qrcode
-from reportlab.lib.colors import Color, HexColor, white
+from reportlab.lib.colors import CMYKColor, Color, HexColor, white
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -489,7 +489,7 @@ def _nouveau_canvas(taille, recto_verso: bool = True):
     c.setSubject(
         "Primacy 2. CR80, paysage 85,6 × 54 mm ou portrait 54 × 85,6 mm. "
         "Page 1 = recto avec la photo. Page 2 = verso. "
-        "Couleurs RVB de la carte, 100 %, sans ajuster à la page."
+        "Couleurs de l'atelier. Noir en résine K. 100 %, sans ajuster à la page."
     )
     c.setViewerPreference("PrintScaling", "None")
     c.setViewerPreference("Duplex", "DuplexFlipLongEdge" if recto_verso else "Simplex")
@@ -539,15 +539,25 @@ def _hex(valeur, defaut="#000000"):
         return HexColor(defaut)
 
 
-# Couleurs identiques à l'atelier. Seul le quasi-noir (#1A1A1A) part en résine K
-# pour rester net comme un texte noir à l'écran. Le vert et l'or restent en couleur.
-NOIR_RESINE = HexColor("#000000")
+# Noir 100 % K : la Primacy n'y pose ni jaune, ni magenta, ni cyan.
+# Vert #004C22 et or #FEAB00 restent en RVB, comme à l'atelier.
+NOIR_RESINE = CMYKColor(0, 0, 0, 1)
 POINT_IMPRIMANTE = 72 / 300
 
 
+def _est_noir_neutre(couleur) -> bool:
+    """#000, #111, #1A1A1A : noir. Pas le vert institution (chroma trop fort)."""
+    try:
+        rouge, vert, bleu = float(couleur.red), float(couleur.green), float(couleur.blue)
+    except AttributeError:
+        return False
+    chroma = max(rouge, vert, bleu) - min(rouge, vert, bleu)
+    return max(rouge, vert, bleu) <= 0.18 and chroma <= 0.045
+
+
 def _encre(couleur, taille: float | None = None):
-    """Même teinte que l'atelier. Le gris très foncé devient noir résine."""
-    if max(couleur.red, couleur.green, couleur.blue) < 0.12:
+    """Même teinte que l'atelier. Le noir neutre part en résine K seule."""
+    if _est_noir_neutre(couleur):
         return NOIR_RESINE
     return couleur
 
@@ -825,15 +835,14 @@ def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> No
 def _trace(c, obj: dict) -> int:
     contour = obj.get("contour")
     if contour:
-        c.setStrokeColor(_hex(contour, "#1A1A1A"))
+        c.setStrokeColor(_encre(_hex(contour, "#1A1A1A")))
         c.setLineWidth(max(0.3, mm(float(obj.get("epaisseur") or 0.25))))
     return 1 if contour else 0
 
 
 def _forme(c, obj: dict, x, y, largeur, hauteur, rayon) -> None:
-    # Piste et quasi-noir → panneau K résine (sinon tramage / bandes sur le verso Primacy).
-    teinte = _hex(obj.get("couleur"), "#004C22")
-    if obj.get("type") == "piste" or max(teinte.red, teinte.green, teinte.blue) < 0.15:
+    teinte = _encre(_hex(obj.get("couleur"), "#004C22"))
+    if obj.get("type") == "piste":
         teinte = NOIR_RESINE
     c.setFillColor(teinte)
     trait = _trace(c, obj)
@@ -854,10 +863,6 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     taille = float(obj.get("taille", 9))
     align = obj.get("align") or "left"
     approche = float(obj.get("approche") or 0)
-    # L'atelier montre la carte agrandie (~7,4 px/mm). Sous 8 pt, on remonte un peu
-    # pour que le PVC soit aussi lisible que l'écran, sans changer les couleurs ni le gras.
-    if obj.get("type") != "micro" and taille < 8:
-        taille = max(taille * 1.25, 6.8)
     police = _nom_police(obj)
     couleur = _encre(_hex(obj.get("couleur"), "#1A1A1A"), taille)
     coef = float(obj.get("interligne") or 1.15)
@@ -932,7 +937,7 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
         elif type_objet == "micro":
             _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur)
         elif type_objet == "ligne":
-            c.setStrokeColor(_hex(obj.get("couleur"), "#1A1A1A"))
+            c.setStrokeColor(_encre(_hex(obj.get("couleur"), "#1A1A1A")))
             c.setLineWidth(max(0.4, mm(float(obj.get("epaisseur") or 0.3))))
             c.line(x, y + hauteur / 2, x + largeur, y + hauteur / 2)
         elif type_objet == "image":

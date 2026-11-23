@@ -2,15 +2,24 @@ function teinte(valeur, defaut) {
   return encreResine(valeur, defaut).slice(1);
 }
 
-/** Noir pur pour la Primacy (panneau K résine) : un quasi-noir ou un vert trop sombre sort tramé / bandé. */
-function encreResine(valeur, defaut = "#000000") {
-  const hex = /^#[0-9A-Fa-f]{6}$/.test(String(valeur || "")) ? String(valeur) : defaut;
+function hexValide(valeur, defaut) {
+  return /^#[0-9A-Fa-f]{6}$/.test(String(valeur || "")) ? String(valeur) : defaut;
+}
+
+/** Noir neutre (#1A1A1A…) → #000. Le vert et l'or restent tels quels. */
+function noirNeutre(valeur, defaut = "#1A1A1A") {
+  const hex = hexValide(valeur, defaut);
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
-  if (Math.max(r, g, b) < 0.18) return "#000000";
-  if (0.2126 * r + 0.7152 * g + 0.0722 * b < 0.28) return "#000000";
+  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+  if (Math.max(r, g, b) <= 0.18 && chroma <= 0.045) return "#000000";
   return hex;
+}
+
+/** Noir pur pour QR / piste. Ne pas y envoyer le vert institution. */
+function encreResine(valeur, defaut = "#000000") {
+  return noirNeutre(valeur, defaut);
 }
 
 function dateCarte(valeur) {
@@ -91,7 +100,7 @@ function texteCarte(obj, etu) {
 function styleTexte(el, obj, px) {
   const famille = obj.police === "serif" ? '"DejaVu Serif", serif' : '"DejaVu Sans", sans-serif';
   el.style.fontFamily = famille;
-  el.style.color = obj.couleur || "#1A1A1A";
+  el.style.color = noirNeutre(obj.couleur, "#1A1A1A");
   el.style.fontSize = `${(obj.taille || 9) * px * (25.4 / 72)}px`;
   el.style.fontWeight = obj.gras ? "700" : "400";
   el.style.fontStyle = obj.italique ? "italic" : "normal";
@@ -158,7 +167,7 @@ function rendreFace(carte, objets, ctx) {
       const trait = document.createElement("div");
       trait.style.width = "100%";
       trait.style.height = `${Math.max(1, (obj.epaisseur || 0.3) * px)}px`;
-      trait.style.background = obj.couleur || "#1A1A1A";
+      trait.style.background = noirNeutre(obj.couleur, "#1A1A1A");
       el.appendChild(trait);
     } else if (obj.type === "image") {
       const asset = String(obj.asset || "marque");

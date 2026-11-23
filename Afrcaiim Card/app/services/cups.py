@@ -163,16 +163,14 @@ def commande_lp(
         _poser_option(commande, choix, cle, "VAL10")
     _poser_option(commande, choix, "GDuplexType", "DUPLEX_CC")
     # Photo + vert institution : tramage Floyd (pas le seuil 1 bit).
-    # TEXTINBLACK : seuls QR, codes-barres et vrai noir partent en résine K.
-    # NOPROFILE : les RVB du PDF (bandeau #004C22, or #FEAB00, photo) sortent comme à l'écran.
+    # TEXTINBLACK : QR, codes-barres et noir (K) sans cyan/magenta/jaune.
+    # NOPROFILE : pas de profil qui teinte le noir (vert/or comme à l'atelier).
     for cle in ("FHalftoning", "BHalftoning"):
         _poser_option(commande, choix, cle, "FLOYD")
     for cle in ("FBlackManagement", "BBlackManagement"):
         _poser_option(commande, choix, cle, "TEXTINBLACK")
     for cle in ("IFColorProfileMode", "IBColorProfileMode"):
         _poser_option(commande, choix, cle, "NOPROFILE")
-    for cle in ("IFColorProfile", "IBColorProfile"):
-        _poser_option(commande, choix, cle, "STDPROFILE")
     _poser_option(commande, choix, "GSmoothing", "NOSMOOTH")
     # Paysage (étudiants) : demi-tour pilote. Portrait (personnel) : le PDF tourne déjà le verso
     # (retourner_verso) — ne pas cumuler un second demi-tour ici.
