@@ -634,9 +634,9 @@
     pageEl.innerHTML = `
       <div class="erp-panneau">
         <h2>Catégories</h2>
-        <form class="erp-form" id="form-cat">
+        <form class="erp-ajout-ligne" id="form-cat">
           <label>Nouvelle catégorie<input name="nom" required placeholder="Ex. Grillades"></label>
-          <label><span>&nbsp;</span><button type="submit">Ajouter</button></label>
+          <button type="submit">Ajouter</button>
         </form>
         <div class="erp-actions">
           <label class="erp-tout"><input type="checkbox" id="tout-cat"> Tout sélectionner</label>
