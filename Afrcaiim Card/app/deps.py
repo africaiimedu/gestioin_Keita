@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -57,8 +57,12 @@ def maison(role: str) -> str:
 def _exiger(request: Request, db: Session, roles: set[str]) -> Utilisateur:
     utilisateur = utilisateur_courant(request, db)
     if utilisateur is None:
+        if "/api/" in request.url.path:
+            raise HTTPException(status_code=401, detail="Connectez-vous pour la cuisine.")
         raise Redirection("/login")
     if utilisateur.role not in roles:
+        if "/api/" in request.url.path:
+            raise HTTPException(status_code=403, detail="Ce compte n'a pas accès à la cuisine.")
         raise Redirection(maison(utilisateur.role))
     return utilisateur
 

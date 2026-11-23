@@ -155,6 +155,7 @@ function carteGroups() {
     ]],
     ["Cuisine", [
       ["cantine", "Cantine", "/portail/cartes/cantine"],
+      ["gestion", "Gestion cuisine", "/portail/cartes/cantine/gestion"],
       ["menu", "Menu", "/portail/cartes/cantine/menu"],
       ["commandes", "Commandes", "/portail/cartes/cantine/commandes"],
       ["recus", "Reçus", "/portail/cartes/cantine/recus"],
@@ -220,7 +221,7 @@ function openHome() {
 
 function placeAllowed() {
   if (state.suite === "cartes") {
-    const kitchen = ["cantine", "menu", "commandes", "recus", "abonnes", "rapport"].includes(state.carte);
+    const kitchen = ["cantine", "gestion", "menu", "commandes", "recus", "abonnes", "rapport"].includes(state.carte);
     return kitchen ? allowed("kitchen.manage") : allowed("cards.manage");
   }
   if (state.screen === "tableau") return allowed("dashboard.read") || allowed("dashboard.counts");

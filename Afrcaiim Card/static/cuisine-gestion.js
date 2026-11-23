@@ -42,16 +42,32 @@
     msg.textContent = texte || "";
     msg.classList.toggle("erreur", ok === false);
   }
+  const baseCuisine = (function () {
+    const p = location.pathname.replace(/\/+$/, "");
+    if (/\/cantine\/gestion$/.test(p)) return p;
+    const pre = p.indexOf("/portail/cartes") === 0 ? "/portail/cartes" : "";
+    return pre + "/cantine/gestion";
+  })();
+  function u(chemin) {
+    const c = String(chemin || "");
+    if (!c || c.indexOf("http") === 0) return c;
+    if (c.indexOf("/portail/cartes/") === 0 || c.indexOf("/static/") === 0) return c;
+    if (c.indexOf("/cantine/gestion") === 0) return baseCuisine + c.slice("/cantine/gestion".length);
+    if (location.pathname.indexOf("/portail/cartes") === 0 && c.charAt(0) === "/") return "/portail/cartes" + c;
+    return c;
+  }
   async function api(chemin, options) {
-    const r = await fetch(chemin, Object.assign({ headers: { "Content-Type": "application/json" } }, options || {}));
+    const r = await fetch(u(chemin), Object.assign({
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+    }, options || {}));
     const type = r.headers.get("content-type") || "";
     if (type.includes("application/json")) {
       const data = await r.json();
-      if (!r.ok && data && data.message) throw new Error(data.message);
+      if (!r.ok) throw new Error((data && (data.message || data.detail)) || ("Erreur " + r.status));
       return data;
     }
-    if (!r.ok) throw new Error("Erreur " + r.status);
-    return r;
+    throw new Error("La cuisine n'a pas répondu. Rechargez la page.");
   }
   async function post(chemin, corps) {
     const data = await api(chemin, { method: "POST", body: JSON.stringify(corps) });
@@ -880,5 +896,9 @@
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest("#erp-menu") && !ev.target.closest("#erp-plus")) fermerMenuErp();
   });
-  chargerRefs().then(() => afficher("tableau"));
+  chargerRefs().then(() => afficher("tableau")).catch((e) => {
+    titre.textContent = "Tableau de bord";
+    sous.textContent = titres.tableau[1];
+    pageEl.innerHTML = `<div class="erp-panneau"><p>Impossible d'ouvrir la gestion cuisine : ${e.message}</p></div>`;
+  });
 })();
