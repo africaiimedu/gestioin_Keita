@@ -157,10 +157,14 @@ function rendreFace(carte, objets, ctx) {
       el.appendChild(toileRosette(obj, px, graineCarte(ctx.etu)));
     } else if (obj.type === "micro") {
       const motif = `${texteCarte(obj, ctx.etu)} · `;
-      el.textContent = motif.repeat(12);
+      el.textContent = motif.repeat(8);
       styleTexte(el, obj, px);
-      el.style.whiteSpace = "nowrap";
+      el.style.fontWeight = "400";
+      el.style.justifyContent = "center";
+      el.style.textAlign = "center";
       el.style.alignItems = "center";
+      el.style.whiteSpace = "nowrap";
+      el.style.overflow = "hidden";
     } else if (obj.type === "ligne") {
       el.style.display = "flex";
       el.style.alignItems = "center";
@@ -227,7 +231,7 @@ function rendreFace(carte, objets, ctx) {
     const fond = obj.type === "rect" || obj.type === "piste" || obj.type === "guilloche" || obj.type === "ligne";
     el.style.zIndex = obj.type === "rosette" ? "2" : fond ? "1" : "3";
     carte.appendChild(el);
-    if (el.style.whiteSpace === "nowrap") tenirDansLaBoite(el);
+    if (obj.type !== "micro" && el.style.whiteSpace === "nowrap") tenirDansLaBoite(el);
   });
   const largeurMm = parseFloat(carte.style.width) / px || 85.6;
   const hauteurMm = parseFloat(carte.style.height) / px || 54;
@@ -265,7 +269,7 @@ function filigraneLogo(px, face, largeurMm, hauteurMm) {
   const largeur = hauteur * ratio;
   const droite = 1;
   const gauche = (largeurMm || (portrait ? 54 : 85.6)) - largeur - droite;
-  img.src = recto ? "/static/filigrane.png?v=12" : "/static/filigrane-verso.png?v=12";
+  img.src = recto ? "/static/filigrane.png?v=13" : "/static/filigrane-verso.png?v=13";
   img.style.cssText = `position:absolute;left:${gauche * px}px;top:${haut * px}px;width:${largeur * px}px;height:${hauteur * px}px;object-fit:contain;pointer-events:none;z-index:1`;
   return img;
 }

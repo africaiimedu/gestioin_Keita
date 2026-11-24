@@ -240,13 +240,13 @@ def _sur_grille(pt: float) -> float:
     return round(pt / POINT_IMPRIMANTE) * POINT_IMPRIMANTE
 
 
-def _poser_glyphe(c, texte, x, y, police, taille, couleur) -> None:
+def _poser_glyphe(c, texte, x, y, police, taille, couleur, renforcer: bool = True) -> None:
     """Les petits textes reçoivent un trait de la même encre, pour que la résine K les tienne."""
     bloc = c.beginText()
     bloc.setTextOrigin(x, y)
     bloc.setFont(police, taille)
     bloc.setFillColor(couleur)
-    if taille <= 6.2:
+    if renforcer and taille <= 6.2:
         c.setStrokeColor(couleur)
         c.setLineWidth(POINT_IMPRIMANTE)
         c.setLineJoin(1)
@@ -257,7 +257,7 @@ def _poser_glyphe(c, texte, x, y, police, taille, couleur) -> None:
     c.drawText(bloc)
 
 
-def _ecrire_ligne(c, texte, x, baseline, police, taille, approche, souligne, couleur) -> float:
+def _ecrire_ligne(c, texte, x, baseline, police, taille, approche, souligne, couleur, renforcer: bool = True) -> float:
     x = _sur_grille(x)
     baseline = _sur_grille(baseline)
     c.setFillColor(couleur)
@@ -265,11 +265,11 @@ def _ecrire_ligne(c, texte, x, baseline, police, taille, approche, souligne, cou
     if approche:
         curseur = x
         for car in texte:
-            _poser_glyphe(c, car, curseur, baseline, police, taille, couleur)
+            _poser_glyphe(c, car, curseur, baseline, police, taille, couleur, renforcer)
             curseur += c.stringWidth(car, police, taille) + approche
         fin = curseur - approche
     else:
-        _poser_glyphe(c, texte, x, baseline, police, taille, couleur)
+        _poser_glyphe(c, texte, x, baseline, police, taille, couleur, renforcer)
         fin = x + c.stringWidth(texte, police, taille)
     if souligne and texte:
         c.setStrokeColor(couleur)
@@ -562,26 +562,17 @@ def _assurer_ligne_matricule(data: dict) -> dict:
         return data
     micro = next((obj for obj in verso if obj.get("type") == "micro"), None)
     if micro is None:
-        micro = {
-            "id": "sceau",
-            "type": "micro",
-            "x": round(float(mention.get("x") or 3.69), 2),
-            "y": round(max(40.0, float(mention.get("y") or 49.1) - 2.4), 2),
-            "w": round(float(mention.get("w") or 77.59), 2),
-            "h": 2.2,
-            "couleur": "#000000",
-            "taille": 3.2,
-            "gras": True,
-            "align": "center",
-            "champ": "matricule",
-        }
+        micro = {"id": "sceau", "type": "micro", "champ": "matricule"}
         verso.insert(verso.index(mention), micro)
-        return data
+    micro["x"] = round(float(mention.get("x") or 3.69), 2)
+    micro["w"] = round(float(mention.get("w") or 77.59), 2)
+    micro["h"] = 1.8
+    micro["y"] = round(float(mention.get("y") or 49.1) - 2.05, 2)
     micro["couleur"] = "#000000"
-    micro["gras"] = True
+    micro["taille"] = 2.8
+    micro["gras"] = False
+    micro["align"] = "center"
     micro["champ"] = "matricule"
-    if float(micro.get("taille") or 0) < 3.2:
-        micro["taille"] = 3.2
     return data
 
 
@@ -733,23 +724,24 @@ def _png_filigrane(recto: bool) -> bytes:
     from PIL import Image
 
     source = Image.open(ROOT / "static" / "marque-u.png").convert("RGBA")
-    # Même discrétion sur les deux faces. Opaque : la Primacy n'éclaircit pas un masque.
-    force_vert = 0.32
-    force_or = 0.48
+    # Sauge et or assez francs pour que la Primacy les dépose. Le mélange trop pâle sort gris.
+    sauge = (46, 122, 74)
+    or_fil = (212, 148, 22)
     pixels = []
     for rouge, vert, bleu, alpha in source.get_flattened_data():
         if alpha < 16:
-            pixels.append((255, 255, 255, 255))
+            pixels.append((255, 255, 255))
             continue
-        gland = rouge > 150 and vert > 90 and bleu < 180 and rouge > bleu + 30
-        taux = (force_or if gland else force_vert) * (alpha / 255.0)
-        pixels.append((
-            int(round(rouge * taux + 255 * (1.0 - taux))),
-            int(round(vert * taux + 255 * (1.0 - taux))),
-            int(round(bleu * taux + 255 * (1.0 - taux))),
-            255,
+        gland = rouge > bleu + 20 and rouge + 15 >= vert and rouge > 70
+        cible = or_fil if gland else sauge
+        taux = (0.82 if gland else 0.78) * (alpha / 255.0)
+        pixels.append(tuple(
+            int(round(cible[canal] * taux + 255 * (1.0 - taux)))
+            for canal in range(3)
         ))
-    source.putdata(pixels)
+    image = source.convert("RGB")
+    image.putdata(pixels)
+    source = image
     tampon = io.BytesIO()
     source.convert("RGB").save(tampon, format="PNG", dpi=(300, 300))
     contenu = tampon.getvalue()
@@ -985,19 +977,23 @@ def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> No
     ligne = ""
     while c.stringWidth(ligne + motif, police, taille) <= largeur and len(ligne) < 400:
         ligne += motif
-    if ligne:
-        interligne = float(obj.get("interligne") or 1.15)
-        _ecrire_ligne(
-            c,
-            ligne,
-            x,
-            y + _baseline(police, taille, hauteur, interligne, False),
-            police,
-            taille,
-            0,
-            False,
-            _encre(_hex(obj.get("couleur"), "#FEAB00"), taille),
-        )
+    if not ligne:
+        return
+    interligne = float(obj.get("interligne") or 1.15)
+    largeur_texte = c.stringWidth(ligne, police, taille)
+    depart = x + max(0.0, (largeur - largeur_texte) / 2)
+    _ecrire_ligne(
+        c,
+        ligne,
+        depart,
+        y + _baseline(police, taille, hauteur, interligne, False),
+        police,
+        taille,
+        0,
+        False,
+        _encre(_hex(obj.get("couleur"), "#000000"), taille),
+        renforcer=False,
+    )
 
 
 def _trace(c, obj: dict) -> int:
