@@ -507,19 +507,15 @@ def _chemins_modele(fichier: str) -> tuple[Path, Path]:
 
 
 def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
-    """Le modèle modifié dans l'atelier vit dans data/, hors Git, pour survivre aux mises à jour."""
+    """Le modèle enregistré dans l'atelier vit dans data/, hors Git.
+
+    Une mise à jour du serveur ne le remplace jamais. Le fichier d'usine
+    ne sert que s'il n'existe encore aucune carte enregistrée.
+    """
     vivant, usine = _chemins_modele(fichier)
     vivant.parent.mkdir(parents=True, exist_ok=True)
     if not vivant.is_file() and usine.is_file():
         vivant.write_bytes(usine.read_bytes())
-    elif vivant.is_file() and usine.is_file() and Path(fichier).name == "modele.json":
-        try:
-            actuel = json.loads(vivant.read_text(encoding="utf-8"))
-            version_actuel = int(actuel.get("version") or 0)
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            version_actuel = 0
-        if version_actuel in (3, 4, 5, 6, 7, 8, 9):
-            vivant.write_bytes(usine.read_bytes())
     return vivant if vivant.is_file() else usine
 
 

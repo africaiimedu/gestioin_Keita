@@ -74,6 +74,8 @@ def _valider_modele(data: dict) -> dict:
     data = {"recto": data["recto"], "verso": data["verso"], "orientation": orientation}
     if version:
         data["version"] = version
+    # Carte validée dans l'atelier : la mise à jour du serveur doit la conserver.
+    data["valide_atelier"] = True
     for face in ("recto", "verso"):
         objets = data[face]
         if not isinstance(objets, list) or len(objets) > 80:

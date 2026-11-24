@@ -26,6 +26,25 @@ from app.services.photos import normaliser_photo, photos_depuis_zip
 from app.services.statut import statut_effectif
 
 
+def test_mise_a_jour_conserve_la_carte_enregistree(tmp_path, monkeypatch):
+    from app.services import pdf_carte
+
+    usine = tmp_path / "config" / "modele.json"
+    vivant = tmp_path / "data" / "modele.json"
+    usine.parent.mkdir()
+    vivant.parent.mkdir()
+    usine.write_text('{"version": 10, "recto": [{"id": "usine"}], "verso": []}', encoding="utf-8")
+    vivant.write_text('{"version": 6, "recto": [{"id": "production"}], "verso": []}', encoding="utf-8")
+    monkeypatch.setattr(pdf_carte, "_chemins_modele", lambda fichier="modele.json": (vivant, usine))
+
+    assert pdf_carte.assurer_modele_vivant().read_text(encoding="utf-8").find("production") > 0
+
+    vivant.unlink()
+    cree = pdf_carte.assurer_modele_vivant()
+    assert cree == vivant
+    assert "usine" in cree.read_text(encoding="utf-8")
+
+
 def test_compte_cantine_et_mail():
     from app.services.cantine import decision_repas
     from app.services.courrier import formater_francs, message_debit
