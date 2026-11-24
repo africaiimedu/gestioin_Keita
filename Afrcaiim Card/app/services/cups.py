@@ -161,6 +161,16 @@ def commande_lp(
     # Contraste / luminosité neutres : les hex de l'atelier ne sont pas retouchés.
     for cle in ("FColorContrast", "BColorContrast", "FColorBrightness", "BColorBrightness"):
         _poser_option(commande, choix, cle, "VAL10")
+    # Vitesse lente : le ruban dépose plus de teinte, sans modifier les RVB envoyés.
+    for cle, valeur in (
+        ("GPrintingSpeed", "LOWSPEED"),
+        ("PrintingSpeed", "LOWSPEED"),
+        ("GSpeed", "QUALITY"),
+        ("PrintSpeed", "HighQuality"),
+    ):
+        if valeur in choix.get(cle, []):
+            commande += ["-o", f"{cle}={valeur}"]
+            break
     _poser_option(commande, choix, "GDuplexType", "DUPLEX_CC")
     # Photo en couleur (Floyd). Textes et QR noirs en résine K, nets.
     # Le vert #004C22 reste sur les panneaux couleur. NOPROFILE : teintes de l'atelier.

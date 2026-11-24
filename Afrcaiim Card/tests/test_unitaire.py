@@ -431,6 +431,7 @@ def test_pdf_carte_a_la_taille_cr80():
     assert "Amina" in texte
     assert "AFRICAIIM Business School" in texte
     assert "CARTE D'ÉTUDIANT" in texte.replace("\n", "")
+    assert b"/SMask" not in pdf
     prefs = lecteur.trailer["/Root"]["/ViewerPreferences"]
     assert "DuplexFlipLongEdge" in str(prefs["/Duplex"])
     assert url_qr("https://africaiim.com/portail/cartes", etudiant.matricule, "jeton-test").endswith("/id/jeton-test")
@@ -725,6 +726,7 @@ def test_impression_recto_verso_et_couleurs():
         "IFColorProfileMode": ["DRIVERPROFILE", "NOPROFILE"],
         "IBColorProfileMode": ["DRIVERPROFILE", "NOPROFILE"],
         "GSmoothing": ["ADVSMOOTH", "NOSMOOTH"],
+        "GPrintingSpeed": ["HIGHSPEED", "LOWSPEED"],
         "FPageRotate180": ["OFF", "ON"],
         "BPageRotate180": ["OFF", "ON"],
     }
@@ -751,6 +753,7 @@ def test_impression_recto_verso_et_couleurs():
     assert "IBColorProfileMode=NOPROFILE" in paysage
     assert "IFColorProfile=STDPROFILE" not in paysage
     assert "GSmoothing=NOSMOOTH" in paysage
+    assert "GPrintingSpeed=LOWSPEED" in paysage
     assert "FPageRotate180=ON" in paysage
     assert "BPageRotate180=ON" in paysage
     assert "media=" not in "".join(paysage)

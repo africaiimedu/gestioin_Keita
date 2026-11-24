@@ -567,6 +567,30 @@ def _encre(couleur, taille: float | None = None):
     return couleur
 
 
+def _teinte_sur_blanc(couleur, force: float):
+    """Même aspect qu'une encre éclaircie, mais en RVB opaque.
+
+    Une transparence dans le PDF force la Primacy à recomposer toute la page
+    et décale le vert et l'or. Le blanc de la carte est déjà le fond.
+    """
+    if isinstance(couleur, str):
+        couleur = _hex(couleur)
+    taux = max(0.0, min(1.0, float(force)))
+    return Color(
+        couleur.red * taux + (1.0 - taux),
+        couleur.green * taux + (1.0 - taux),
+        couleur.blue * taux + (1.0 - taux),
+    )
+
+
+def _aligne_mm(valeur: float) -> float:
+    """Aligne un millimètre sur un point de la tête Primacy (300 ppp).
+
+    Un bord entre deux points est mélangé avec le voisin : le vert devient gris.
+    """
+    return round(float(valeur) / 25.4 * 300) * POINT_IMPRIMANTE
+
+
 def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
     fonction = (getattr(etu, "fonction", None) or getattr(etu, "filiere", None) or "").strip()
     femme = str(getattr(etu, "sexe", "") or "").upper() == "F"
@@ -658,10 +682,8 @@ def _png_filigrane(recto: bool) -> bytes:
         ))
     source.putdata(pixels)
     tampon = io.BytesIO()
-    source.save(tampon, format="PNG")
+    source.convert("RGB").save(tampon, format="PNG", dpi=(300, 300))
     contenu = tampon.getvalue()
-    nom = "filigrane.png" if recto else "filigrane-verso.png"
-    (ROOT / "static" / nom).write_bytes(contenu)
     cache[cle] = contenu
     _png_filigrane._cache = cache
     return cache[cle]
@@ -697,7 +719,7 @@ def _filigrane(c, recto: bool, page_w: float, page_h: float) -> None:
         hauteur,
         preserveAspectRatio=True,
         anchor="c",
-        mask="auto",
+        mask=None,
     )
 
 
@@ -739,15 +761,12 @@ def _rosette(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
     rayon = min(largeur, hauteur) * 0.46
     c.saveState()
     c.translate(mm(0.12), mm(-0.15))
-    c.setStrokeColor(_encre(_hex("#004C22")))
-    c._setStrokeAlpha(0.35)
+    c.setStrokeColor(_teinte_sur_blanc(_encre(_hex("#004C22")), 0.35))
     tracer(centre_x, centre_y, rayon)
     c.restoreState()
-    c.setStrokeColor(couleur)
-    c._setStrokeAlpha(0.95)
+    c.setStrokeColor(_teinte_sur_blanc(couleur, 0.95))
     tracer(centre_x, centre_y, rayon)
     c.restoreState()
-    c._setStrokeAlpha(1)
 
 
 def _guilloche(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
@@ -758,11 +777,10 @@ def _guilloche(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
     decoupe = c.beginPath()
     decoupe.rect(x, y, largeur, hauteur)
     c.clipPath(decoupe, stroke=0, fill=0)
-    c.setStrokeColor(couleur)
+    c.setStrokeColor(_teinte_sur_blanc(couleur, 0.42))
     c.setLineWidth(max(0.4, mm(0.6 / PX_ATELIER)))
     c.setLineCap(0)
     c.setLineJoin(0)
-    c._setStrokeAlpha(0.42)
     pas = mm(6 / PX_ATELIER)
     amplitude = mm(1.2 / PX_ATELIER)
     periode = mm(16 / PX_ATELIER)
@@ -786,11 +804,56 @@ def _guilloche(c, x, y, largeur, hauteur, couleur, jeton: str = "") -> None:
         dist += pas
         indice += 1
     c.restoreState()
-    c._setStrokeAlpha(1)
-    c._setFillAlpha(1)
 
 
 PPP_PHOTO = 300
+
+
+def _fond_sous(objets: list, obj: dict) -> str:
+    """Couleur du rectangle déjà posé sous le centre de l'image."""
+    centre_x = float(obj.get("x") or 0) + float(obj.get("w") or 0) / 2
+    centre_y = float(obj.get("y") or 0) + float(obj.get("h") or 0) / 2
+    fond = "#FFFFFF"
+    for autre in objets:
+        if autre is obj or autre.get("type") not in ("rect", "piste"):
+            continue
+        if (
+            float(autre.get("x") or 0) <= centre_x <= float(autre.get("x") or 0) + float(autre.get("w") or 0)
+            and float(autre.get("y") or 0) <= centre_y <= float(autre.get("y") or 0) + float(autre.get("h") or 0)
+        ):
+            fond = "#000000" if autre.get("type") == "piste" else str(autre.get("couleur") or fond)
+    return fond
+
+
+def _poser_logo(c, source: bytes, x, y, largeur, hauteur, fond: str) -> None:
+    """Logo à 300 ppp, aplati sur la couleur derrière lui. Pas de masque : le vert reste #004C22."""
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(source))
+    image.load()
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    cible = (max(1, round(largeur / 72 * PPP_PHOTO)), max(1, round(hauteur / 72 * PPP_PHOTO)))
+    ratio = min(cible[0] / max(image.width, 1), cible[1] / max(image.height, 1))
+    neuf = (max(1, round(image.width * ratio)), max(1, round(image.height * ratio)))
+    if image.size != neuf:
+        image = image.resize(neuf, Image.Resampling.LANCZOS)
+    toile = Image.new("RGB", cible, _rgb_tuple(_encre(_hex(fond, "#FFFFFF"))))
+    gauche = (cible[0] - image.width) // 2
+    haut = (cible[1] - image.height) // 2
+    toile.paste(image, (gauche, haut), image)
+    tampon = io.BytesIO()
+    toile.save(tampon, format="PNG", dpi=(PPP_PHOTO, PPP_PHOTO))
+    tampon.seek(0)
+    c.drawImage(ImageReader(tampon), x, y, largeur, hauteur, preserveAspectRatio=False, mask=None)
+
+
+def _rgb_tuple(couleur) -> tuple[int, int, int]:
+    return (
+        int(round(max(0.0, min(1.0, float(couleur.red))) * 255)),
+        int(round(max(0.0, min(1.0, float(couleur.green))) * 255)),
+        int(round(max(0.0, min(1.0, float(couleur.blue))) * 255)),
+    )
 
 
 def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
@@ -804,7 +867,7 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(photo)))
     image.load()
     if image.mode != "RGB":
-        image = image.convert("RGB")
+        image = image.convert("RGB", dither=Image.Dither.NONE)
     largeur_px, hauteur_px = image.size
     if largeur_px <= 0 or hauteur_px <= 0 or largeur <= 0 or hauteur <= 0:
         return
@@ -822,7 +885,7 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
     if image.size != cible:
         image = image.resize(cible, Image.Resampling.LANCZOS)
     tampon = io.BytesIO()
-    image.save(tampon, format="PNG", optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
+    image.save(tampon, format="PNG", dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
     c.drawImage(ImageReader(tampon), x, y, largeur, hauteur, preserveAspectRatio=False, mask=None)
 
@@ -933,10 +996,10 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
     decoupe.roundRect(0, 0, page_w, page_h, mm(2.2))
     c.clipPath(decoupe, stroke=0, fill=0)
     for obj in modele.get(face, []):
-        x = mm(float(obj["x"]))
-        hauteur = mm(float(obj["h"]))
-        y = page_h - mm(float(obj["y"])) - hauteur
-        largeur = mm(float(obj["w"]))
+        x = _aligne_mm(float(obj["x"]))
+        hauteur = max(POINT_IMPRIMANTE, _aligne_mm(float(obj["h"])))
+        y = page_h - _aligne_mm(float(obj["y"])) - hauteur
+        largeur = max(POINT_IMPRIMANTE, _aligne_mm(float(obj["w"])))
         if largeur <= 0 or hauteur < 0:
             continue
         rayon = mm(float(obj.get("rayon") or 0))
@@ -970,16 +1033,7 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
                 if couvrir:
                     _poser_couverture(c, source.read_bytes(), x, y, largeur, hauteur)
                 else:
-                    c.drawImage(
-                        str(source),
-                        x,
-                        y,
-                        largeur,
-                        hauteur,
-                        preserveAspectRatio=True,
-                        anchor="c",
-                        mask="auto",
-                    )
+                    _poser_logo(c, source.read_bytes(), x, y, largeur, hauteur, _fond_sous(modele.get(face, []), obj))
         elif type_objet == "photo":
             c.saveState()
             if rayon > 0.4:
