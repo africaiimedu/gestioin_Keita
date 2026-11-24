@@ -142,11 +142,13 @@ def _dessiner_qr(c, url: str, x, y, largeur, hauteur, encre="#111111") -> None:
     from reportlab.pdfgen.canvas import FILL_NON_ZERO
 
     cote = min(largeur, hauteur)
-    origine_x = x + (largeur - cote) / 2
-    origine_y = y + (hauteur - cote) / 2
-    pas = cote / nombre
-    # Une seule forme, rangées légèrement chevauchées : aucun filet blanc entre les modules à l'impression.
-    chevauche = pas * 0.03
+    # Chaque module tombe sur un nombre entier de points de la Primacy : sinon le noir se grise.
+    pas_points = max(2, int((cote / nombre) / POINT_IMPRIMANTE))
+    pas = pas_points * POINT_IMPRIMANTE
+    cote_aligne = pas * nombre
+    origine_x = round((x + (largeur - cote_aligne) / 2) / POINT_IMPRIMANTE) * POINT_IMPRIMANTE
+    origine_y = round((y + (hauteur - cote_aligne) / 2) / POINT_IMPRIMANTE) * POINT_IMPRIMANTE
+    debord = POINT_IMPRIMANTE
     chemin = c.beginPath()
     for ligne, rangee in enumerate(matrice):
         colonne = 0
@@ -159,9 +161,9 @@ def _dessiner_qr(c, url: str, x, y, largeur, hauteur, encre="#111111") -> None:
                 colonne += 1
             chemin.rect(
                 origine_x + debut * pas,
-                origine_y + (nombre - 1 - ligne) * pas - chevauche,
-                (colonne - debut) * pas,
-                pas + 2 * chevauche,
+                origine_y + (nombre - 1 - ligne) * pas,
+                (colonne - debut) * pas + debord,
+                pas + debord,
             )
     c.setFillColor(_encre(_hex(encre, "#111111")))
     c.drawPath(chemin, stroke=0, fill=1, fillMode=FILL_NON_ZERO)
@@ -234,22 +236,46 @@ def _largeur_texte(c, texte: str, police: str, taille: float, approche: float) -
     return c.stringWidth(texte, police, taille) + approche * max(0, len(texte) - 1)
 
 
+def _sur_grille(pt: float) -> float:
+    return round(pt / POINT_IMPRIMANTE) * POINT_IMPRIMANTE
+
+
+def _poser_glyphe(c, texte, x, y, police, taille, couleur) -> None:
+    """Les petits textes reçoivent un trait de la même encre, pour que la résine K les tienne."""
+    bloc = c.beginText()
+    bloc.setTextOrigin(x, y)
+    bloc.setFont(police, taille)
+    bloc.setFillColor(couleur)
+    if taille <= 6.2:
+        c.setStrokeColor(couleur)
+        c.setLineWidth(POINT_IMPRIMANTE)
+        c.setLineJoin(1)
+        c.setLineCap(1)
+        bloc.setStrokeColor(couleur)
+        bloc.setTextRenderMode(2)
+    bloc.textOut(texte)
+    c.drawText(bloc)
+
+
 def _ecrire_ligne(c, texte, x, baseline, police, taille, approche, souligne, couleur) -> float:
+    x = _sur_grille(x)
+    baseline = _sur_grille(baseline)
     c.setFillColor(couleur)
     c.setFont(police, taille)
     if approche:
         curseur = x
         for car in texte:
-            c.drawString(curseur, baseline, car)
+            _poser_glyphe(c, car, curseur, baseline, police, taille, couleur)
             curseur += c.stringWidth(car, police, taille) + approche
         fin = curseur - approche
     else:
-        c.drawString(x, baseline, texte)
+        _poser_glyphe(c, texte, x, baseline, police, taille, couleur)
         fin = x + c.stringWidth(texte, police, taille)
     if souligne and texte:
         c.setStrokeColor(couleur)
-        c.setLineWidth(max(0.35, taille * 0.06))
-        c.line(x, baseline - taille * 0.15, fin, baseline - taille * 0.15)
+        c.setLineWidth(max(POINT_IMPRIMANTE, taille * 0.06))
+        trait = _sur_grille(baseline - taille * 0.15)
+        c.line(x, trait, fin, trait)
     return fin - x
 
 
@@ -837,7 +863,7 @@ def _poser_logo(c, source: bytes, x, y, largeur, hauteur, fond: str) -> None:
     ratio = min(cible[0] / max(image.width, 1), cible[1] / max(image.height, 1))
     neuf = (max(1, round(image.width * ratio)), max(1, round(image.height * ratio)))
     if image.size != neuf:
-        image = image.resize(neuf, Image.Resampling.LANCZOS)
+        image = _reduire_nette(image, neuf)
     toile = Image.new("RGB", cible, _rgb_tuple(_encre(_hex(fond, "#FFFFFF"))))
     gauche = (cible[0] - image.width) // 2
     haut = (cible[1] - image.height) // 2
@@ -854,6 +880,22 @@ def _rgb_tuple(couleur) -> tuple[int, int, int]:
         int(round(max(0.0, min(1.0, float(couleur.green))) * 255)),
         int(round(max(0.0, min(1.0, float(couleur.blue))) * 255)),
     )
+
+
+def _reduire_nette(image, cible: tuple[int, int]):
+    """Réduit par paliers : un seul grand rétrécissement avale les détails du visage."""
+    from PIL import Image
+
+    if image.size == cible:
+        return image
+    largeur, hauteur = image.size
+    while largeur > cible[0] * 2 and hauteur > cible[1] * 2:
+        largeur = max(cible[0], largeur // 2)
+        hauteur = max(cible[1], hauteur // 2)
+        image = image.resize((largeur, hauteur), Image.Resampling.BOX)
+    if image.size != cible:
+        image = image.resize(cible, Image.Resampling.LANCZOS)
+    return image
 
 
 def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
@@ -883,7 +925,7 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
         image = image.crop((0, haut, largeur_px, haut + garde))
     cible = (max(1, round(largeur / 72 * PPP_PHOTO)), max(1, round(hauteur / 72 * PPP_PHOTO)))
     if image.size != cible:
-        image = image.resize(cible, Image.Resampling.LANCZOS)
+        image = _reduire_nette(image, cible)
     tampon = io.BytesIO()
     image.save(tampon, format="PNG", dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
@@ -902,7 +944,6 @@ def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> No
         ligne += motif
     if ligne:
         interligne = float(obj.get("interligne") or 1.15)
-        c._setFillAlpha(1)
         _ecrire_ligne(
             c,
             ligne,
@@ -952,7 +993,6 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
     coef = float(obj.get("interligne") or 1.15)
     interligne = taille * coef
     souligne = bool(obj.get("souligne"))
-    c._setFillAlpha(1)
     if obj.get("retour") or align == "justify":
         plus_long = max(texte.split() or [""], key=len)
         taille = _taille(c, plus_long, police, taille, largeur, approche)
@@ -1040,7 +1080,6 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
                 chemin = c.beginPath()
                 chemin.roundRect(x, y, largeur, hauteur, rayon)
                 c.clipPath(chemin, stroke=0, fill=0)
-            c._setFillAlpha(1)
             c.setFillColor(_encre(_hex(obj.get("couleur"), "#C5F0DC")))
             c.rect(x, y, largeur, hauteur, fill=1, stroke=0)
             if photo:
@@ -1049,7 +1088,6 @@ def dessiner_face(c, face: str, etu, photo: bytes, jeton: str, edition: int, bas
                 initiales = f"{(etu.prenom or ' ')[:1]}{(etu.nom or ' ')[:1]}".upper()
                 taille_ini = min(hauteur * 0.38, 32)
                 c.setFillColor(_encre(_hex(obj.get("couleur_texte"), "#0C4630")))
-                c._setFillAlpha(1)
                 c.setFont("DejaVu-Bold", taille_ini)
                 c.drawCentredString(
                     x + largeur / 2,
