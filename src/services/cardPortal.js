@@ -207,7 +207,7 @@ function matriculeOutcome(error) {
 }
 
 /** Un matricule changé depuis la fiche carte part de la scolarité, qui renomme ensuite la carte. */
-async function interceptMatricule(req, res, user, pathOnly, renameMatricule) {
+async function interceptMatricule(req, res, user, pathOnly, renameMatricule, body) {
   const match = pathOnly.match(MATRICULE_EDIT);
   if (!match || req.method !== "POST" || !user || !renameMatricule) return null;
   const back = `${PREFIX}/admin/etudiants/${match[1]}`;
@@ -215,8 +215,7 @@ async function interceptMatricule(req, res, user, pathOnly, renameMatricule) {
     res.status(403).type("text").send("Origine refusée");
     return true;
   }
-  const body = await readBody(req);
-  const form = new URLSearchParams(body.toString("utf8"));
+  const form = new URLSearchParams((body || Buffer.alloc(0)).toString("utf8"));
   let outcome;
   try {
     outcome = await renameMatricule(user, form.get("ancien") || "", form.get("matricule") || "");
@@ -244,6 +243,16 @@ export function attachCardPortal(app, resolveUser = () => null, { renameMatricul
   app.use("/photo", (req, res) => forward(req, res, req.originalUrl, false));
   app.get("/theme.css", (req, res) => forward(req, res, req.originalUrl, false));
   app.use(PREFIX, async (req, res) => {
+    // Lire le corps tout de suite : un await avant le pipe perd l'enregistrement de la carte.
+    let body = null;
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      try {
+        body = await readBody(req, 12 * 1024 * 1024);
+      } catch {
+        if (!res.headersSent) res.status(413).type("text").send("Enregistrement trop volumineux");
+        return;
+      }
+    }
     let tail = req.url && req.url !== "/" ? req.url : "/";
     if (!tail.startsWith("/")) tail = `/${tail}`;
     const user = await resolveUser(req);
@@ -259,13 +268,11 @@ export function attachCardPortal(app, resolveUser = () => null, { renameMatricul
       res.redirect(302, PREFIX + portalHome(user));
       return;
     }
-    let body = null;
     try {
-      const intercepted = await interceptMatricule(req, res, user, pathOnly, renameMatricule);
+      const intercepted = await interceptMatricule(req, res, user, pathOnly, renameMatricule, body);
       if (intercepted === true) return;
       if (Buffer.isBuffer(intercepted)) body = intercepted;
       if (req.method === "POST" && pathOnly === "/login" && ensureStudentCard) {
-        if (!body) body = await readBody(req, 16384);
         const identifiant = String(new URLSearchParams(body.toString("utf8")).get("identifiant") || "").trim();
         if (/^[A-Za-z0-9][A-Za-z0-9-]{2,30}$/.test(identifiant)) {
           await ensureStudentCard(identifiant).catch(() => false);

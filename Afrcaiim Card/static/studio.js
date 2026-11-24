@@ -433,6 +433,7 @@ function editerTexte(obj) {
     proprietes();
   };
   el.addEventListener("blur", () => {
+    if (!enEdition) return;
     promesseEdition = terminer(false);
   });
   el.addEventListener("keydown", (e) => {
@@ -657,9 +658,10 @@ function lireChamp(el, obj) {
 }
 
 function commitChampsOuverts() {
+  const el = document.activeElement;
   const obj = objetChoisi();
-  if (!obj) return;
-  document.querySelectorAll("#props [data-cle]").forEach((el) => lireChamp(el, obj));
+  if (!el || !obj || !el.dataset || !el.dataset.cle) return;
+  lireChamp(el, obj);
 }
 
 async function sauverModele() {
@@ -672,18 +674,25 @@ async function sauverModele() {
         const corps = JSON.stringify(modele);
         let reponse;
         try {
-          reponse = await fetch(CFG.apiModele, { method: "POST", headers: entetes(), body: corps });
+          reponse = await fetch(CFG.apiModele, {
+            method: "POST",
+            headers: entetes(),
+            body: corps,
+            cache: "no-store",
+            credentials: "same-origin",
+          });
         } catch (_) {
           message("Enregistrement impossible. Vérifiez la connexion.");
           return false;
         }
-        if (!reponse.ok) {
+        let corpsReponse = null;
+        try {
+          corpsReponse = await reponse.json();
+        } catch (_) { /* page HTML : l'enregistrement n'a pas atteint la carte */ }
+        if (!reponse.ok || reponse.redirected || !corpsReponse || corpsReponse.ok !== true) {
           if (modeleSale) continue;
-          let texte = "Le modèle n'a pas été enregistré.";
-          try {
-            const corpsReponse = await reponse.json();
-            if (corpsReponse.message) texte = corpsReponse.message;
-          } catch (_) { /* le serveur n'a pas renvoyé de message */ }
+          const texte = (corpsReponse && (corpsReponse.message || corpsReponse.detail))
+            || "Le modèle n'a pas été enregistré.";
           message(texte);
           return false;
         }
@@ -1381,7 +1390,7 @@ function appliquerEtudiants(liste) {
   dessinerCarte();
 }
 
-fetch(CFG.apiAtelier)
+fetch(CFG.apiAtelier, { cache: "no-store", credentials: "same-origin" })
   .then((r) => r.json())
   .then((data) => {
     etudiants = data.etudiants;

@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -229,10 +229,12 @@ def _ligne_personnel(personne: Personnel, db: Session) -> dict:
 
 @router.get("/atelier")
 def atelier(
+    response: Response,
     background: BackgroundTasks,
     admin: Utilisateur = Depends(exiger_bureau),
     db: Session = Depends(get_db),
 ):
+    response.headers["Cache-Control"] = "no-store"
     bilan = appliquer_fiches(db, acteur_id=admin.id)
     photos = bilan.get("photos_a_prendre") or []
     if photos:
@@ -308,7 +310,7 @@ async def enregistrer_modele(request: Request, admin: Utilisateur = Depends(exig
     except (ValueError, TypeError, KeyError) as exc:
         return JSONResponse({"message": str(exc)}, status_code=400)
     ecrire_modele(propre)
-    return {"ok": True}
+    return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/modele/origine")
