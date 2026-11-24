@@ -100,11 +100,13 @@ def _pdf_du_travail(db: Session, travail) -> tuple[bytes | None, str]:
                 ),
                 "",
             )
+        fiche, photo, jeton, edition = element_design_personnel(base_url())
         return (
-            pdf_design_personnel(
+            pdf_individuel(
+                fiche, photo, jeton, edition, base_url(),
                 recto_verso=travail.recto_verso,
                 retourner_verso=bool(travail.recto_verso),
-                base=base_url(),
+                modele=modele,
             ),
             "",
         )

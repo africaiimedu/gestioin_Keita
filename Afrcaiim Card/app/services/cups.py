@@ -158,17 +158,16 @@ def commande_lp(
             if voulu in choix.get(cle, []):
                 commande += ["-o", f"{cle}={voulu}"]
                 break
-    # Contraste et luminosité neutres : les couleurs sortent comme dans le modèle de la carte.
+    # Contraste / luminosité neutres : les hex de l'atelier ne sont pas retouchés.
     for cle in ("FColorContrast", "BColorContrast", "FColorBrightness", "BColorBrightness"):
         _poser_option(commande, choix, cle, "VAL10")
     _poser_option(commande, choix, "GDuplexType", "DUPLEX_CC")
-    # Photo + vert institution : tramage Floyd (pas le seuil 1 bit).
-    # TEXTINBLACK : QR, codes-barres et noir (K) sans cyan/magenta/jaune.
-    # NOPROFILE : pas de profil qui teinte le noir (vert/or comme à l'atelier).
+    # Photo en couleur (Floyd). Textes et QR noirs en résine K, nets.
+    # Le vert #004C22 reste sur les panneaux couleur. NOPROFILE : teintes de l'atelier.
     for cle in ("FHalftoning", "BHalftoning"):
         _poser_option(commande, choix, cle, "FLOYD")
     for cle in ("FBlackManagement", "BBlackManagement"):
-        _poser_option(commande, choix, cle, "NOBLACKPOINT")
+        _poser_option(commande, choix, cle, "TEXTINBLACK")
     for cle in ("IFColorProfileMode", "IBColorProfileMode"):
         _poser_option(commande, choix, cle, "NOPROFILE")
     _poser_option(commande, choix, "GSmoothing", "NOSMOOTH")

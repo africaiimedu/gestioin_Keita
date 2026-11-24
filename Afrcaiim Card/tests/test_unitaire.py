@@ -311,6 +311,29 @@ def test_orientation_portrait():
     assert abs(float(boite.height) - CARD_W) < 0.2
 
 
+def test_pdf_pvc_meme_format_que_latelier():
+    from app.services.pdf_carte import pdf_pvc
+    from app.services.photos import portrait_initiales
+
+    etudiant = SimpleNamespace(
+        prenom="Hassanatou",
+        nom="DIALLO",
+        matricule="UA26AT0030",
+        filiere="AFRCAIIM Tech",
+        programme="Cycle Préparatoire Intégré (CPI)",
+        email="hassanatou.diallo1@etu.univ-africaiim.com",
+        annee_academique="2026-2027",
+        date_validite=date(2031, 8, 31),
+        sexe="F",
+    )
+    pdf = pdf_pvc(etudiant, portrait_initiales("Hassanatou", "DIALLO"), "jeton-test", 1, "https://africaiim.com")
+    lecteur = PdfReader(io.BytesIO(pdf))
+    assert len(lecteur.pages) == 2
+    boite = lecteur.pages[0].mediabox
+    assert abs(float(boite.width) - CARD_W) < 0.2
+    assert abs(float(boite.height) - CARD_H) < 0.2
+
+
 def test_pdf_carte_a_la_taille_cr80():
     etudiant = SimpleNamespace(
         prenom="Amina",
@@ -569,7 +592,7 @@ def test_imprimantes_lues_en_francais_et_en_anglais():
 
 
 def test_couleurs_atelier_conservees_sur_le_pdf():
-    from reportlab.lib.colors import CMYKColor, HexColor
+    from reportlab.lib.colors import HexColor
     from app.services.pdf_carte import _encre, _hex
 
     vert = _encre(_hex("#004C22"), 4.4)
@@ -578,10 +601,9 @@ def test_couleurs_atelier_conservees_sur_le_pdf():
     gris = _encre(_hex("#3E4742"), 5.1)
     blanc = _encre(_hex("#FFFFFF"), 11.5)
     assert abs(vert.green - HexColor("#004C22").green) < 0.01
-    assert vert.green > vert.red
+    assert vert.green > vert.red and vert.green > vert.blue
     assert abs(or_couleur.red - HexColor("#FEAB00").red) < 0.01
-    assert isinstance(nom, CMYKColor)
-    assert nom.cyan == 0 and nom.magenta == 0 and nom.yellow == 0 and nom.black == 1
+    assert nom.red == 0 and nom.green == 0 and nom.blue == 0
     assert abs(gris.red - HexColor("#3E4742").red) < 0.01
     assert blanc.red > 0.99
 
@@ -616,8 +638,8 @@ def test_impression_recto_verso_et_couleurs():
         "Duplex": ["NONE", "DuplexNoTumble"],
         "ColorModel": ["RGB"],
         "Resolution": ["300dpi", "600dpi", "1200dpi"],
-        "FColorContrast": ["VAL10", "VAL16"],
-        "BColorContrast": ["VAL10", "VAL16"],
+        "FColorContrast": ["VAL10", "VAL12", "VAL16"],
+        "BColorContrast": ["VAL10", "VAL12", "VAL16"],
         "FColorBrightness": ["VAL10"],
         "BColorBrightness": ["VAL10"],
         "GDuplexType": ["DUPLEX_CC", "DUPLEX_MM"],
@@ -641,6 +663,7 @@ def test_impression_recto_verso_et_couleurs():
     assert "FColorContrast=VAL10" in paysage
     assert "BColorContrast=VAL10" in paysage
     assert "FColorContrast=VAL16" not in paysage
+    assert "FColorContrast=VAL12" not in paysage
     assert "FColorBrightness=VAL10" in paysage
     assert "BColorBrightness=VAL10" in paysage
     assert "GDuplexType=DUPLEX_CC" in paysage

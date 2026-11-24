@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import qrcode
-from reportlab.lib.colors import CMYKColor, Color, HexColor, white
+from reportlab.lib.colors import Color, HexColor, white
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -223,7 +223,7 @@ def positions_lot() -> list[tuple[float, float]]:
 
 
 def _taille(c, texte: str, police: str, taille: float, largeur: float, approche: float = 0) -> float:
-    while taille > 3.3 and _largeur_texte(c, texte, police, taille, approche) > largeur:
+    while taille > 5.4 and _largeur_texte(c, texte, police, taille, approche) > largeur:
         taille -= 0.15
     return taille
 
@@ -518,7 +518,7 @@ def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
             version_actuel = int(actuel.get("version") or 0)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             version_actuel = 0
-        if version_actuel in (3, 4, 5):
+        if version_actuel in (3, 4, 5, 6, 7, 8, 9):
             vivant.write_bytes(usine.read_bytes())
     return vivant if vivant.is_file() else usine
 
@@ -547,13 +547,13 @@ def _hex(valeur, defaut="#000000"):
         return HexColor(defaut)
 
 
-# Noir 100 % K. Vert et or en CMJN avec peu de noir, sinon la Primacy les sort gris.
-NOIR_RESINE = CMYKColor(0, 0, 0, 1)
+# PDF 100 % RVB = mêmes teintes que l'atelier. Le noir pur part en résine K (TEXTINBLACK).
+NOIR_RESINE = HexColor("#000000")
 POINT_IMPRIMANTE = 72 / 300
 
 
 def _est_noir_neutre(couleur) -> bool:
-    """#000 et #1A1A1A : résine K. Gris, vert et or restent tels que dans l'atelier."""
+    """#000 et #1A1A1A : résine K. Vert, or et gris du modèle restent tels quels."""
     try:
         rouge, vert, bleu = float(couleur.red), float(couleur.green), float(couleur.blue)
     except AttributeError:
@@ -563,24 +563,12 @@ def _est_noir_neutre(couleur) -> bool:
 
 
 def _encre(couleur, taille: float | None = None):
-    """Même teinte que l'atelier. Le vert ne part plus en noir du ruban."""
+    """Couleur exacte du modèle. Gras / régulier viennent de la police, pas de l'encre."""
     if isinstance(couleur, str):
         couleur = _hex(couleur)
     if _est_noir_neutre(couleur):
         return NOIR_RESINE
-    rouge, vert, bleu = float(couleur.red), float(couleur.green), float(couleur.blue)
-    chroma = max(rouge, vert, bleu) - min(rouge, vert, bleu)
-    k_nat = 1.0 - max(rouge, vert, bleu)
-    noir = min(k_nat, 0.28) if chroma >= 0.12 else k_nat
-    reste = 1.0 - noir
-    if reste < 1e-6:
-        return NOIR_RESINE
-    return CMYKColor(
-        max(0.0, min(1.0, (1.0 - rouge - noir) / reste)),
-        max(0.0, min(1.0, (1.0 - vert - noir) / reste)),
-        max(0.0, min(1.0, (1.0 - bleu - noir) / reste)),
-        noir,
-    )
+    return couleur
 
 
 def _valeur_champ(champ: str, etu, edition: int, base: str, jeton: str) -> str:
@@ -648,7 +636,7 @@ def _baseline(police: str, taille: float, hauteur: float, interligne: float, en_
 
 
 def _png_filigrane(recto: bool) -> bytes:
-    """Le grand U coiffé du logo, pâle, sans fond. Plus lisible au recto."""
+    """U sauge et gland or, déjà posés sur blanc : la Primacy imprime ces teintes, pas un vert transparent."""
     cle = "recto" if recto else "verso"
     cache = getattr(_png_filigrane, "_cache", {})
     if cle in cache:
@@ -656,14 +644,22 @@ def _png_filigrane(recto: bool) -> bytes:
     from PIL import Image
 
     source = Image.open(ROOT / "static" / "marque-u.png").convert("RGBA")
+    # Recto un peu plus présent, verso plus discret. Toujours opaque : pas de masque qui vire au gris.
+    force_vert = 0.50 if recto else 0.32
+    force_or = 0.72 if recto else 0.48
     pixels = []
     for rouge, vert, bleu, alpha in source.get_flattened_data():
         if alpha < 16:
-            pixels.append((0, 0, 0, 0))
+            pixels.append((255, 255, 255, 255))
             continue
-        gland = rouge > 170 and vert > 120 and bleu < 120
-        force = (130 if gland else 90) if recto else (78 if gland else 48)
-        pixels.append((rouge, vert, bleu, min(alpha, force)))
+        gland = rouge > 150 and vert > 90 and bleu < 180 and rouge > bleu + 30
+        taux = (force_or if gland else force_vert) * (alpha / 255.0)
+        pixels.append((
+            int(round(rouge * taux + 255 * (1.0 - taux))),
+            int(round(vert * taux + 255 * (1.0 - taux))),
+            int(round(bleu * taux + 255 * (1.0 - taux))),
+            255,
+        ))
     source.putdata(pixels)
     tampon = io.BytesIO()
     source.save(tampon, format="PNG")
@@ -807,7 +803,7 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
     Luminosité / LUT décalaient le visage par rapport à l'atelier. Le noir des photos reste
     en couleur (TEXTINBLACK) : on ne l'écarte plus vers le gris.
     """
-    from PIL import Image, ImageFilter, ImageOps
+    from PIL import Image, ImageOps
 
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(photo)))
     image.load()
@@ -823,12 +819,12 @@ def _poser_couverture(c, photo: bytes, x, y, largeur, hauteur) -> None:
         image = image.crop((gauche, 0, gauche + garde, hauteur_px))
     else:
         garde = max(1, round(largeur_px / rapport))
-        haut = (hauteur_px - garde) // 2
+        haut = int(round((hauteur_px - garde) * 0.18))
+        haut = max(0, min(hauteur_px - garde, haut))
         image = image.crop((0, haut, largeur_px, haut + garde))
     cible = (max(1, round(largeur / 72 * PPP_PHOTO)), max(1, round(hauteur / 72 * PPP_PHOTO)))
     if image.size != cible:
         image = image.resize(cible, Image.Resampling.LANCZOS)
-        image = image.filter(ImageFilter.UnsharpMask(radius=0.6, percent=85, threshold=2))
     tampon = io.BytesIO()
     image.save(tampon, format="PNG", optimize=True, dpi=(PPP_PHOTO, PPP_PHOTO))
     tampon.seek(0)
@@ -841,8 +837,6 @@ def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> No
         return
     police = _nom_police(obj)
     taille = float(obj.get("taille") or 2.5)
-    c.setFillColor(_encre(_hex(obj.get("couleur"), "#FEAB00")))
-    c.setFont(police, taille)
     motif = f"{texte} · "
     ligne = ""
     while c.stringWidth(ligne + motif, police, taille) <= largeur and len(ligne) < 400:
@@ -850,7 +844,17 @@ def _microtexte(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> No
     if ligne:
         interligne = float(obj.get("interligne") or 1.15)
         c._setFillAlpha(1)
-        c.drawString(x, y + _baseline(police, taille, hauteur, interligne, False), ligne)
+        _ecrire_ligne(
+            c,
+            ligne,
+            x,
+            y + _baseline(police, taille, hauteur, interligne, False),
+            police,
+            taille,
+            0,
+            False,
+            _encre(_hex(obj.get("couleur"), "#FEAB00"), taille),
+        )
 
 
 def _trace(c, obj: dict) -> int:
@@ -879,7 +883,7 @@ def _ecrire_bloc(c, obj, etu, jeton, edition, base, x, y, largeur, hauteur) -> N
         return
     c.saveState()
     decoupe = c.beginPath()
-    decoupe.rect(x, y, largeur, max(hauteur, 1))
+    decoupe.rect(x - mm(0.2), y - mm(0.4), largeur + mm(0.4), max(hauteur, 1) + mm(0.8))
     c.clipPath(decoupe, stroke=0, fill=0)
     taille = float(obj.get("taille", 9))
     align = obj.get("align") or "left"
@@ -1267,5 +1271,274 @@ def pdf_lot(elements: list[tuple], base: str, titre: str) -> bytes:
             )
             c.drawString(mm(10), mm(5.5), f"AFRICAIIM · {titre} · {consigne} · feuille {index}/{len(pages)}")
             c.showPage()
+    c.save()
+    return tampon.getvalue()
+
+
+PPP_PVC = 300
+_POLICES_FICHIER = {
+    "DejaVu": "DejaVuSans.ttf",
+    "DejaVu-Bold": "DejaVuSans-Bold.ttf",
+    "DejaVu-Oblique": "DejaVuSans-Oblique.ttf",
+    "DejaVu-BoldOblique": "DejaVuSans-BoldOblique.ttf",
+    "DejaVuSerif": "DejaVuSerif.ttf",
+    "DejaVuSerif-Bold": "DejaVuSerif-Bold.ttf",
+    "DejaVuSerif-Italic": "DejaVuSerif-Italic.ttf",
+    "DejaVuSerif-BoldItalic": "DejaVuSerif-BoldItalic.ttf",
+}
+
+
+def _px_pvc(mm_val: float) -> int:
+    return max(1, int(round(float(mm_val) * PPP_PVC / 25.4)))
+
+
+def _rgb_encre(valeur, defaut="#000000") -> tuple[int, int, int]:
+    couleur = _encre(_hex(valeur, defaut))
+    return (
+        int(round(_borne_canal(couleur.red) * 255)),
+        int(round(_borne_canal(couleur.green) * 255)),
+        int(round(_borne_canal(couleur.blue) * 255)),
+    )
+
+
+def _borne_canal(valeur: float) -> float:
+    return max(0.0, min(1.0, float(valeur)))
+
+
+def _police_pvc(obj: dict, taille_pt: float):
+    from PIL import ImageFont
+
+    pixels = max(9, int(round(float(taille_pt) * PPP_PVC / 72)))
+    nom = _nom_police(obj)
+    fichier = ROOT / "fonts" / _POLICES_FICHIER.get(nom, "DejaVuSans.ttf")
+    if not fichier.is_file():
+        regulier, gras = polices()
+        fichier = gras if obj.get("gras") else regulier
+    return ImageFont.truetype(str(fichier), pixels)
+
+
+def _coller(fond, piece, x: int, y: int) -> None:
+    if piece.mode == "RGBA":
+        fond.paste(piece, (x, y), piece)
+    else:
+        fond.paste(piece.convert("RGB"), (x, y))
+
+
+def _texte_pvc(dessin, image, obj, etu, jeton, edition, base, boite) -> None:
+    from PIL import ImageDraw
+
+    x, y, largeur, hauteur = boite
+    texte = _texte_objet(obj, etu, jeton, edition, base)
+    if not texte:
+        return
+    taille = float(obj.get("taille") or 9)
+    police = _police_pvc(obj, taille)
+    couleur = _rgb_encre(obj.get("couleur"), "#1A1A1A")
+    retour = bool(obj.get("retour") or obj.get("align") == "justify")
+    align = obj.get("align") or "left"
+    if not retour:
+        bbox = dessin.textbbox((0, 0), texte, font=police)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        while tw > largeur - 2 and taille > 5.4:
+            taille -= 0.15
+            police = _police_pvc(obj, taille)
+            bbox = dessin.textbbox((0, 0), texte, font=police)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        if align == "center":
+            tx = x + max(0, (largeur - tw) // 2)
+        elif align == "right":
+            tx = x + max(0, largeur - tw)
+        else:
+            tx = x
+        ty = y + max(0, (hauteur - th) // 2) - bbox[1]
+        dessin.text((tx, ty), texte, font=police, fill=couleur)
+        return
+    mots = texte.split()
+    lignes: list[str] = []
+    courante = ""
+    for mot in mots:
+        essai = mot if not courante else f"{courante} {mot}"
+        if dessin.textlength(essai, font=police) <= max(largeur - 2, 8):
+            courante = essai
+        else:
+            if courante:
+                lignes.append(courante)
+            courante = mot
+    if courante:
+        lignes.append(courante)
+    inter = int(round(taille * PPP_PVC / 72 * float(obj.get("interligne") or 1.15)))
+    curseur = y
+    for ligne in lignes:
+        bbox = dessin.textbbox((0, 0), ligne, font=police)
+        tw = bbox[2] - bbox[0]
+        if align == "center":
+            tx = x + max(0, (largeur - tw) // 2)
+        elif align == "right":
+            tx = x + max(0, largeur - tw)
+        else:
+            tx = x
+        dessin.text((tx, curseur - bbox[1]), ligne, font=police, fill=couleur)
+        curseur += inter
+        if curseur > y + hauteur:
+            break
+    _ = image
+
+
+def _qr_pvc(largeur: int, hauteur: int, url: str, encre="#000000", fond="#FFFFFF"):
+    from PIL import Image, ImageDraw
+
+    code = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H, border=2)
+    code.add_data(url)
+    code.make(fit=True)
+    matrice = code.get_matrix()
+    n = len(matrice)
+    img = Image.new("RGB", (largeur, hauteur), _rgb_encre(fond, "#FFFFFF"))
+    if n <= 0:
+        return img
+    cote = min(largeur, hauteur)
+    ox = (largeur - cote) // 2
+    oy = (hauteur - cote) // 2
+    pas = cote / n
+    dessin = ImageDraw.Draw(img)
+    noir = _rgb_encre(encre, "#000000")
+    for ligne, rangee in enumerate(matrice):
+        col = 0
+        while col < n:
+            if not rangee[col]:
+                col += 1
+                continue
+            debut = col
+            while col < n and rangee[col]:
+                col += 1
+            dessin.rectangle(
+                [
+                    ox + debut * pas,
+                    oy + ligne * pas,
+                    ox + col * pas + 0.4,
+                    oy + (ligne + 1) * pas + 0.4,
+                ],
+                fill=noir,
+            )
+    return img
+
+
+def rendre_face_pvc(face: str, etu, photo: bytes, jeton: str, edition: int, base: str, modele: dict):
+    """Bitmap 300 ppp identique à l'atelier, pour que la Primacy sorte la même carte."""
+    from PIL import Image, ImageDraw
+
+    from app.services.designs import chemin_asset_image
+
+    page_w, page_h = taille_carte(modele)
+    largeur_mm = page_w / MM
+    hauteur_mm = page_h / MM
+    W, H = _px_pvc(largeur_mm), _px_pvc(hauteur_mm)
+    image = Image.new("RGB", (W, H), (255, 255, 255))
+    dessin = ImageDraw.Draw(image)
+    portrait = hauteur_mm > largeur_mm + 1
+    for obj in modele.get(face, []):
+        x = _px_pvc(float(obj["x"]))
+        y = _px_pvc(float(obj["y"]))
+        largeur = _px_pvc(float(obj["w"]))
+        hauteur = _px_pvc(float(obj["h"]))
+        kind = obj.get("type")
+        if kind in ("rect", "piste"):
+            teinte = (0, 0, 0) if kind == "piste" else _rgb_encre(obj.get("couleur"), "#004C22")
+            rayon = _px_pvc(float(obj.get("rayon") or 0))
+            if rayon > 2:
+                dessin.rounded_rectangle([x, y, x + largeur, y + hauteur], radius=rayon, fill=teinte)
+            else:
+                dessin.rectangle([x, y, x + largeur, y + hauteur], fill=teinte)
+        elif kind == "image":
+            source = chemin_asset_image(obj)
+            if obj.get("id") == "logo" and (source is None or not source.is_file()):
+                source = ROOT / "static" / "marque-blanc.png"
+            if source is not None and Path(source).is_file():
+                logo = Image.open(source).convert("RGBA")
+                logo.thumbnail((largeur, hauteur), Image.Resampling.LANCZOS)
+                px = x + (largeur - logo.width) // 2
+                py = y + (hauteur - logo.height) // 2
+                _coller(image, logo, px, py)
+        elif kind == "photo":
+            fond = Image.new("RGB", (largeur, hauteur), _rgb_encre(obj.get("couleur"), "#E8F3EC"))
+            if photo:
+                from PIL import ImageOps
+
+                portrait_img = ImageOps.exif_transpose(Image.open(io.BytesIO(photo))).convert("RGB")
+                rapport = largeur / hauteur
+                pw, ph = portrait_img.size
+                if pw / ph > rapport:
+                    garde = max(1, round(ph * rapport))
+                    gauche = (pw - garde) // 2
+                    portrait_img = portrait_img.crop((gauche, 0, gauche + garde, ph))
+                else:
+                    garde = max(1, round(pw / rapport))
+                    haut = int(round((ph - garde) * 0.18))
+                    haut = max(0, min(ph - garde, haut))
+                    portrait_img = portrait_img.crop((0, haut, pw, haut + garde))
+                portrait_img = portrait_img.resize((largeur, hauteur), Image.Resampling.LANCZOS)
+                fond.paste(portrait_img, (0, 0))
+            rayon = _px_pvc(float(obj.get("rayon") or 0))
+            if rayon > 1:
+                masque = Image.new("L", (largeur, hauteur), 0)
+                ImageDraw.Draw(masque).rounded_rectangle([0, 0, largeur, hauteur], radius=rayon, fill=255)
+                coin = Image.new("RGB", (largeur, hauteur), (255, 255, 255))
+                coin.paste(fond, (0, 0), masque)
+                fond = coin
+            image.paste(fond, (x, y))
+        elif kind == "qr":
+            qr = _qr_pvc(
+                largeur,
+                hauteur,
+                _charge_qr(obj, etu, jeton, edition, base),
+                obj.get("couleur") or "#000000",
+                obj.get("fond") or "#FFFFFF",
+            )
+            image.paste(qr, (x, y))
+        elif kind in ("champ", "texte"):
+            _texte_pvc(dessin, image, obj, etu, jeton, edition, base, (x, y, largeur, hauteur))
+    filigrane = ROOT / "static" / ("filigrane.png" if face == "recto" else "filigrane-verso.png")
+    if filigrane.is_file():
+        ratio = 740 / 806
+        if face == "recto" and portrait:
+            haut_mm, h_mm = 28, 36
+        elif face == "recto":
+            haut_mm, h_mm = 17.2, 36
+        elif portrait:
+            haut_mm, h_mm = 22, 24
+        else:
+            haut_mm, h_mm = 14, 28
+        fw, fh = _px_pvc(h_mm * ratio), _px_pvc(h_mm)
+        motif = Image.open(filigrane).convert("RGBA").resize((fw, fh), Image.Resampling.LANCZOS)
+        gx = W - fw - _px_pvc(1)
+        gy = _px_pvc(haut_mm)
+        _coller(image, motif, gx, gy)
+    rayon_carte = _px_pvc(2.2)
+    masque = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(masque).rounded_rectangle([0, 0, W - 1, H - 1], radius=rayon_carte, fill=255)
+    fond_blanc = Image.new("RGB", (W, H), (255, 255, 255))
+    fond_blanc.paste(image, (0, 0), masque)
+    return fond_blanc
+
+
+def pdf_pvc(
+    etu, photo: bytes, jeton: str, edition: int, base: str,
+    recto_verso: bool = True, retourner_verso: bool = False, modele: dict | None = None,
+) -> bytes:
+    """PDF CR80 dont chaque page est l'image 300 ppp de l'atelier — même qualité que l'écran."""
+    modele = modele or charger_modele()
+    page_w, page_h = taille_carte(modele)
+    recto = rendre_face_pvc("recto", etu, photo, jeton, edition, base, modele)
+    verso = rendre_face_pvc("verso", etu, photo, jeton, edition, base, modele)
+    if retourner_verso and recto_verso:
+        verso = verso.rotate(180)
+    c, tampon = _nouveau_canvas((page_w, page_h), recto_verso)
+    c.setTitle(f"Carte {etu.matricule}")
+    faces = [recto, verso] if recto_verso else [recto]
+    for face_img in faces:
+        tampon_img = io.BytesIO()
+        face_img.save(tampon_img, format="PNG", dpi=(PPP_PVC, PPP_PVC))
+        tampon_img.seek(0)
+        c.drawImage(ImageReader(tampon_img), 0, 0, page_w, page_h, preserveAspectRatio=False, mask=None)
+        c.showPage()
     c.save()
     return tampon.getvalue()

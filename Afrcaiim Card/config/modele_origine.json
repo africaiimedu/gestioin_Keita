@@ -1,6 +1,4 @@
 {
-  "version": 6,
-  "orientation": "paysage",
   "recto": [
     {
       "id": "fond",
@@ -49,7 +47,8 @@
       "y": 1.4,
       "w": 31.01,
       "h": 13.4,
-      "asset": "marque"
+      "asset": "marque",
+      "ajustement": "contain"
     },
     {
       "id": "photo",
@@ -95,7 +94,7 @@
       "y": 33.7,
       "w": 56.0,
       "h": 3.4,
-      "couleur": "#004C22",
+      "couleur": "#000000",
       "taille": 6.59,
       "gras": true,
       "champ": "matricule"
@@ -107,7 +106,7 @@
       "y": 38.2,
       "w": 56.0,
       "h": 4.0,
-      "couleur": "#004C22",
+      "couleur": "#000000",
       "taille": 5.1,
       "gras": true,
       "retour": true,
@@ -121,8 +120,9 @@
       "y": 42.2,
       "w": 56.0,
       "h": 3.4,
-      "couleur": "#004C22",
+      "couleur": "#000000",
       "taille": 4.4,
+      "gras": true,
       "retour": true,
       "champ": "programme",
       "interligne": 1.1
@@ -134,8 +134,9 @@
       "y": 49.7,
       "w": 82.29,
       "h": 3.7,
-      "couleur": "#3E4742",
+      "couleur": "#000000",
       "taille": 5.1,
+      "gras": true,
       "align": "center",
       "texte": "Kipé T2, commune de Ratoma · universite-africaiim.com"
     }
@@ -187,8 +188,9 @@
       "y": 13.7,
       "w": 52.99,
       "h": 3.2,
-      "couleur": "#3E4742",
+      "couleur": "#000000",
       "taille": 6.01,
+      "gras": true,
       "texte": "Valide jusqu'au"
     },
     {
@@ -210,7 +212,7 @@
       "y": 26.4,
       "w": 52.99,
       "h": 3.0,
-      "couleur": "#3E4742",
+      "couleur": "#000000",
       "taille": 6.01,
       "gras": true,
       "texte": "E-mail étudiant"
@@ -222,8 +224,9 @@
       "y": 30.3,
       "w": 52.99,
       "h": 6.4,
-      "couleur": "#004C22",
+      "couleur": "#000000",
       "taille": 6.01,
+      "gras": true,
       "retour": true,
       "champ": "email"
     },
@@ -234,11 +237,14 @@
       "y": 49.1,
       "w": 77.59,
       "h": 3.4,
-      "couleur": "#3E4742",
-      "taille": 4.99,
+      "couleur": "#000000",
+      "taille": 4.6,
+      "gras": true,
       "align": "center",
       "retour": true,
       "texte": "Carte personnelle et non cessible. En cas de perte, contactez le +224 620 11 13 13."
     }
-  ]
+  ],
+  "orientation": "paysage",
+  "version": 10
 }

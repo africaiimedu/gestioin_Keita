@@ -866,7 +866,11 @@ def _imprimer_design_personnel(
         journaliser(db, "badge_imprime", utilisateur_id=admin.id, details=f"{nom} · A4 · design · portrait")
         db.commit()
         return True, f"Feuille A4 (design) envoyée à {nom}."
-    contenu = pdf_design_personnel(recto_verso=recto_verso, retourner_verso=recto_verso, base=base_url())
+    fiche, photo, jeton, edition = element_design_personnel(base_url())
+    contenu = pdf_individuel(
+        fiche, photo, jeton, edition, base_url(),
+        recto_verso=recto_verso, retourner_verso=recto_verso, modele=modele,
+    )
     ok, detail = _envoyer_vers(contenu, nom, recto_verso, copies, "portrait", modele=modele)
     if not ok:
         return False, detail

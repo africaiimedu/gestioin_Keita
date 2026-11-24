@@ -62,12 +62,18 @@ def _verifier_csrf(request: Request) -> bool:
 
 
 def _valider_modele(data: dict) -> dict:
-    if not isinstance(data, dict) or not {"recto", "verso"} <= set(data.keys()) <= {"recto", "verso", "orientation"}:
+    if not isinstance(data, dict) or "recto" not in data or "verso" not in data:
         raise ValueError("Le modèle doit contenir le recto et le verso.")
     orientation = str(data.get("orientation") or "paysage")
     if orientation not in ("paysage", "portrait"):
         raise ValueError("L'orientation est paysage ou portrait.")
-    data["orientation"] = orientation
+    try:
+        version = int(data.get("version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    data = {"recto": data["recto"], "verso": data["verso"], "orientation": orientation}
+    if version:
+        data["version"] = version
     for face in ("recto", "verso"):
         objets = data[face]
         if not isinstance(objets, list) or len(objets) > 80:
