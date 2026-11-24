@@ -231,6 +231,19 @@
       "champ": "email"
     },
     {
+      "id": "sceau",
+      "type": "micro",
+      "x": 3.69,
+      "y": 46.7,
+      "w": 77.59,
+      "h": 2.2,
+      "couleur": "#000000",
+      "taille": 3.2,
+      "gras": true,
+      "align": "center",
+      "champ": "matricule"
+    },
+    {
       "id": "mention",
       "type": "texte",
       "x": 3.69,

@@ -545,9 +545,52 @@ def assurer_modele_vivant(fichier: str = "modele.json") -> Path:
     return vivant if vivant.is_file() else usine
 
 
+def _assurer_ligne_matricule(data: dict) -> dict:
+    """Le matricule répété juste au-dessus de « Carte personnelle »."""
+    verso = data.get("verso")
+    if not isinstance(verso, list):
+        return data
+    mention = next(
+        (
+            obj for obj in verso
+            if obj.get("id") == "mention"
+            or (obj.get("type") == "texte" and "personnelle" in str(obj.get("texte") or "").lower())
+        ),
+        None,
+    )
+    if mention is None:
+        return data
+    micro = next((obj for obj in verso if obj.get("type") == "micro"), None)
+    if micro is None:
+        micro = {
+            "id": "sceau",
+            "type": "micro",
+            "x": round(float(mention.get("x") or 3.69), 2),
+            "y": round(max(40.0, float(mention.get("y") or 49.1) - 2.4), 2),
+            "w": round(float(mention.get("w") or 77.59), 2),
+            "h": 2.2,
+            "couleur": "#000000",
+            "taille": 3.2,
+            "gras": True,
+            "align": "center",
+            "champ": "matricule",
+        }
+        verso.insert(verso.index(mention), micro)
+        return data
+    micro["couleur"] = "#000000"
+    micro["gras"] = True
+    micro["champ"] = "matricule"
+    if float(micro.get("taille") or 0) < 3.2:
+        micro["taille"] = 3.2
+    return data
+
+
 def charger_modele(fichier: str = "modele.json") -> dict:
     with open(assurer_modele_vivant(fichier), encoding="utf-8") as flux:
-        return json.load(flux)
+        data = json.load(flux)
+    if Path(fichier).name == "modele.json":
+        data = _assurer_ligne_matricule(data)
+    return data
 
 
 def ecrire_modele(data: dict, fichier: str = "modele.json") -> None:
