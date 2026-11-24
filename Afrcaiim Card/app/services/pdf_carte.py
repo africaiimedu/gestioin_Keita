@@ -716,7 +716,7 @@ def _baseline(police: str, taille: float, hauteur: float, interligne: float, en_
 
 
 def _png_filigrane(recto: bool) -> bytes:
-    """U sauge et gland or, déjà posés sur blanc : la Primacy imprime ces teintes, pas un vert transparent."""
+    """U du logo en vert du bandeau (#004C22), posé sur blanc pour que la Primacy le dépose."""
     cle = "recto" if recto else "verso"
     cache = getattr(_png_filigrane, "_cache", {})
     if cle in cache:
@@ -724,20 +724,16 @@ def _png_filigrane(recto: bool) -> bytes:
     from PIL import Image
 
     source = Image.open(ROOT / "static" / "marque-u.png").convert("RGBA")
-    # Sauge et or discrets : assez teintés pour que la Primacy ne les passe pas au gris,
-    # assez proches du blanc pour rester un filigrane.
-    sauge = (46, 122, 74)
-    or_fil = (212, 148, 22)
+    # Même vert que le bandeau du haut. Le mélange avec le blanc le laisse en filigrane.
+    vert_bandeau = (0, 76, 34)
     pixels = []
-    for rouge, vert, bleu, alpha in source.get_flattened_data():
+    for _rouge, _vert, _bleu, alpha in source.get_flattened_data():
         if alpha < 16:
             pixels.append((255, 255, 255))
             continue
-        gland = rouge > bleu + 20 and rouge + 15 >= vert and rouge > 70
-        cible = or_fil if gland else sauge
-        taux = (0.55 if gland else 0.50) * (alpha / 255.0)
+        taux = 0.58 * (alpha / 255.0)
         pixels.append(tuple(
-            int(round(cible[canal] * taux + 255 * (1.0 - taux)))
+            int(round(vert_bandeau[canal] * taux + 255 * (1.0 - taux)))
             for canal in range(3)
         ))
     image = source.convert("RGB")
