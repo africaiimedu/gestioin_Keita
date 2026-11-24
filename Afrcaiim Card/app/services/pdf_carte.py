@@ -716,7 +716,7 @@ def _baseline(police: str, taille: float, hauteur: float, interligne: float, en_
 
 
 def _png_filigrane(recto: bool) -> bytes:
-    """U du logo en vert du bandeau (#004C22), posé sur blanc pour que la Primacy le dépose."""
+    """U en vert du bandeau, mèche jaune d'origine. Les deux sont posés sur blanc : la Primacy les dépose."""
     cle = "recto" if recto else "verso"
     cache = getattr(_png_filigrane, "_cache", {})
     if cle in cache:
@@ -724,16 +724,21 @@ def _png_filigrane(recto: bool) -> bytes:
     from PIL import Image
 
     source = Image.open(ROOT / "static" / "marque-u.png").convert("RGBA")
-    # Même vert que le bandeau du haut. Le mélange avec le blanc le laisse en filigrane.
     vert_bandeau = (0, 76, 34)
     pixels = []
-    for _rouge, _vert, _bleu, alpha in source.get_flattened_data():
+    for rouge, vert, bleu, alpha in source.get_flattened_data():
         if alpha < 16:
             pixels.append((255, 255, 255))
             continue
-        taux = 0.58 * (alpha / 255.0)
+        meche = rouge > vert and rouge > bleu and (rouge - bleu) > 12
+        if meche:
+            cible = (rouge, vert, bleu)
+            taux = alpha / 255.0
+        else:
+            cible = vert_bandeau
+            taux = 0.72 * (alpha / 255.0)
         pixels.append(tuple(
-            int(round(vert_bandeau[canal] * taux + 255 * (1.0 - taux)))
+            int(round(cible[canal] * taux + 255 * (1.0 - taux)))
             for canal in range(3)
         ))
     image = source.convert("RGB")
