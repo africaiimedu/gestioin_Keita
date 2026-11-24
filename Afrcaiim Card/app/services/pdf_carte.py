@@ -644,9 +644,9 @@ def _png_filigrane(recto: bool) -> bytes:
     from PIL import Image
 
     source = Image.open(ROOT / "static" / "marque-u.png").convert("RGBA")
-    # Recto un peu plus présent, verso plus discret. Toujours opaque : pas de masque qui vire au gris.
-    force_vert = 0.50 if recto else 0.32
-    force_or = 0.72 if recto else 0.48
+    # Même discrétion sur les deux faces. Opaque : la Primacy n'éclaircit pas un masque.
+    force_vert = 0.32
+    force_or = 0.48
     pixels = []
     for rouge, vert, bleu, alpha in source.get_flattened_data():
         if alpha < 16:
