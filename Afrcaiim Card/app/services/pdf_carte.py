@@ -733,10 +733,10 @@ def _png_filigrane(recto: bool) -> bytes:
         meche = rouge > vert and rouge > bleu and (rouge - bleu) > 12
         if meche:
             cible = (rouge, vert, bleu)
-            taux = alpha / 255.0
+            taux = 0.58 * (alpha / 255.0)
         else:
             cible = vert_bandeau
-            taux = 0.72 * (alpha / 255.0)
+            taux = 0.44 * (alpha / 255.0)
         pixels.append(tuple(
             int(round(cible[canal] * taux + 255 * (1.0 - taux)))
             for canal in range(3)
