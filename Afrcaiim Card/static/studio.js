@@ -664,6 +664,15 @@ function commitChampsOuverts() {
   lireChamp(el, obj);
 }
 
+function corpsModele() {
+  if (!modele || !Array.isArray(modele.recto) || !Array.isArray(modele.verso)) return null;
+  return JSON.stringify({
+    orientation: modele.orientation === "portrait" ? "portrait" : "paysage",
+    recto: modele.recto,
+    verso: modele.verso,
+  });
+}
+
 async function sauverModele() {
   modeleSale = true;
   if (envoiModele) return envoiModele;
@@ -671,7 +680,11 @@ async function sauverModele() {
     try {
       while (modeleSale) {
         modeleSale = false;
-        const corps = JSON.stringify(modele);
+        const corps = corpsModele();
+        if (!corps) {
+          message("La carte n'est pas encore chargée. Rechargez la page.");
+          return false;
+        }
         let reponse;
         try {
           reponse = await fetch(CFG.apiModele, {

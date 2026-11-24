@@ -84,6 +84,13 @@ def _millimetre(valeur, minimum: float, maximum: float) -> float:
 
 
 def _valider_modele(data: dict) -> dict:
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            data = None
+    if isinstance(data, dict) and isinstance(data.get("modele"), dict):
+        data = data["modele"]
     if not isinstance(data, dict) or not isinstance(data.get("recto"), list) or not isinstance(data.get("verso"), list):
         raise ValueError("Le modèle doit contenir le recto et le verso.")
     orientation = str(data.get("orientation") or "paysage")

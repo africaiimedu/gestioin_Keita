@@ -92,6 +92,13 @@ def test_enregistrer_conserve_recto_verso_et_styles():
     mention = propre["verso"][0]
     assert mention["gras"] is True
     assert mention["texte"].startswith("Carte personnelle")
+    emballe = _valider_modele({
+        "etudiants": [{"matricule": "UA26AT0030"}],
+        "modele": {"orientation": "paysage", "version": 6, "recto": propre["recto"], "verso": propre["verso"]},
+    })
+    assert emballe["recto"][0]["id"] == "ecole"
+    assert emballe["verso"][0]["id"] == "mention"
+    assert _valider_modele({"orientation": "paysage", "recto": propre["recto"], "verso": propre["verso"]})["recto"]
 
 
 def test_compte_cantine_et_mail():
