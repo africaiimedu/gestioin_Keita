@@ -33,6 +33,9 @@ let zoom = 1;
 let recherche = "";
 let glisser = null;
 let enEdition = false;
+let promesseEdition = null;
+let envoiModele = null;
+let modeleSale = false;
 const ecoles = JSON.parse(document.getElementById("ecoles-officielles").textContent);
 let clicPrecedent = { id: "", moment: 0 };
 
@@ -108,8 +111,10 @@ const GABARITS = {
   micro: { type: "micro", champ: "matricule", w: 40, h: 2.2, taille: 2.4, couleur: "#FEAB00" },
 };
 
-function message(texte) {
-  document.getElementById("message").textContent = texte || "";
+function message(texte, ok) {
+  const el = document.getElementById("message");
+  el.textContent = texte || "";
+  el.classList.toggle("ok", Boolean(ok && texte));
 }
 
 function entetes() {
@@ -427,7 +432,9 @@ function editerTexte(obj) {
     dessinerCarte();
     proprietes();
   };
-  el.addEventListener("blur", () => terminer(false));
+  el.addEventListener("blur", () => {
+    promesseEdition = terminer(false);
+  });
   el.addEventListener("keydown", (e) => {
     e.stopPropagation();
     if (e.key === "Escape") {
@@ -547,11 +554,7 @@ function proprietes() {
   `;
   zone.querySelectorAll("[data-cle]").forEach((el) => {
     const appliquer = () => {
-      const cle = el.dataset.cle;
-      if (el.type === "checkbox") obj[cle] = el.checked;
-      else if (el.type === "number") obj[cle] = Number(el.value);
-      else obj[cle] = el.value;
-      if (cle === "contour" && !obj.contour) delete obj.contour;
+      lireChamp(el, obj);
       dessinerCarte();
     };
     el.addEventListener("input", appliquer);
@@ -642,14 +645,56 @@ function calques() {
   });
 }
 
+function lireChamp(el, obj) {
+  const cle = el.dataset.cle;
+  if (!cle || !obj) return;
+  if (el.type === "checkbox") obj[cle] = el.checked;
+  else if (el.type === "number") {
+    const nombre = Number(el.value);
+    if (Number.isFinite(nombre)) obj[cle] = nombre;
+  } else if (el.value) obj[cle] = el.value;
+  if (cle === "contour" && !obj.contour) delete obj.contour;
+}
+
+function commitChampsOuverts() {
+  const obj = objetChoisi();
+  if (!obj) return;
+  document.querySelectorAll("#props [data-cle]").forEach((el) => lireChamp(el, obj));
+}
+
 async function sauverModele() {
-  const reponse = await fetch(CFG.apiModele, { method: "POST", headers: entetes(), body: JSON.stringify(modele) });
-  if (!reponse.ok) {
-    const corps = await reponse.json();
-    message(corps.message || "Le modèle n'a pas été enregistré.");
-  } else {
-    message("");
-  }
+  modeleSale = true;
+  if (envoiModele) return envoiModele;
+  envoiModele = (async () => {
+    try {
+      while (modeleSale) {
+        modeleSale = false;
+        const corps = JSON.stringify(modele);
+        let reponse;
+        try {
+          reponse = await fetch(CFG.apiModele, { method: "POST", headers: entetes(), body: corps });
+        } catch (_) {
+          message("Enregistrement impossible. Vérifiez la connexion.");
+          return false;
+        }
+        if (!reponse.ok) {
+          if (modeleSale) continue;
+          let texte = "Le modèle n'a pas été enregistré.";
+          try {
+            const corpsReponse = await reponse.json();
+            if (corpsReponse.message) texte = corpsReponse.message;
+          } catch (_) { /* le serveur n'a pas renvoyé de message */ }
+          message(texte);
+          return false;
+        }
+      }
+      message("");
+      return true;
+    } finally {
+      envoiModele = null;
+    }
+  })();
+  return envoiModele;
 }
 
 function dessinerGrille() {
@@ -960,8 +1005,19 @@ document.getElementById("orient-portrait").onclick = () => changerOrientation("p
 document.getElementById("zoom-moins").onclick = () => reglerZoom(-0.1);
 document.getElementById("zoom-plus").onclick = () => reglerZoom(0.1);
 document.getElementById("enregistrer").onclick = async () => {
-  await sauverModele();
-  if (!document.getElementById("message").textContent) message("Modèle enregistré.");
+  const bouton = document.getElementById("enregistrer");
+  bouton.disabled = true;
+  message("Enregistrement…");
+  try {
+    commitChampsOuverts();
+    const zone = document.querySelector(".objet.en-edition");
+    if (zone) zone.blur();
+    if (promesseEdition) await promesseEdition;
+    const ok = await sauverModele();
+    if (ok) message("Carte enregistrée.", true);
+  } finally {
+    bouton.disabled = false;
+  }
 };
 document.getElementById("basculer-base").onclick = () => {
   document.querySelector(".atelier").classList.toggle("base-ferme");

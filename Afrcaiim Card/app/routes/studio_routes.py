@@ -61,8 +61,30 @@ def _verifier_csrf(request: Request) -> bool:
     return csrf_valide(request, request.headers.get("x-csrf"))
 
 
+def _couleur(valeur):
+    if valeur in (None, ""):
+        return None
+    texte = str(valeur).strip()
+    court = re.fullmatch(r"#([0-9A-Fa-f]{3})", texte)
+    if court:
+        texte = "#" + "".join(caractere * 2 for caractere in court.group(1))
+    if not _HEX.match(texte):
+        return None
+    return texte.upper()
+
+
+def _millimetre(valeur, minimum: float, maximum: float) -> float:
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        nombre = minimum
+    if nombre != nombre:
+        nombre = minimum
+    return round(min(maximum, max(minimum, nombre)), 2)
+
+
 def _valider_modele(data: dict) -> dict:
-    if not isinstance(data, dict) or "recto" not in data or "verso" not in data:
+    if not isinstance(data, dict) or not isinstance(data.get("recto"), list) or not isinstance(data.get("verso"), list):
         raise ValueError("Le modèle doit contenir le recto et le verso.")
     orientation = str(data.get("orientation") or "paysage")
     if orientation not in ("paysage", "portrait"):
@@ -78,17 +100,16 @@ def _valider_modele(data: dict) -> dict:
     data["valide_atelier"] = True
     for face in ("recto", "verso"):
         objets = data[face]
-        if not isinstance(objets, list) or len(objets) > 80:
+        if len(objets) > 80:
             raise ValueError("Trop d'objets sur la carte.")
         propres = []
         for obj in objets:
             if not isinstance(obj, dict) or obj.get("type") not in _TYPES:
                 raise ValueError("Un objet de la carte n'est pas reconnu.")
-            for cle in ("x", "y", "w", "h"):
-                valeur = float(obj[cle])
-                if valeur < -2 or valeur > 120:
-                    raise ValueError("Un objet sort de la carte.")
-                obj[cle] = round(valeur, 2)
+            obj["x"] = _millimetre(obj.get("x", 0), -20, 140)
+            obj["y"] = _millimetre(obj.get("y", 0), -20, 140)
+            obj["w"] = _millimetre(obj.get("w", 1), 0.2, 140)
+            obj["h"] = _millimetre(obj.get("h", 0.4), 0.2, 140)
             if obj["type"] == "image":
                 asset = str(obj.get("asset") or "marque")
                 if not asset_valide(asset):
@@ -107,8 +128,12 @@ def _valider_modele(data: dict) -> dict:
                     raise ValueError("Le QR ne peut contenir qu'une vérification sécurisée ou un champ de la fiche.")
                 obj["contenu"] = contenu
             for cle in ("couleur", "couleur_texte", "contour", "fond"):
-                if obj.get(cle) and not _HEX.match(str(obj[cle])):
-                    raise ValueError("Couleur invalide.")
+                if cle in obj:
+                    couleur = _couleur(obj.get(cle))
+                    if couleur:
+                        obj[cle] = couleur
+                    else:
+                        obj.pop(cle, None)
             if obj.get("align") not in (None, "left", "center", "right", "justify"):
                 raise ValueError("Alignement inconnu.")
             if obj.get("sens") not in (None, "horizontal", "vertical"):

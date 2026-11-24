@@ -45,6 +45,55 @@ def test_mise_a_jour_conserve_la_carte_enregistree(tmp_path, monkeypatch):
     assert "usine" in cree.read_text(encoding="utf-8")
 
 
+def test_enregistrer_conserve_recto_verso_et_styles():
+    from app.routes.studio_routes import _valider_modele
+
+    propre = _valider_modele({
+        "version": 10,
+        "note": "ignorée",
+        "orientation": "paysage",
+        "recto": [{
+            "id": "ecole",
+            "type": "champ",
+            "champ": "ecole",
+            "x": 26.1,
+            "y": 200,
+            "w": 56,
+            "h": 4,
+            "couleur": "#000",
+            "taille": 5.1,
+            "gras": True,
+            "italique": False,
+            "retour": True,
+            "texte": "ne pas perdre",
+        }],
+        "verso": [{
+            "id": "mention",
+            "type": "texte",
+            "x": 3.69,
+            "y": 49.1,
+            "w": 77.59,
+            "h": 3.4,
+            "couleur": "#000000",
+            "taille": 4.6,
+            "gras": True,
+            "align": "center",
+            "texte": "Carte personnelle et non cessible.",
+        }],
+    })
+    assert propre["valide_atelier"] is True
+    assert propre["version"] == 10
+    ecole = propre["recto"][0]
+    assert ecole["couleur"] == "#000000"
+    assert ecole["gras"] is True
+    assert ecole["italique"] is False
+    assert ecole["y"] == 140
+    assert ecole["champ"] == "ecole"
+    mention = propre["verso"][0]
+    assert mention["gras"] is True
+    assert mention["texte"].startswith("Carte personnelle")
+
+
 def test_compte_cantine_et_mail():
     from app.services.cantine import decision_repas
     from app.services.courrier import formater_francs, message_debit
