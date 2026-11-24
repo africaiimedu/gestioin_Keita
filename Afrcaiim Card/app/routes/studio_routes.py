@@ -307,9 +307,14 @@ async def enregistrer_modele(request: Request, admin: Utilisateur = Depends(exig
         return JSONResponse({"message": "Formulaire expiré. Rechargez la page."}, status_code=400)
     try:
         propre = _valider_modele(await request.json())
+    except json.JSONDecodeError:
+        return JSONResponse({"message": "L'enregistrement n'a pas été reçu. Rechargez la page."}, status_code=400)
     except (ValueError, TypeError, KeyError) as exc:
         return JSONResponse({"message": str(exc)}, status_code=400)
-    ecrire_modele(propre)
+    try:
+        ecrire_modele(propre)
+    except OSError:
+        return JSONResponse({"message": "Impossible d'écrire la carte sur le serveur."}, status_code=500)
     return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
 
 

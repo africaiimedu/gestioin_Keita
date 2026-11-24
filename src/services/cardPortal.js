@@ -116,7 +116,7 @@ function unavailable(_req, res) {
 }
 
 async function forward(req, res, targetPath, rewrite, body = null) {
-  if (!(await cardReady())) return unavailable(req, res);
+  if (!(await cardReady(8_000))) return unavailable(req, res);
   const { transport, options, host } = cardTarget();
   const headers = { ...req.headers, host };
   delete headers["accept-encoding"];
@@ -282,12 +282,15 @@ export function attachCardPortal(app, resolveUser = () => null, { renameMatricul
       if (!res.headersSent) res.status(400).type("text").send("Formulaire illisible");
       return;
     }
-    if (!(await cardReady())) return unavailable(req, res);
+    if (!(await cardReady(8_000))) return unavailable(req, res);
     ensureCardSession(req, user).then(() => {
+      if (res.headersSent) return;
       if (user && (pathOnly === "/" || pathOnly === "/login" || tail.startsWith("/login?"))) {
         tail = portalHome(user);
       }
       forward(req, res, tail, true, body);
+    }).catch(() => {
+      if (!res.headersSent) unavailable(req, res);
     });
   });
 }
