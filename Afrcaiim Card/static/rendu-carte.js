@@ -269,7 +269,7 @@ function filigraneLogo(px, face, largeurMm, hauteurMm) {
   const largeur = hauteur * ratio;
   const droite = 1;
   const gauche = (largeurMm || (portrait ? 54 : 85.6)) - largeur - droite;
-  img.src = recto ? "/static/filigrane.png?v=13" : "/static/filigrane-verso.png?v=13";
+  img.src = recto ? "/static/filigrane.png?v=14" : "/static/filigrane-verso.png?v=14";
   img.style.cssText = `position:absolute;left:${gauche * px}px;top:${haut * px}px;width:${largeur * px}px;height:${hauteur * px}px;object-fit:contain;pointer-events:none;z-index:1`;
   return img;
 }

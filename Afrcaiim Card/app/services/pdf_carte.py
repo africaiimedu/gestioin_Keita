@@ -724,7 +724,8 @@ def _png_filigrane(recto: bool) -> bytes:
     from PIL import Image
 
     source = Image.open(ROOT / "static" / "marque-u.png").convert("RGBA")
-    # Sauge et or assez francs pour que la Primacy les dépose. Le mélange trop pâle sort gris.
+    # Sauge et or discrets : assez teintés pour que la Primacy ne les passe pas au gris,
+    # assez proches du blanc pour rester un filigrane.
     sauge = (46, 122, 74)
     or_fil = (212, 148, 22)
     pixels = []
@@ -734,7 +735,7 @@ def _png_filigrane(recto: bool) -> bytes:
             continue
         gland = rouge > bleu + 20 and rouge + 15 >= vert and rouge > 70
         cible = or_fil if gland else sauge
-        taux = (0.82 if gland else 0.78) * (alpha / 255.0)
+        taux = (0.55 if gland else 0.50) * (alpha / 255.0)
         pixels.append(tuple(
             int(round(cible[canal] * taux + 255 * (1.0 - taux)))
             for canal in range(3)
