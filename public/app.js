@@ -289,6 +289,7 @@ const MENU_INFO = {
   "carte:import": ["upload", "Ajouter des étudiants par fichier"],
   "carte:journal": ["list", "Historique des cartes"],
   "carte:cantine": ["plate", "Valider les repas par QR"],
+  "carte:gestion": ["list", "Stock, achats et caisse de la cuisine"],
   "carte:menu": ["menu", "Plats, boissons et prix"],
   "carte:commandes": ["bag", "Commandes en cours"],
   "carte:recus": ["list", "Reçus de la cantine"],
@@ -552,7 +553,8 @@ function mobileTabs(financeCurrent, carteCurrent) {
   const cartes = carteGroups().slice(0, 2).flatMap(([group, items]) => items
     .filter(() => allowed(group === "Cartes" ? "cards.manage" : "kitchen.manage"))
     .map(([id, name]) => ({ attr: "carte", id, name, on: carteCurrent === id })));
-  const tabs = [...finance, ...cartes].slice(0, 4);
+  const cuisine = cartes.filter((tab) => tab.id === "cantine" || tab.id === "gestion");
+  const tabs = [...cuisine, ...finance, ...cartes.filter((tab) => !cuisine.includes(tab))].slice(0, 4);
   if (!tabs.length) return "";
   return `<nav class="tabbar" aria-label="Accès rapide" style="--tabs:${tabs.length + 1}">
     ${tabs.map((tab) => {
